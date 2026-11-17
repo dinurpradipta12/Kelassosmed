@@ -630,7 +630,7 @@ export function UpgradePlanModal({
           )}
 
           <div
-            className="rounded-xl border border-[#FDE68A] p-5"
+            className="pro-amber-gradient-header rounded-xl border border-[#FDE68A] p-5"
             style={{
               background:
                 "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 65%, #FDE68A 100%)",

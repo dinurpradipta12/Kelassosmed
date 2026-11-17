@@ -483,7 +483,14 @@ html[data-theme-mode="dark"] .bg-\[\#F59E0B\] .text-\[\#121215\] {
   color: #121215 !important;
 }
 
-/* PRO Amber Gradient Banner Headers (Learner Portal Right Card & Admin Dashboard) */
+/* Light Gradient Containers Adaptation (Hero & Media Frames) */
+html[data-theme-active="true"] .from-\[\#FFFFFF\].to-\[\#FFFFFF\],
+html[data-theme-active="true"] .from-\[\#EAECEF\].to-\[\#FFFFFF\] {
+  background-image: none !important;
+  background-color: var(--theme-surface) !important;
+}
+
+/* PRO Amber Gradient Banner Headers (Learner Portal Right Card & Admin Dashboard & Upgrade Modal) */
 html[data-theme-mode="dark"] .pro-amber-gradient-header {
   background: linear-gradient(
     135deg,
@@ -491,6 +498,7 @@ html[data-theme-mode="dark"] .pro-amber-gradient-header {
     rgba(180, 83, 9, 0.12) 55%,
     var(--theme-surface) 100%
   ) !important;
+  border-color: rgba(245, 158, 11, 0.34) !important;
 }
 
 /* Amber / Warm Tinted Pills & Boxes in Dark Mode */
