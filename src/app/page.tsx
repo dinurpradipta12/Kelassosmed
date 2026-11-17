@@ -248,10 +248,12 @@ function RuangSosmedStudioInner() {
   const userName = (currentUser?.name || "").toLowerCase().trim();
   const userUsername = (currentUser?.username || "").toLowerCase().trim();
 
-  // 1. Founder / Owner Dinur -> ALWAYS Admin
+  // 1. Founder / Owner Dinur / Arunika -> ALWAYS Admin
   const isFounderAdmin =
     userEmail.includes("dinur") ||
     userEmail === "admin@ruangsosmed.id" ||
+    userUsername === "arunika" ||
+    userName.includes("arunika") ||
     (userName.includes("dinur") && !userName.includes("allisha"));
 
   // 2. Check explicit role override from localStorage
@@ -464,6 +466,22 @@ function RuangSosmedStudioInner() {
           const pEmail = (parsedUser.email || "").toLowerCase();
           const pName = (parsedUser.name || "").toLowerCase();
           const pUsername = (parsedUser.username || "").toLowerCase();
+          const isFounderCached =
+            pEmail.includes("dinur") ||
+            pEmail === "admin@ruangsosmed.id" ||
+            pUsername === "arunika" ||
+            pName.includes("arunika");
+          if (isFounderCached && parsedUser.role !== "admin") {
+            parsedUser.role = "admin";
+            try {
+              window.localStorage.setItem(
+                "ruang_sosmed_session_user_v1",
+                JSON.stringify(parsedUser)
+              );
+              window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
+            } catch {}
+          }
+
           if (pEmail.includes("afterlance") || pName.includes("allisha") || pUsername.includes("allisha")) {
             const explicitAdmin =
               window.localStorage.getItem(`ruang_sosmed_role_override_${pEmail}`) === "Admin" ||
@@ -508,8 +526,8 @@ function RuangSosmedStudioInner() {
           restoredFromCache = true;
           setCurrentUser(parsedUser);
           setRoleMode(
-            parsedUser.role === "admin" && cachedRoleMode
-              ? cachedRoleMode
+            parsedUser.role === "admin"
+              ? cachedRoleMode || "admin"
               : parsedUser.role
           );
           setAuthReady(true);
@@ -1103,24 +1121,34 @@ function RuangSosmedStudioInner() {
           initialTab={authModalTab}
           onClose={() => setAuthModalOpen(false)}
           onAuthSuccess={(user) => {
-            setCurrentUser(user);
-            setRoleMode(user.role);
+            const uEmail = (user.email || "").toLowerCase();
+            const uName = (user.name || "").toLowerCase();
+            const uUsername = (user.username || "").toLowerCase();
+            const resolvedUser =
+              uEmail.includes("dinur") ||
+              uEmail === "admin@ruangsosmed.id" ||
+              uUsername === "arunika" ||
+              uName.includes("arunika")
+                ? { ...user, role: "admin" as const }
+                : user;
+            setCurrentUser(resolvedUser);
+            setRoleMode(resolvedUser.role);
             registerLearnerProfile({
-              name: user.name,
-              email: user.email,
-              role: user.role,
+              name: resolvedUser.name,
+              email: resolvedUser.email,
+              role: resolvedUser.role,
             });
             try {
               window.localStorage.setItem(
                 "ruang_sosmed_session_user_v1",
-                JSON.stringify(user)
+                JSON.stringify(resolvedUser)
               );
               window.localStorage.setItem(
                 "ruang_sosmed_role_mode_v1",
-                user.role
+                resolvedUser.role
               );
             } catch {}
-            if (user.role === "admin") {
+            if (resolvedUser.role === "admin") {
               setLearnerProStatus(true);
             }
           }}
@@ -1151,8 +1179,8 @@ function RuangSosmedStudioInner() {
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] text-[#121215]">
-      {/* Global Role Switcher (Admin Workspace Bar; hidden in Student Learner Portal) */}
-      {roleMode !== "learner" && (
+      {/* Global Role Switcher (Always visible for Admin/Mentor Studio users even when previewing Learner Portal) */}
+      {(roleMode !== "learner" || isCurrentUserAdmin) && (
         <GlobalRoleSwitcher
           mode={roleMode}
           onChange={handleRoleModeChange}
@@ -1534,19 +1562,29 @@ function RuangSosmedStudioInner() {
         initialTab={authModalTab}
         onClose={() => setAuthModalOpen(false)}
         onAuthSuccess={(user) => {
-          setCurrentUser(user);
-          setRoleMode(user.role);
+          const uEmail = (user.email || "").toLowerCase();
+          const uName = (user.name || "").toLowerCase();
+          const uUsername = (user.username || "").toLowerCase();
+          const resolvedUser =
+            uEmail.includes("dinur") ||
+            uEmail === "admin@ruangsosmed.id" ||
+            uUsername === "arunika" ||
+            uName.includes("arunika")
+              ? { ...user, role: "admin" as const }
+              : user;
+          setCurrentUser(resolvedUser);
+          setRoleMode(resolvedUser.role);
           try {
             window.localStorage.setItem(
               "ruang_sosmed_session_user_v1",
-              JSON.stringify(user)
+              JSON.stringify(resolvedUser)
             );
             window.localStorage.setItem(
               "ruang_sosmed_role_mode_v1",
-              user.role
+              resolvedUser.role
             );
           } catch {}
-          if (user.role === "admin") {
+          if (resolvedUser.role === "admin") {
             setLearnerProStatus(true);
           }
         }}

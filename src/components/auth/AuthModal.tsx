@@ -126,22 +126,35 @@ export function AuthModal({
 
       const user = data.user;
       const userMeta = user?.user_metadata || {};
-      let userRole: "admin" | "learner" = "learner";
-      try {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role")
-          .or(`id.eq.${user.id},email.ilike.${emailToUse}`)
-          .maybeSingle();
+      const isFounderOrDev =
+        identifier.trim().toLowerCase() === "arunika" ||
+        emailToUse.toLowerCase().includes("dinur") ||
+        emailToUse.toLowerCase() === "admin@ruangsosmed.id" ||
+        userMeta.role === "admin";
 
-        if (prof?.role) {
-          const dbRole = prof.role.toLowerCase();
-          userRole = dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
-        } else if (userMeta.role === "admin" || emailToUse.toLowerCase().includes("dinur") || emailToUse.toLowerCase() === "admin@ruangsosmed.id") {
-          userRole = "admin";
+      let userRole: "admin" | "learner" = isFounderOrDev ? "admin" : "learner";
+      if (!isFounderOrDev) {
+        try {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("role")
+            .or(`id.eq.${user.id},email.ilike.${emailToUse}`)
+            .maybeSingle();
+
+          if (prof?.role) {
+            const dbRole = prof.role.toLowerCase();
+            userRole =
+              dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
+          }
+        } catch {
+          userRole = "learner";
         }
-      } catch {
-        userRole = userMeta.role === "admin" || emailToUse.toLowerCase().includes("dinur") ? "admin" : "learner";
+      } else {
+        await supabase
+          .from("profiles")
+          .update({ role: "admin" })
+          .or(`id.eq.${user.id},email.ilike.${emailToUse}`)
+          .then(() => {});
       }
 
       const displayName =
