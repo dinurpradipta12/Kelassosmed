@@ -1461,7 +1461,10 @@ export function LearnerPortalView({
       ) : (
         /* SCREEN 1: LEARNER DASHBOARD, MY LEARNING, CATALOG, WIKI & FAVORITES */
         <div className="w-full px-4 sm:px-6 py-6 flex flex-col lg:flex-row items-start overflow-x-hidden">
-          <main className="flex-1 min-w-0 w-full space-y-6 transition-all duration-380 ease-in-out">
+          <main
+            key={`learner-tab-${activeNavTab}`}
+            className="flex-1 min-w-0 w-full space-y-6 transition-all duration-380 ease-in-out page-transition-enter"
+          >
           {/* Compact Home Overview: Greeting + Continue/Welcome + Quick Stats */}
           {activeNavTab === "home" && (
             <div className="space-y-4">

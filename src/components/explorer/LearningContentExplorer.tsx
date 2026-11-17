@@ -927,7 +927,10 @@ export function LearningContentExplorer({
       .toLowerCase();
 
     return (
-      <div className="w-full px-4 sm:px-5 pt-5 pb-24 space-y-6">
+      <div
+        key="project-picker-hub"
+        className="w-full px-4 sm:px-5 pt-5 pb-24 space-y-6 page-transition-enter"
+      >
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
             <h1 className="text-[22px] sm:text-2xl font-bold tracking-tight text-[#121215]">
@@ -1110,7 +1113,10 @@ export function LearningContentExplorer({
   }
 
   return (
-    <div className="w-full px-4 sm:px-5 pt-5 pb-14">
+    <div
+      key={`explorer-${activeProjectName}-${activeSubView}-${currentFolder || "root"}-${selectedTab}`}
+      className="w-full px-4 sm:px-5 pt-5 pb-14 page-transition-enter"
+    >
       {/* 1. Workspace Header (Hanya tampil di level utama workspace) */}
       {!currentFolder && (
         <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-5 border-b border-[#EAECEF]">

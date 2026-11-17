@@ -1223,6 +1223,10 @@ function RuangSosmedStudioInner() {
                 : ""
             }`}
           >
+            <div
+              key={`${authoringMode?.kind || "none"}-${selectedContentDetail?.id || "list"}-${activeNav}-${activeSubNav}-${activeProject}-${showProjectHub ? "hub" : "proj"}`}
+              className="page-transition-enter"
+            >
             {/* PHASE 3 & PHASE 4 AUTHORING & GRADING STUDIO VIEWS */}
             {authoringMode?.kind === "quiz-builder" ? (
               <ModularQuizBuilder
@@ -1467,6 +1471,7 @@ function RuangSosmedStudioInner() {
                 </div>
               </div>
             )}
+            </div>
           </main>
         </div>
       )}
