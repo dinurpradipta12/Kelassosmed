@@ -89,8 +89,8 @@ export const THEME_PRESETS: Record<
       surfaceHoverBg: "#263044",
       borderColor: "#2A3449",
       textColor: "#F1F5F9",
-      textSecondaryColor: "#94A3B8",
-      textMutedColor: "#64748B",
+      textSecondaryColor: "#CBD5E1",
+      textMutedColor: "#94A3B8",
       accentColor: "#60A5FA",
       buttonBg: "#3B82F6",
     },
@@ -270,8 +270,8 @@ export function buildCustomPaletteFromHues(
       surfaceHoverBg: hslToHex(canvasHue, 24, 23),
       borderColor: hslToHex(canvasHue, 22, 24),
       textColor: "#F1F5F9",
-      textSecondaryColor: "#94A3B8",
-      textMutedColor: "#64748B",
+      textSecondaryColor: "#CBD5E1",
+      textMutedColor: "#94A3B8",
       accentColor,
       buttonBg,
       customHue: canvasHue,
@@ -328,8 +328,14 @@ export function applyThemeToDocument(config: AppThemeConfig) {
   root.style.setProperty("--theme-text", config.textColor);
   root.style.setProperty("--theme-text-secondary", config.textSecondaryColor);
   root.style.setProperty("--theme-text-muted", config.textMutedColor);
+  const isVeryLightAccentInDark =
+    config.mode === "dark" && getContrastTextColor(config.accentColor) === "#121215";
+  const resolvedAccentSoft = isVeryLightAccentInDark
+    ? "rgba(59, 130, 246, 0.14)"
+    : hexToRgba(config.accentColor, config.mode === "dark" ? 0.14 : 0.12);
+
   root.style.setProperty("--theme-accent", config.accentColor);
-  root.style.setProperty("--theme-accent-soft", hexToRgba(config.accentColor, config.mode === "dark" ? 0.18 : 0.12));
+  root.style.setProperty("--theme-accent-soft", resolvedAccentSoft);
   root.style.setProperty("--theme-accent-contrast", accentText);
   root.style.setProperty("--theme-button-bg", config.buttonBg);
   root.style.setProperty("--theme-button-hover", hexToRgba(config.buttonBg, 0.88));

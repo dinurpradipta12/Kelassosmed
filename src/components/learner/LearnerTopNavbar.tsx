@@ -70,6 +70,30 @@ export function LearnerTopNavbar({
     resolveUserAvatar,
   } = useRuangSosmedStore();
   const [notifOpen, setNotifOpen] = useState(false);
+  const notifContainerRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!notifOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setNotifOpen(false);
+      }
+    };
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (
+        notifContainerRef.current &&
+        !notifContainerRef.current.contains(e.target as Node)
+      ) {
+        setNotifOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [notifOpen]);
 
   // Search Command Palette Modal (⌘K)
   const [aiSearchOpen, setAiSearchOpen] = useState(false);
@@ -300,7 +324,7 @@ export function LearnerTopNavbar({
           </button>
 
           {/* Notification Bell Popover */}
-          <div className="relative">
+          <div className="relative" ref={notifContainerRef}>
             <button
               type="button"
               onClick={() => setNotifOpen((prev) => !prev)}
@@ -357,12 +381,15 @@ export function LearnerTopNavbar({
                         return (
                           <div
                             key={`${n.id}-${idx}`}
-                            onClick={markAllNotificationsRead}
+                            onClick={() => {
+                              markAllNotificationsRead();
+                              setNotifOpen(false);
+                            }}
                             className={`rounded-lg p-2.5 border text-left transition-colors cursor-pointer ${
                               n.unread
                                 ? isInvitation
                                   ? "bg-[#EEF2FF] border-[#4F39F6]/40 shadow-xs"
-                                  : "bg-[#4F39F6]/5 border-[#4F39F6]/20"
+                                  : "bg-[#EEF2FF]/60 border-[#4F39F6]/35"
                                 : isAccepted
                                 ? "bg-[#ECFDF5] border-[#10B981]/30"
                                 : "bg-[#F8F9FB] border-[#EAECEF]"
@@ -385,7 +412,7 @@ export function LearnerTopNavbar({
                                   {n.title}
                                 </p>
                               </div>
-                              <span className="text-[10px] text-[#9CA3AF] shrink-0">
+                              <span className="text-[10px] text-[#64748B] shrink-0">
                                 {n.time}
                               </span>
                             </div>

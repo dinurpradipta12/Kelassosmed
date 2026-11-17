@@ -465,6 +465,15 @@ html[data-theme-active="true"] .bg-\[\#4F39F6\]\/5 {
 }
 
 /* Dark Mode Specific Contrast Protections (Prevent dark-on-dark & glaring light pills) */
+html[data-theme-mode="dark"] body {
+  color-scheme: dark !important;
+}
+
+html[data-theme-mode="dark"] .bg-\[\#4F39F6\]\/5 {
+  background-color: rgba(59, 130, 246, 0.14) !important;
+  border-color: rgba(96, 165, 250, 0.32) !important;
+}
+
 html[data-theme-mode="dark"] .bg-\[\#121215\],
 html[data-theme-mode="dark"] .bg-slate-900 {
   background-color: #242E42 !important;
