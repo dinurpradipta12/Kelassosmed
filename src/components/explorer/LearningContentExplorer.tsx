@@ -532,7 +532,22 @@ export function LearningContentExplorer({
   activeSubView = "recents",
 }: LearningContentExplorerProps) {
   const { assignees, cohortProjects } = useRuangSosmedStore();
-  const liveAssignedCount = assignees.length;
+  const getItemAssignedCount = (item: ExplorerContentItem) => {
+    const raw = item.assignedLearners;
+    if (Array.isArray(raw)) {
+      if (raw.length === 0) return 0;
+      const hasCohortWide = raw.some((n) =>
+        [
+          "all learners",
+          "batch oktober 2026",
+          "ruang sosmed class",
+          "creator growth lab",
+        ].includes(String(n || "").trim().toLowerCase())
+      );
+      return hasCohortWide ? assignees.length : raw.length;
+    }
+    return item.assignedCount ?? 0;
+  };
   const liveAvgProgress =
     assignees.length > 0
       ? Math.round(
@@ -1797,7 +1812,7 @@ export function LearningContentExplorer({
                   {/* Top Custom Illustrated Banner with Live Assigned 👤 badge */}
                   <IllustratedCardBanner
                     item={item}
-                    assignedCount={liveAssignedCount}
+                    assignedCount={getItemAssignedCount(item)}
                     onEditThumbnail={() => setThumbnailTargetItem(item)}
                   />
 
@@ -2225,7 +2240,9 @@ export function LearningContentExplorer({
                       </div>
                     </td>
                     <td className="py-3.5 px-3 font-medium text-[#121215]">
-                      {item.type === "Folder" ? "-" : `${liveAssignedCount} Assigned`}
+                      {item.type === "Folder"
+                        ? "-"
+                        : `${getItemAssignedCount(item)} Assigned`}
                     </td>
                     <td className="py-3.5 px-3">
                       {item.type === "Folder" ? (
