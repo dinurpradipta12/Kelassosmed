@@ -1284,9 +1284,20 @@ export function CertificateStudioScreen({
 
                 <div className="py-1">
                   <h3
-                    className={`text-2xl sm:text-3xl tracking-tight ${nameFontClass}`}
+                    className={`text-2xl sm:text-3xl tracking-tight ${nameFontClass} ${
+                      !draftConfig.customBackgroundUrl &&
+                      (!draftConfig.recipientNameColor ||
+                        draftConfig.recipientNameColor.toUpperCase() === "#121215")
+                        ? "text-[#121215]"
+                        : ""
+                    }`}
                     style={{
-                      color: draftConfig.recipientNameColor || "#121215",
+                      color:
+                        !draftConfig.customBackgroundUrl &&
+                        (!draftConfig.recipientNameColor ||
+                          draftConfig.recipientNameColor.toUpperCase() === "#121215")
+                          ? undefined
+                          : draftConfig.recipientNameColor || "#121215",
                       fontSize: draftConfig.recipientNameFontSize
                         ? `${draftConfig.recipientNameFontSize}px`
                         : undefined,
@@ -1296,9 +1307,20 @@ export function CertificateStudioScreen({
                   </h3>
                   {draftConfig.showRole && (
                     <p
-                      className="text-xs font-semibold mt-1"
+                      className={`text-xs font-semibold mt-1 ${
+                        !draftConfig.customBackgroundUrl &&
+                        (!draftConfig.recipientRoleColor ||
+                          draftConfig.recipientRoleColor.toUpperCase() === "#5E5E5E")
+                          ? "text-[#5E5E5E]"
+                          : ""
+                      }`}
                       style={{
-                        color: draftConfig.recipientRoleColor || "#5E5E5E",
+                        color:
+                          !draftConfig.customBackgroundUrl &&
+                          (!draftConfig.recipientRoleColor ||
+                            draftConfig.recipientRoleColor.toUpperCase() === "#5E5E5E")
+                            ? undefined
+                            : draftConfig.recipientRoleColor || "#5E5E5E",
                       }}
                     >
                       {activeSample.role}
@@ -1319,9 +1341,20 @@ export function CertificateStudioScreen({
                     draftConfig.courseTitleAlign === "center"
                       ? "text-center"
                       : "text-left"
+                  } ${
+                    !draftConfig.customBackgroundUrl &&
+                    (!draftConfig.courseTitleColor ||
+                      draftConfig.courseTitleColor.toUpperCase() === "#121215")
+                      ? "text-[#121215]"
+                      : ""
                   }`}
                   style={{
-                    color: draftConfig.courseTitleColor || "#121215",
+                    color:
+                      !draftConfig.customBackgroundUrl &&
+                      (!draftConfig.courseTitleColor ||
+                        draftConfig.courseTitleColor.toUpperCase() === "#121215")
+                        ? undefined
+                        : draftConfig.courseTitleColor || "#121215",
                     fontSize: draftConfig.courseTitleFontSize
                       ? `${draftConfig.courseTitleFontSize}px`
                       : "18px",

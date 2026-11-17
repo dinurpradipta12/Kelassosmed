@@ -109,12 +109,13 @@ export function PublicLandingView({
       {/* Main Sticky Landing Header */}
       {headerCfg.showNavbar !== false && (
         <header
-          className="sticky top-0 z-40 backdrop-blur-md border-b border-[#EAECEF]"
-          style={{
-            backgroundColor: headerCfg.navbarBgColor
-              ? `${headerCfg.navbarBgColor}EB`
-              : "rgba(255,255,255,0.92)",
-          }}
+          className="sticky top-0 z-40 w-full backdrop-blur-md bg-white/95 border-b border-[#EAECEF] transition-colors"
+          style={
+            headerCfg.navbarBgColor &&
+            headerCfg.navbarBgColor.toUpperCase() !== "#FFFFFF"
+              ? { backgroundColor: `${headerCfg.navbarBgColor}EB` }
+              : undefined
+          }
         >
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
             {/* Left Logo / Brand */}

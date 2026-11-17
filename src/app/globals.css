@@ -353,15 +353,27 @@ html[data-theme-active="true"] .bg-slate-200\/60 {
 
 /* Hover Surfaces (Never white-flash in Dark Mode or clash in Pastels) */
 html[data-theme-active="true"] .hover\:bg-\[\#F8F9FB\]:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#F8F9FB\]\/60:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#F8F9FB\]\/80:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#F8FAFC\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#F1F5F9\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#FFFFFF\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/30:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/50:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/60:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/70:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EEF2FF\]\/20:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EEF2FF\]\/60:hover,
 html[data-theme-active="true"] .hover\:bg-white:hover,
 html[data-theme-active="true"] .hover\:bg-slate-50:hover,
+html[data-theme-active="true"] .hover\:bg-slate-50\/50:hover,
+html[data-theme-active="true"] .hover\:bg-slate-50\/70:hover,
 html[data-theme-active="true"] .hover\:bg-slate-100:hover,
+html[data-theme-active="true"] .hover\:bg-slate-100\/70:hover,
+html[data-theme-active="true"] .hover\:bg-slate-200\/60:hover,
 html[data-theme-active="true"] .hover\:bg-slate-200\/80:hover,
+html[data-theme-active="true"] .hover\:bg-indigo-50\/40:hover,
 html[data-theme-active="true"] .hover\:bg-black\/\[0\.04\]:hover {
   background-color: var(--theme-surface-hover) !important;
 }
@@ -370,6 +382,7 @@ html[data-theme-active="true"] .hover\:bg-black\/\[0\.04\]:hover {
 html[data-theme-active="true"] .border-\[\#EAECEF\],
 html[data-theme-active="true"] .border-\[\#EAECEF\]\/70,
 html[data-theme-active="true"] .border-\[\#E2E8F0\],
+html[data-theme-active="true"] .border-\[\#D5D9E0\],
 html[data-theme-active="true"] .border-\[\#D1D5DB\],
 html[data-theme-active="true"] .border-\[\#CBD5E1\],
 html[data-theme-active="true"] .border-\[\#F0F2F5\],
@@ -413,6 +426,7 @@ html[data-theme-active="true"] textarea::placeholder {
 
 html[data-theme-active="true"] .hover\:text-\[\#0F172A\]:hover,
 html[data-theme-active="true"] .hover\:text-\[\#121215\]:hover,
+html[data-theme-active="true"] .hover\:text-\[\#1E293B\]:hover,
 html[data-theme-active="true"] .hover\:text-slate-800:hover,
 html[data-theme-active="true"] .hover\:text-slate-900:hover {
   color: var(--theme-text) !important;
@@ -503,6 +517,8 @@ html[data-theme-mode="dark"] .hover\:bg-\[\#FDE68A\]:hover {
   background-color: rgba(245, 158, 11, 0.26) !important;
 }
 
+html[data-theme-mode="dark"] .text-\[\#78350F\],
+html[data-theme-mode="dark"] .text-\[\#854D0E\],
 html[data-theme-mode="dark"] .text-\[\#92400E\],
 html[data-theme-mode="dark"] .text-\[\#B45309\],
 html[data-theme-mode="dark"] .text-\[\#D97706\],
@@ -510,7 +526,7 @@ html[data-theme-mode="dark"] .text-amber-600,
 html[data-theme-mode="dark"] .text-amber-700,
 html[data-theme-mode="dark"] .text-amber-800,
 html[data-theme-mode="dark"] .text-amber-900 {
-  color: #FCD34D !important;
+  color: #FDE68A !important;
 }
 
 /* Emerald / Green Tinted Pills in Dark Mode */
@@ -526,8 +542,11 @@ html[data-theme-mode="dark"] .hover\:bg-\[\#D1FAE5\]:hover {
   background-color: rgba(16, 185, 129, 0.25) !important;
 }
 
-html[data-theme-mode="dark"] .text-\[\#059669\],
+html[data-theme-mode="dark"] .text-\[\#065F46\],
 html[data-theme-mode="dark"] .text-\[\#047857\],
+html[data-theme-mode="dark"] .text-\[\#059669\],
+html[data-theme-mode="dark"] .text-\[\#0F766E\],
+html[data-theme-mode="dark"] .text-\[\#0D9488\],
 html[data-theme-mode="dark"] .text-emerald-600,
 html[data-theme-mode="dark"] .text-emerald-700,
 html[data-theme-mode="dark"] .text-emerald-800 {
@@ -563,14 +582,29 @@ html[data-theme-mode="dark"] .hover\:bg-\[\#EFF6FF\]\/50:hover {
   background-color: rgba(59, 130, 246, 0.25) !important;
 }
 
+html[data-theme-mode="dark"] .border-\[\#BFDBFE\],
+html[data-theme-mode="dark"] .border-\[\#C7D2FE\] {
+  border-color: rgba(96, 165, 250, 0.32) !important;
+}
+
+html[data-theme-mode="dark"] .text-\[\#1E3A8A\],
 html[data-theme-mode="dark"] .text-\[\#1E40AF\],
 html[data-theme-mode="dark"] .text-\[\#2563EB\],
+html[data-theme-mode="dark"] .text-\[\#0284C7\],
+html[data-theme-mode="dark"] .text-\[\#0891B2\],
 html[data-theme-mode="dark"] .text-blue-600,
 html[data-theme-mode="dark"] .text-blue-700,
 html[data-theme-mode="dark"] .text-indigo-600,
 html[data-theme-mode="dark"] .text-indigo-700,
 html[data-theme-mode="dark"] .text-indigo-800 {
   color: #93C5FD !important;
+}
+
+html[data-theme-mode="dark"] .text-\[\#312E81\],
+html[data-theme-mode="dark"] .text-\[\#4338CA\],
+html[data-theme-mode="dark"] .text-\[\#4F46E5\],
+html[data-theme-mode="dark"] .text-\[\#5B21B6\] {
+  color: #A5B4FC !important;
 }
 
 /* Rose / Red Tinted Hidden Banners & Alert Boxes in Dark Mode */

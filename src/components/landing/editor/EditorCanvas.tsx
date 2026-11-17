@@ -243,10 +243,13 @@ export function EditorCanvas({
           {/* 2. Sticky Navbar Preview */}
           {headerCfg.showNavbar !== false && (
             <header
-              className="border-b border-[#EAECEF] transition-colors"
-              style={{
-                backgroundColor: headerCfg.navbarBgColor || "#FFFFFF",
-              }}
+              className="bg-white border-b border-[#EAECEF] transition-colors"
+              style={
+                headerCfg.navbarBgColor &&
+                headerCfg.navbarBgColor.toUpperCase() !== "#FFFFFF"
+                  ? { backgroundColor: headerCfg.navbarBgColor }
+                  : undefined
+              }
             >
               <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
                 {/* Brand */}
