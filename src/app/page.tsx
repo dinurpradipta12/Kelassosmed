@@ -874,6 +874,18 @@ function RuangSosmedStudioInner() {
     return () => clearTimeout(timer);
   }, [toastMessage]);
 
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      authReady &&
+      !currentUser &&
+      new URLSearchParams(window.location.search).get("admin") === "1"
+    ) {
+      setAuthModalTab("login");
+      setAuthModalOpen(true);
+    }
+  }, [authReady, currentUser]);
+
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
   };
@@ -1108,17 +1120,6 @@ function RuangSosmedStudioInner() {
   if (!authReady) {
     return <div className="min-h-screen bg-[#F8F9FB]" />;
   }
-
-  useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      !currentUser &&
-      new URLSearchParams(window.location.search).get("admin") === "1"
-    ) {
-      setAuthModalTab("login");
-      setAuthModalOpen(true);
-    }
-  }, [currentUser]);
 
   // 2. Public Visitor & Under Construction Gate (When not logged in, or when Under Construction blocks non-SuperAdmin)
   if (
