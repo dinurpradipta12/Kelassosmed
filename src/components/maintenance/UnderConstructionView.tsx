@@ -21,6 +21,9 @@ export function UnderConstructionView({
   const hasCustomImage = Boolean(resolvedImageUrl);
   const isFullscreen = hasCustomImage && config.displayMode === "fullscreen";
 
+  const dotTriggerClass =
+    "text-slate-300/60 hover:text-slate-400 text-sm font-bold leading-none select-none p-1.5 cursor-pointer transition-colors";
+
   if (isFullscreen) {
     return (
       <main className="relative min-h-screen w-full bg-[#0B0C10] flex items-center justify-center overflow-hidden">
@@ -29,13 +32,54 @@ export function UnderConstructionView({
           alt={config.title || "404 Web Under Construction"}
           className="w-full h-full min-h-screen max-h-screen object-contain select-none"
         />
+
+        {onOpenAdminLogin ? (
+          <button
+            type="button"
+            onClick={onOpenAdminLogin}
+            aria-label="Admin Login"
+            className={`fixed top-3 right-3.5 z-30 ${dotTriggerClass}`}
+          >
+            .
+          </button>
+        ) : (
+          isNotFoundRoute && (
+            <Link
+              href="/?admin=1"
+              aria-label="Admin Login"
+              className={`fixed top-3 right-3.5 z-30 ${dotTriggerClass}`}
+            >
+              .
+            </Link>
+          )
+        )}
       </main>
     );
   }
 
   return (
     <main className="relative min-h-screen w-full bg-[#F8F9FB] text-[#121215] flex flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-2xl rounded-3xl bg-white border border-[#EAECEF] shadow-[0_12px_40px_rgba(16,15,17,0.06)] overflow-hidden">
+      <div className="relative w-full max-w-2xl rounded-3xl bg-white border border-[#EAECEF] shadow-[0_12px_40px_rgba(16,15,17,0.06)] overflow-hidden">
+        {onOpenAdminLogin ? (
+          <button
+            type="button"
+            onClick={onOpenAdminLogin}
+            aria-label="Admin Login"
+            className={`absolute top-3 right-3.5 z-20 ${dotTriggerClass}`}
+          >
+            .
+          </button>
+        ) : (
+          isNotFoundRoute && (
+            <Link
+              href="/?admin=1"
+              aria-label="Admin Login"
+              className={`absolute top-3 right-3.5 z-20 ${dotTriggerClass}`}
+            >
+              .
+            </Link>
+          )
+        )}
         {hasCustomImage ? (
           <div className="w-full bg-slate-50 border-b border-[#EAECEF] flex items-center justify-center">
             <img
