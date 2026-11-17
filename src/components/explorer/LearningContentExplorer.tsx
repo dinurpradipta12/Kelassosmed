@@ -1112,9 +1112,29 @@ export function LearningContentExplorer({
                     <span className="text-[#64748B] font-normal">Kategori:</span>
                     <strong className="text-[#4F39F6]">{selectedTab === "All" ? "Semua Konten" : selectedTab}</strong>
                     <span className="rounded-md bg-[#4F39F6]/10 text-[#4F39F6] px-1.5 py-0.2 text-[10px] font-bold tabular-nums">
-                      {selectedTab === "All"
-                        ? cohortScopedItems.length
-                        : cohortScopedItems.filter((i) => i.type === selectedTab).length}
+                      {(() => {
+                        const base = currentFolder
+                          ? cohortScopedItems.filter(
+                              (i) =>
+                                i.type !== "Folder" &&
+                                i.folderName?.trim().toLowerCase() ===
+                                  currentFolder.trim().toLowerCase()
+                            )
+                          : activeSubView === "recents"
+                          ? cohortScopedItems.filter(
+                              (i) => !i.isArchived && !i.isTemplate
+                            )
+                          : cohortScopedItems;
+
+                        if (selectedTab === "All") {
+                          if (!currentFolder && activeSubView === "recents") {
+                            return base.filter((i) => i.type === "Folder")
+                              .length;
+                          }
+                          return base.length;
+                        }
+                        return base.filter((i) => i.type === selectedTab).length;
+                      })()}
                     </span>
                     <ChevronDown size={12} className="text-[#94A3B8]" />
                   </button>
@@ -1122,10 +1142,25 @@ export function LearningContentExplorer({
                   {categoryDropdownOpen && (
                     <div className="absolute left-0 mt-1.5 w-48 rounded-xl bg-white border border-[#EAECEF] shadow-xl p-1.5 z-30 animate-in fade-in zoom-in-95 duration-100">
                       {FILTER_TABS.map((tab) => {
+                        const base = currentFolder
+                          ? cohortScopedItems.filter(
+                              (i) =>
+                                i.type !== "Folder" &&
+                                i.folderName?.trim().toLowerCase() ===
+                                  currentFolder.trim().toLowerCase()
+                            )
+                          : activeSubView === "recents"
+                          ? cohortScopedItems.filter(
+                              (i) => !i.isArchived && !i.isTemplate
+                            )
+                          : cohortScopedItems;
+
                         const count =
                           tab === "All"
-                            ? cohortScopedItems.length
-                            : cohortScopedItems.filter((i) => i.type === tab).length;
+                            ? !currentFolder && activeSubView === "recents"
+                              ? base.filter((i) => i.type === "Folder").length
+                              : base.length
+                            : base.filter((i) => i.type === tab).length;
                         const isSelected = selectedTab === tab;
                         return (
                           <button

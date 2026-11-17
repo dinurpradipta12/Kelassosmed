@@ -195,15 +195,36 @@ export function AdminLeftRail({
   ).length;
   const unreadInboxCount = awaitingReplyCount + openIssuesCount;
 
-  const recentCount = (explorerItems || []).filter(
-    (i) => !i.isArchived && !i.isTemplate
+  const activeP = (activeProject || "Ruang Sosmed Class").trim().toLowerCase();
+  const primaryName = (
+    cohortProjects[0]?.name || "Ruang Sosmed Class"
+  ).trim().toLowerCase();
+  const isActivePrimary =
+    activeP === primaryName ||
+    (activeP.includes("ruang sosmed") && primaryName.includes("ruang sosmed"));
+
+  const projectScopedItems = (explorerItems || []).filter((item) => {
+    const itemC = (item.cohort || "").trim().toLowerCase();
+    if (itemC === activeP) return true;
+    if (isActivePrimary && (!itemC || itemC.includes("ruang sosmed"))) {
+      return true;
+    }
+    return false;
+  });
+
+  const recentCount = projectScopedItems.filter(
+    (i) => i.type === "Folder" && !i.isArchived && !i.isTemplate
   ).length;
-  const sharedCount = (explorerItems || []).filter(
+  const sharedCount = projectScopedItems.filter(
     (i) => Boolean(i.isShared) && !i.isArchived
   ).length;
-  const archivedCount = (explorerItems || []).filter((i) => Boolean(i.isArchived)).length;
-  const templateCount = (explorerItems || []).filter(
-    (i) => !i.isArchived && (Boolean(i.isTemplate) || i.type === "Wiki" || i.type === "Page")
+  const archivedCount = projectScopedItems.filter((i) =>
+    Boolean(i.isArchived)
+  ).length;
+  const templateCount = projectScopedItems.filter(
+    (i) =>
+      !i.isArchived &&
+      (Boolean(i.isTemplate) || i.type === "Wiki" || i.type === "Page")
   ).length;
 
   const [createCohortModalOpen, setCreateCohortModalOpen] = useState(false);
