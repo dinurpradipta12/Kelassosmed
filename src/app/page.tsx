@@ -8,6 +8,7 @@ import {
 } from "@/components/navigation/GlobalRoleSwitcher";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { PublicLandingView } from "@/components/landing/PublicLandingView";
+import { UnderConstructionView } from "@/components/maintenance/UnderConstructionView";
 import { LandingPageBuilder } from "@/components/landing/LandingPageBuilder";
 import {
   INITIAL_LANDING_BLOCKS,
@@ -98,6 +99,7 @@ function RuangSosmedStudioInner() {
     clearAllStoreData,
     getCourseCurriculum,
     workspaceCollaborators,
+    maintenanceConfig,
   } = useRuangSosmedStore();
 
   const [roleMode, setRoleMode] = useState<AppRoleMode>(() => {
@@ -1064,14 +1066,25 @@ function RuangSosmedStudioInner() {
 
   // 2. Public Visitor Landing View (When NOT logged in)
   if (!currentUser && !guestBypassStudio) {
+    const isAdminBypass =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("admin") === "1";
+
     return (
       <>
-        <PublicLandingView
-          blocks={landingConfig.blocks}
-          config={landingConfig}
-          onOpenAuth={(tab) => handleOpenAuth(tab || "login")}
-          onEnterDevMode={() => setGuestBypassStudio(true)}
-        />
+        {maintenanceConfig?.enabled && !isAdminBypass ? (
+          <UnderConstructionView
+            config={maintenanceConfig}
+            onOpenAdminLogin={() => handleOpenAuth("login")}
+          />
+        ) : (
+          <PublicLandingView
+            blocks={landingConfig.blocks}
+            config={landingConfig}
+            onOpenAuth={(tab) => handleOpenAuth(tab || "login")}
+            onEnterDevMode={() => setGuestBypassStudio(true)}
+          />
+        )}
 
         <AuthModal
           open={authModalOpen}

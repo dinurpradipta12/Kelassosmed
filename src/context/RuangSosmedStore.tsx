@@ -138,6 +138,25 @@ export const DEFAULT_LEARNER_PRO_FEATURES = [
   "Fitur Catatan Pribadi & Simpan Favorit (Personal Lesson Notes & Favorites)",
 ];
 
+export interface MaintenanceConfig {
+  enabled: boolean;
+  badgeText: string;
+  title: string;
+  subtitle: string;
+  customImageUrl: string;
+  displayMode: "card" | "fullscreen";
+}
+
+export const DEFAULT_MAINTENANCE_CONFIG: MaintenanceConfig = {
+  enabled: true,
+  badgeText: "404 • WEB UNDER CONSTRUCTION",
+  title: "Ruang Sosmed Sedang Dalam Pengembangan",
+  subtitle:
+    "Halaman ini sementara ditutup untuk persiapan peluncuran. Silakan kembali lagi dalam waktu dekat.",
+  customImageUrl: "",
+  displayMode: "card",
+};
+
 export const DEFAULT_LEARNER_PRO_CONFIG: LearnerProPlanConfig = {
   modalTitle: "Upgrade to Ruang Sosmed 2.0 Learner PRO",
   modalSubtitle:
@@ -274,6 +293,9 @@ interface PersistedGlobalState {
 
   // Learner PRO Upgrade Plan & QRIS Configuration (editable from Admin Settings)
   learnerProConfig: LearnerProPlanConfig;
+
+  // Web Under Construction (404) Maintenance Mode & Custom Design
+  maintenanceConfig: MaintenanceConfig;
 
   // Global Synchronized User Avatars map (keyed by lowercase email / name / username / id)
   userAvatars: Record<string, string>;
@@ -638,6 +660,47 @@ async function syncLearnerProConfigToSupabase(
   } catch (err) {
     console.warn(
       "[RuangSosmed] Failed to sync learnerProConfig to Supabase:",
+      err
+    );
+  }
+}
+
+async function syncMaintenanceConfigToSupabase(config: MaintenanceConfig) {
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const { data: existing } = await supabase
+      .from("contents")
+      .select("id")
+      .eq("title", "__SYSTEM_MAINTENANCE_CONFIG__")
+      .maybeSingle();
+
+    const payload = { maintenanceConfig: config };
+
+    if (existing?.id) {
+      await supabase
+        .from("contents")
+        .update({
+          settings_json: payload,
+          status: "published",
+        })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("contents").insert({
+        id: newUuid(),
+        title: "__SYSTEM_MAINTENANCE_CONFIG__",
+        type: "page",
+        status: "published",
+        description: "System storage for Web Under Construction (404) Config",
+        urgency: "not_urgent",
+        estimated_minutes: 0,
+        points_reward: 0,
+        settings_json: payload,
+      });
+    }
+  } catch (err) {
+    console.warn(
+      "[RuangSosmed] Failed to sync maintenanceConfig to Supabase:",
       err
     );
   }
@@ -1121,6 +1184,7 @@ export const DEMO_GLOBAL_STATE: PersistedGlobalState = {
   certificateConfig: DEFAULT_CERTIFICATE_CONFIG,
   courseCertificateConfigs: {},
   learnerProConfig: DEFAULT_LEARNER_PRO_CONFIG,
+  maintenanceConfig: DEFAULT_MAINTENANCE_CONFIG,
   userAvatars: {},
 };
 
@@ -1170,6 +1234,7 @@ const DEFAULT_GLOBAL_STATE: PersistedGlobalState = {
   certificateConfig: DEFAULT_CERTIFICATE_CONFIG,
   courseCertificateConfigs: {},
   learnerProConfig: DEFAULT_LEARNER_PRO_CONFIG,
+  maintenanceConfig: DEFAULT_MAINTENANCE_CONFIG,
   userAvatars: {},
 };
 
@@ -1360,6 +1425,9 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
 
   // 12. Learner PRO Upgrade Plan & QRIS Configuration (Admin Settings)
   updateLearnerProConfig: (patch: Partial<LearnerProPlanConfig>) => void;
+
+  // 12b. Web Under Construction (404) Maintenance Mode Configuration (Admin Settings)
+  updateMaintenanceConfig: (patch: Partial<MaintenanceConfig>) => void;
 
   // 13. Cross-User Avatar Synchronization Registry
   updateUserAvatarInStore: (
@@ -1804,6 +1872,22 @@ export function RuangSosmedProvider({
                 })()
               : {}),
           },
+          maintenanceConfig: {
+            ...DEFAULT_MAINTENANCE_CONFIG,
+            ...(parsed.maintenanceConfig || {}),
+            ...(typeof window !== "undefined"
+              ? (() => {
+                  try {
+                    const rawMaint = window.localStorage.getItem(
+                      "ruang_sosmed_maintenance_config_v1"
+                    );
+                    return rawMaint ? JSON.parse(rawMaint) : {};
+                  } catch {
+                    return {};
+                  }
+                })()
+              : {}),
+          },
           userAvatars: (() => {
             const merged: Record<string, string> = {
               ...(parsed.userAvatars || {}),
@@ -1889,6 +1973,21 @@ export function RuangSosmedProvider({
                   }
                 })()
               : DEFAULT_LEARNER_PRO_CONFIG,
+          maintenanceConfig:
+            typeof window !== "undefined"
+              ? (() => {
+                  try {
+                    const rawMaint = window.localStorage.getItem(
+                      "ruang_sosmed_maintenance_config_v1"
+                    );
+                    return rawMaint
+                      ? { ...DEFAULT_MAINTENANCE_CONFIG, ...JSON.parse(rawMaint) }
+                      : DEFAULT_MAINTENANCE_CONFIG;
+                  } catch {
+                    return DEFAULT_MAINTENANCE_CONFIG;
+                  }
+                })()
+              : DEFAULT_MAINTENANCE_CONFIG,
           userAvatars:
             typeof window !== "undefined"
               ? (() => {
@@ -2407,6 +2506,19 @@ export function RuangSosmedProvider({
             };
           }
 
+          const systemMaintenanceRow = Array.isArray(contentsRes.data)
+            ? (contentsRes.data as any[]).find(
+                (r) => r?.title === "__SYSTEM_MAINTENANCE_CONFIG__"
+              )
+            : null;
+          const remoteMaintenanceConfig: MaintenanceConfig | null =
+            systemMaintenanceRow?.settings_json?.maintenanceConfig
+              ? {
+                  ...DEFAULT_MAINTENANCE_CONFIG,
+                  ...systemMaintenanceRow.settings_json.maintenanceConfig,
+                }
+              : null;
+
           if (!contentsRes.error && Array.isArray(contentsRes.data)) {
             const dbRows = (contentsRes.data as any[]).filter(
               (r) =>
@@ -2415,6 +2527,7 @@ export function RuangSosmedProvider({
                 r.title !== "__SYSTEM_REWARDS_CATALOG__" &&
                 r.title !== "__SYSTEM_CERTIFICATE_CONFIG__" &&
                 r.title !== "__SYSTEM_LEARNER_PRO_CONFIG__" &&
+                r.title !== "__SYSTEM_MAINTENANCE_CONFIG__" &&
                 r.title !== "__SYSTEM_USER_AVATARS__" &&
                 !isLegacyDummyItem({ id: r.id, title: r.title })
             );
@@ -2889,6 +3002,28 @@ export function RuangSosmedProvider({
             void syncLearnerProConfigToSupabase(prev.learnerProConfig);
           }
 
+          // 4c) Sinkronisasi Pengaturan Web Under Construction (404)
+          let nextMaintenanceConfig =
+            prev.maintenanceConfig || DEFAULT_MAINTENANCE_CONFIG;
+          let maintenanceConfigChanged = false;
+          if (remoteMaintenanceConfig) {
+            if (
+              JSON.stringify(prev.maintenanceConfig) !==
+              JSON.stringify(remoteMaintenanceConfig)
+            ) {
+              nextMaintenanceConfig = remoteMaintenanceConfig;
+              maintenanceConfigChanged = true;
+              try {
+                window.localStorage.setItem(
+                  "ruang_sosmed_maintenance_config_v1",
+                  JSON.stringify(remoteMaintenanceConfig)
+                );
+              } catch {}
+            }
+          } else if (isStaffSession && prev.maintenanceConfig) {
+            void syncMaintenanceConfigToSupabase(prev.maintenanceConfig);
+          }
+
           // 5) Sinkronisasi Inbox Pesan Mentor & Laporan Kendala dari Supabase
           let nextThreads = prev.discussionThreads ?? [];
           let threadsChanged = false;
@@ -3045,6 +3180,7 @@ export function RuangSosmedProvider({
             !rewardsChanged &&
             !certChanged &&
             !proConfigChanged &&
+            !maintenanceConfigChanged &&
             !threadsChanged &&
             !issuesChanged &&
             !avatarsChanged
@@ -3060,6 +3196,7 @@ export function RuangSosmedProvider({
             certificateConfig: nextCertConfig,
             courseCertificateConfigs: nextCourseCertConfigs,
             learnerProConfig: nextLearnerProConfig,
+            maintenanceConfig: nextMaintenanceConfig,
             learnerPoints: activeUserPoints,
             learnerNotifications: nextNotifications,
             learnerIsPro: activeUserPro,
@@ -6404,6 +6541,32 @@ export function RuangSosmedProvider({
     []
   );
 
+  const updateMaintenanceConfig = useCallback(
+    (patch: Partial<MaintenanceConfig>) => {
+      const nextConfig: MaintenanceConfig = {
+        ...(stateRef.current.maintenanceConfig || DEFAULT_MAINTENANCE_CONFIG),
+        ...patch,
+      };
+
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            "ruang_sosmed_maintenance_config_v1",
+            JSON.stringify(nextConfig)
+          );
+        } catch {}
+      }
+
+      void syncMaintenanceConfigToSupabase(nextConfig);
+
+      setState((prev) => ({
+        ...prev,
+        maintenanceConfig: nextConfig,
+      }));
+    },
+    []
+  );
+
   const resolveUserAvatar = useCallback(
     (...identifiers: (string | undefined | null)[]): string => {
       const map = state.userAvatars || stateRef.current.userAvatars || {};
@@ -6574,6 +6737,7 @@ export function RuangSosmedProvider({
     saveCourseCurriculumLive,
     updateCertificateConfig,
     updateLearnerProConfig,
+    updateMaintenanceConfig,
     updateUserAvatarInStore,
     resolveUserAvatar,
     unassignLearnerFromContent,

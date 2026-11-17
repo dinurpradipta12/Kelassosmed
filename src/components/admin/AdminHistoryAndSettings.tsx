@@ -21,14 +21,19 @@ import {
   Sparkles,
   Copy,
   Star,
+  Construction,
+  Image as ImageIcon,
+  Eye,
 } from "lucide-react";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
   DEFAULT_LEARNER_PRO_FEATURES,
+  DEFAULT_MAINTENANCE_CONFIG,
   getNormalizedProPackages,
   type LearnerProPlanConfig,
   type LearnerProPackageItem,
+  type MaintenanceConfig,
 } from "@/context/RuangSosmedStore";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 
@@ -177,6 +182,7 @@ type SettingsSectionId =
   | "pro-packages"
   | "pro-modal-banner"
   | "pro-qris"
+  | "under-construction"
   | "brand-certificate"
   | "database-sync";
 
@@ -216,7 +222,12 @@ const IOS_INPUT_CLASS =
   "w-full rounded-xl bg-slate-50/80 focus:bg-white px-3 py-2 text-xs text-slate-900 border border-slate-200/80 focus:border-[#4F39F6] focus:outline-none transition-colors";
 
 export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
-  const { learnerProConfig, updateLearnerProConfig } = useRuangSosmedStore();
+  const {
+    learnerProConfig,
+    updateLearnerProConfig,
+    maintenanceConfig,
+    updateMaintenanceConfig,
+  } = useRuangSosmedStore();
 
   const [activeSection, setActiveSection] =
     useState<SettingsSectionId>("pro-packages");
@@ -247,7 +258,22 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
       "pkg-creator-academy"
   );
 
+  const [maintDraft, setMaintDraft] = useState<MaintenanceConfig>(() => ({
+    ...DEFAULT_MAINTENANCE_CONFIG,
+    ...(maintenanceConfig || {}),
+  }));
+
+  useEffect(() => {
+    if (maintenanceConfig) {
+      setMaintDraft({
+        ...DEFAULT_MAINTENANCE_CONFIG,
+        ...maintenanceConfig,
+      });
+    }
+  }, [maintenanceConfig]);
+
   const qrisFileInputRef = useRef<HTMLInputElement | null>(null);
+  const maintFileInputRef = useRef<HTMLInputElement | null>(null);
   const pkgQrisInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -298,9 +324,57 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     const synced = syncPrimaryFields(proDraft, packagesList);
     setProDraft(synced);
     updateLearnerProConfig(synced);
+    updateMaintenanceConfig(maintDraft);
     onShowToast(
-      "Pengaturan paket, benefit, QRIS & studio berhasil disimpan dan disinkronkan."
+      "Pengaturan paket, QRIS, Under Construction (404) & studio berhasil disimpan."
     );
+  };
+
+  const handleMaintImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") return;
+
+      // Compress oversized raster images (>900KB) so localStorage & Supabase sync stay fast
+      const isSvg = file.type === "image/svg+xml";
+      if (!isSvg && file.size > 900 * 1024 && typeof Image !== "undefined") {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1920;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            const ratio = Math.min(maxDim / width, maxDim / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL("image/webp", 0.86);
+            setMaintDraft((prev) => ({ ...prev, customImageUrl: compressed }));
+            onShowToast(
+              "Desain 404 berhasil diunggah & dioptimasi. Klik Simpan Perubahan untuk menerapkan."
+            );
+            return;
+          }
+          setMaintDraft((prev) => ({ ...prev, customImageUrl: result }));
+        };
+        img.src = result;
+      } else {
+        setMaintDraft((prev) => ({ ...prev, customImageUrl: result }));
+        onShowToast(
+          "Desain 404 berhasil diunggah. Klik Simpan Perubahan untuk menerapkan."
+        );
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const updateSelectedPackage = (patch: Partial<LearnerProPackageItem>) => {
@@ -489,6 +563,17 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     {
       groupTitle: "Workspace & Sistem",
       items: [
+        {
+          id: "under-construction",
+          label: "Web Under Construction (404)",
+          subtitle:
+            "Aktifkan halaman 404 sementara untuk pengunjung publik & upload desain manual.",
+          detail: maintDraft.enabled ? "Aktif" : "Nonaktif",
+          iconBg: maintDraft.enabled
+            ? "bg-amber-500 text-white"
+            : "bg-slate-400 text-white",
+          icon: Construction,
+        },
         {
           id: "brand-certificate",
           label: "Brand & Sertifikat",
@@ -1320,6 +1405,251 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                       className={IOS_INPUT_CLASS}
                     />
                   </IosGroupedRow>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 4B: WEB UNDER CONSTRUCTION (404) */}
+          {activeSection === "under-construction" && (
+            <div className="space-y-5">
+              <div className="space-y-1.5">
+                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Status Halaman Publik (404)
+                </p>
+                <div className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
+                  <IosGroupedRow
+                    label="Mode Under Construction"
+                    hint="Jika aktif, pengunjung publik yang membuka domain utama atau URL yang tidak ditemukan akan diarahkan ke halaman 404 / Under Construction."
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMaintDraft((prev) => ({
+                            ...prev,
+                            enabled: !prev.enabled,
+                          }))
+                        }
+                        className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-colors cursor-pointer ${
+                          maintDraft.enabled
+                            ? "bg-amber-500 text-white hover:bg-amber-600"
+                            : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                        }`}
+                      >
+                        <Construction size={14} />
+                        <span>
+                          {maintDraft.enabled
+                            ? "Aktif (Pengunjung Lihat 404)"
+                            : "Nonaktif (Landing Page Normal)"}
+                        </span>
+                      </button>
+
+                      <span className="text-[11px] text-slate-400">
+                        Admin bypass:{" "}
+                        <code className="font-mono text-slate-600">
+                          /?admin=1
+                        </code>
+                      </span>
+                    </div>
+                  </IosGroupedRow>
+
+                  <IosGroupedRow
+                    label="Mode Tampilan Desain"
+                    hint="Pilih apakah desain gambar ditampilkan penuh satu layar atau di dalam kartu rapi dengan teks."
+                  >
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMaintDraft((prev) => ({
+                            ...prev,
+                            displayMode: "card",
+                          }))
+                        }
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                          maintDraft.displayMode === "card"
+                            ? "bg-[#4F39F6]/10 border-[#4F39F6] text-[#4F39F6]"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Card Tengah + Teks
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMaintDraft((prev) => ({
+                            ...prev,
+                            displayMode: "fullscreen",
+                          }))
+                        }
+                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                          maintDraft.displayMode === "fullscreen"
+                            ? "bg-[#4F39F6]/10 border-[#4F39F6] text-[#4F39F6]"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Full Screen Gambar
+                      </button>
+                    </div>
+                  </IosGroupedRow>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Upload Desain Manual (PNG, JPG, WEBP, SVG)
+                </p>
+                <div className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
+                  <IosGroupedRow
+                    label="Upload File Desain"
+                    hint="Unggah gambar desain 404 / Under Construction buatanmu sendiri."
+                    alignTop
+                  >
+                    <div className="space-y-3">
+                      <input
+                        ref={maintFileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        onChange={handleMaintImageUpload}
+                        className="hidden"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => maintFileInputRef.current?.click()}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#432ED8] px-3.5 py-2 text-xs font-bold text-white transition-colors cursor-pointer"
+                        >
+                          <Upload size={13} />
+                          <span>Upload Gambar Desain</span>
+                        </button>
+                        {maintDraft.customImageUrl && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setMaintDraft((prev) => ({
+                                ...prev,
+                                customImageUrl: "",
+                              }))
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                            <span>Hapus Gambar</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={maintDraft.customImageUrl}
+                        onChange={(e) =>
+                          setMaintDraft((prev) => ({
+                            ...prev,
+                            customImageUrl: e.target.value,
+                          }))
+                        }
+                        placeholder="Atau tempel URL gambar desain (https://...)"
+                        className={IOS_INPUT_CLASS}
+                      />
+                    </div>
+                  </IosGroupedRow>
+
+                  <IosGroupedRow label="Badge Header">
+                    <input
+                      type="text"
+                      value={maintDraft.badgeText}
+                      onChange={(e) =>
+                        setMaintDraft((prev) => ({
+                          ...prev,
+                          badgeText: e.target.value,
+                        }))
+                      }
+                      className={IOS_INPUT_CLASS}
+                    />
+                  </IosGroupedRow>
+
+                  <IosGroupedRow label="Judul Utama">
+                    <input
+                      type="text"
+                      value={maintDraft.title}
+                      onChange={(e) =>
+                        setMaintDraft((prev) => ({
+                          ...prev,
+                          title: e.target.value,
+                        }))
+                      }
+                      className={IOS_INPUT_CLASS}
+                    />
+                  </IosGroupedRow>
+
+                  <IosGroupedRow label="Deskripsi Singkat" alignTop>
+                    <textarea
+                      rows={3}
+                      value={maintDraft.subtitle}
+                      onChange={(e) =>
+                        setMaintDraft((prev) => ({
+                          ...prev,
+                          subtitle: e.target.value,
+                        }))
+                      }
+                      className={IOS_INPUT_CLASS}
+                    />
+                  </IosGroupedRow>
+                </div>
+              </div>
+
+              {/* Live Preview */}
+              <div className="space-y-1.5">
+                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Eye size={12} />
+                  <span>Preview Tampilan Halaman 404</span>
+                </p>
+                <div className="rounded-2xl bg-slate-100 border border-slate-200/80 p-5 flex items-center justify-center">
+                  {maintDraft.customImageUrl &&
+                  maintDraft.displayMode === "fullscreen" ? (
+                    <div className="w-full max-w-md rounded-xl overflow-hidden bg-[#0B0C10] border border-slate-300 shadow-sm">
+                      <img
+                        src={maintDraft.customImageUrl}
+                        alt="Preview Fullscreen"
+                        className="w-full max-h-60 object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden text-center">
+                      {maintDraft.customImageUrl ? (
+                        <div className="bg-slate-50 border-b border-slate-100">
+                          <img
+                            src={maintDraft.customImageUrl}
+                            alt="Preview Desain"
+                            className="w-full max-h-48 object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="pt-6 pb-2 flex flex-col items-center">
+                          <div className="h-10 w-10 rounded-xl bg-[#4F39F6]/10 text-[#4F39F6] flex items-center justify-center mb-2">
+                            <ImageIcon size={18} />
+                          </div>
+                          <span className="text-3xl font-black text-slate-900">
+                            404
+                          </span>
+                        </div>
+                      )}
+                      <div className="p-5 space-y-1.5">
+                        {maintDraft.badgeText && (
+                          <span className="inline-block rounded-full bg-[#4F39F6]/10 px-2.5 py-0.5 text-[10px] font-bold text-[#4F39F6]">
+                            {maintDraft.badgeText}
+                          </span>
+                        )}
+                        <h3 className="text-sm font-bold text-slate-900">
+                          {maintDraft.title}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          {maintDraft.subtitle}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
