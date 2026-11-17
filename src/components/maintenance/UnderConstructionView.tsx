@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Construction, Lock, ArrowLeft } from "lucide-react";
+import { Construction, ArrowLeft } from "lucide-react";
 import type { MaintenanceConfig } from "@/context/RuangSosmedStore";
 
 interface UnderConstructionViewProps {
@@ -29,28 +29,6 @@ export function UnderConstructionView({
           alt={config.title || "404 Web Under Construction"}
           className="w-full h-full min-h-screen max-h-screen object-contain select-none"
         />
-
-        <div className="fixed bottom-4 right-4 z-30 flex items-center gap-2">
-          {isNotFoundRoute && (
-            <Link
-              href="/?admin=1"
-              className="inline-flex items-center gap-1.5 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/15 px-3 py-1.5 text-[11px] font-medium text-white/80 hover:text-white transition-colors"
-            >
-              <Lock size={11} />
-              <span>Admin Access</span>
-            </Link>
-          )}
-          {!isNotFoundRoute && onOpenAdminLogin && (
-            <button
-              type="button"
-              onClick={onOpenAdminLogin}
-              className="inline-flex items-center gap-1.5 rounded-full bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/15 px-3 py-1.5 text-[11px] font-medium text-white/80 hover:text-white transition-colors cursor-pointer"
-            >
-              <Lock size={11} />
-              <span>Admin Access</span>
-            </button>
-          )}
-        </div>
       </main>
     );
   }
@@ -93,8 +71,8 @@ export function UnderConstructionView({
               "Halaman ini sementara ditutup untuk persiapan peluncuran. Silakan kembali lagi dalam waktu dekat."}
           </p>
 
-          <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
-            {isNotFoundRoute && (
+          {isNotFoundRoute && (
+            <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/"
                 className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 px-4 py-2 text-xs font-semibold text-slate-700 transition-colors"
@@ -102,29 +80,8 @@ export function UnderConstructionView({
                 <ArrowLeft size={13} />
                 <span>Kembali ke Beranda</span>
               </Link>
-            )}
-
-            {isNotFoundRoute ? (
-              <Link
-                href="/?admin=1"
-                className="inline-flex items-center gap-1.5 rounded-xl border border-[#EAECEF] hover:border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors"
-              >
-                <Lock size={12} />
-                <span>Admin Access</span>
-              </Link>
-            ) : (
-              onOpenAdminLogin && (
-                <button
-                  type="button"
-                  onClick={onOpenAdminLogin}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#EAECEF] hover:border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
-                >
-                  <Lock size={12} />
-                  <span>Admin Access</span>
-                </button>
-              )
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
