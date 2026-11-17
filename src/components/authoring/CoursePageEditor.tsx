@@ -347,20 +347,23 @@ export function CoursePageEditor({
     }
   }, [currentExplorerItem?.language]);
 
-  // Auto-save draft ke localStorage & langsung sinkronkan ke Learner Portal setiap kali user mengubah sections, hide/show block, atau title
+  // Auto-save draft ke localStorage saat sections berubah; hanya sync live jika sedang mengedit course yang sudah ada (pakai savedTitleRef agar ketikan judul tidak membuat course duplikat)
   useEffect(() => {
-    if (typeof window !== "undefined" && docTitle) {
+    const activeSavedTitle = savedTitleRef.current?.trim();
+    if (typeof window !== "undefined" && activeSavedTitle) {
       try {
-        const key = docTitle.toLowerCase().trim();
+        const key = activeSavedTitle.toLowerCase();
         window.localStorage.setItem(
           `ruang_sosmed_editor_sections_${key}`,
           JSON.stringify(sections)
         );
-        const mapped = editorSectionsToAccordion(sections);
-        saveCourseCurriculumLive(docTitle, mapped);
+        if (isEditingExisting) {
+          const mapped = editorSectionsToAccordion(sections);
+          saveCourseCurriculumLive(activeSavedTitle, mapped);
+        }
       } catch {}
     }
-  }, [sections, docTitle, saveCourseCurriculumLive]);
+  }, [sections, isEditingExisting, saveCourseCurriculumLive]);
   const [textAlign, setTextAlign] = useState<"left" | "center" | "right">(
     "left"
   );

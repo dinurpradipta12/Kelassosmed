@@ -6569,27 +6569,10 @@ export function RuangSosmedProvider({
         };
       });
 
-      // Sinkronkan perubahan kurikulum (termasuk videoUrl & hide/show) ke Supabase agar Learner di browser lain ikut berubah
-      const target: ExplorerContentItem =
-        stateRef.current.explorerItems.find(
-          (e) => e.title.trim().toLowerCase() === key
-        ) || {
-          id: `exp-${Date.now()}`,
-          title: courseTitle,
-          type: "Course" as const,
-          assignedCount: 0,
-          category: "Social Media Strategy",
-          urgency: "Not Urgent" as const,
-          editedLabel: "Published",
-          statusLabel: "Completed",
-          progressPercent: 0,
-          language: "Bahasa / English",
-          editedDate: "Today",
-          bannerGradient: "linear-gradient(135deg, #EEF2FF 0%, #FFFFFF 100%)",
-          bannerAccent: "#4F39F6",
-          bannerPattern: "carousel",
-          description: "",
-        };
+      // Sinkronkan perubahan kurikulum (termasuk videoUrl & hide/show) ke Supabase HANYA jika course sudah terdaftar di explorerItems
+      const target = stateRef.current.explorerItems.find(
+        (e) => e.title.trim().toLowerCase() === key
+      );
       if (target) {
         if (curriculumPushTimer.current) {
           clearTimeout(curriculumPushTimer.current);
