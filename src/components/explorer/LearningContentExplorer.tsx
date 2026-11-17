@@ -959,8 +959,10 @@ export function LearningContentExplorer({
               (pName.includes("ruang sosmed") &&
                 primaryProjectName.includes("ruang sosmed"));
 
-            const projItems = items.filter((it) => {
-              if (it.isArchived || it.isTemplate) return false;
+            const projFolders = items.filter((it) => {
+              if (it.type !== "Folder" || it.isArchived || it.isTemplate) {
+                return false;
+              }
               const itemC = (it.cohort || "").trim().toLowerCase();
               if (itemC === pName) return true;
               if (isPrimary && (!itemC || itemC.includes("ruang sosmed"))) {
@@ -969,8 +971,19 @@ export function LearningContentExplorer({
               return false;
             });
 
-            const projFolders = projItems.filter((i) => i.type === "Folder");
-            const projCourses = projItems.filter((i) => i.type !== "Folder");
+            const projFolderNames = new Set(
+              projFolders.map((f) => f.title.trim().toLowerCase())
+            );
+            const projCourses = items.filter(
+              (i) =>
+                i.type !== "Folder" &&
+                !i.isArchived &&
+                !i.isTemplate &&
+                Boolean(
+                  i.folderName &&
+                    projFolderNames.has(i.folderName.trim().toLowerCase())
+                )
+            );
 
             return (
               <button
