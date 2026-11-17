@@ -94,8 +94,8 @@ const PRESET_HEADER_BANNERS = [
 
 const DEFAULT_ADMIN_PROFILE: UserProfileData = {
   id: "prof-admin-1",
-  fullName: "Arunika Developer",
-  initials: "AD",
+  fullName: "Dinur Pradipta",
+  initials: "DP",
   userRole: "Super Admin",
   avatarUrl: "",
   ssnNumber: "317-884-2026",
@@ -190,7 +190,7 @@ export function UserProfileScreen({
   onUpdateUser,
   onShowToast,
 }: UserProfileScreenProps) {
-  const { explorerItems, cohortProjects, updateUserAvatarInStore } =
+  const { explorerItems, cohortProjects, updateUserAvatarInStore, resolveUserAvatar } =
     useRuangSosmedStore();
 
   const storageKey =
@@ -201,11 +201,34 @@ export function UserProfileScreen({
   const [profile, setProfile] = useState<UserProfileData>(() => {
     const fallback =
       mode === "admin" ? DEFAULT_ADMIN_PROFILE : DEFAULT_LEARNER_PROFILE;
+    const siblingKey =
+      storageKey === "ruang_sosmed_profile_admin_v2"
+        ? "ruang_sosmed_profile_learner_v2"
+        : "ruang_sosmed_profile_admin_v2";
+    let siblingAvatar = "";
+    if (typeof window !== "undefined") {
+      try {
+        const sRaw = window.localStorage.getItem(siblingKey);
+        if (sRaw) {
+          const sParsed = JSON.parse(sRaw);
+          if (typeof sParsed?.avatarUrl === "string" && sParsed.avatarUrl) {
+            siblingAvatar = sParsed.avatarUrl;
+          }
+        }
+      } catch {}
+    }
+
     if (typeof window !== "undefined") {
       try {
         const raw = window.localStorage.getItem(storageKey);
         if (raw) {
           const parsed = JSON.parse(raw);
+          const cleanName =
+            parsed.fullName === "Arunika Developer"
+              ? fallback.fullName
+              : parsed.fullName;
+          const cleanAvatar =
+            parsed.avatarUrl || currentUser?.avatarUrl || siblingAvatar || "";
           // Auto-sanitize legacy dummy values from old template cache
           if (
             parsed.professionalRole?.includes("UI / UX Designer") ||
@@ -214,29 +237,41 @@ export function UserProfileScreen({
             return {
               ...fallback,
               ...parsed,
+              fullName: cleanName || fallback.fullName,
+              avatarUrl: cleanAvatar,
               professionalRole: fallback.professionalRole,
               skills: fallback.skills,
               university: fallback.university,
               degree: fallback.degree,
             };
           }
-          return { ...fallback, ...parsed };
+          return {
+            ...fallback,
+            ...parsed,
+            fullName: cleanName || fallback.fullName,
+            avatarUrl: cleanAvatar,
+          };
         }
       } catch {}
     }
     if (currentUser?.name) {
+      const resolvedInitName =
+        currentUser.name === "Arunika Developer"
+          ? "Dinur Pradipta"
+          : currentUser.name;
       const computedInitials =
-        currentUser.name
+        resolvedInitName
           .split(" ")
           .filter(Boolean)
           .map((w) => w[0])
           .join("")
           .slice(0, 2)
-          .toUpperCase() || "AR";
+          .toUpperCase() || "DP";
       return {
         ...fallback,
-        fullName: currentUser.name,
+        fullName: resolvedInitName,
         initials: computedInitials,
+        avatarUrl: currentUser.avatarUrl || siblingAvatar || "",
         email: currentUser.email || fallback.email,
         userRole:
           currentUser.role === "admin"
@@ -244,8 +279,22 @@ export function UserProfileScreen({
             : ("Learner" as ProfileUserRole),
       };
     }
-    return fallback;
+    return {
+      ...fallback,
+      avatarUrl: currentUser?.avatarUrl || siblingAvatar || fallback.avatarUrl,
+    };
   });
+
+  const resolvedStoreAvatar = resolveUserAvatar(
+    profile.email,
+    profile.fullName,
+    currentUser?.email,
+    currentUser?.name,
+    currentUser?.username
+  );
+
+  const effectiveAvatarUrl =
+    profile.avatarUrl || currentUser?.avatarUrl || resolvedStoreAvatar || "";
 
   // Save profile updates to localStorage
   useEffect(() => {
@@ -310,6 +359,14 @@ export function UserProfileScreen({
     profile.skills.join(", ")
   );
   const [formAvatarUrl, setFormAvatarUrl] = useState(profile.avatarUrl);
+  useEffect(() => {
+    if (!profile.avatarUrl && effectiveAvatarUrl) {
+      setProfile((prev) =>
+        prev.avatarUrl ? prev : { ...prev, avatarUrl: effectiveAvatarUrl }
+      );
+      setFormAvatarUrl((prev) => prev || effectiveAvatarUrl);
+    }
+  }, [profile.avatarUrl, effectiveAvatarUrl]);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [headerPickerOpen, setHeaderPickerOpen] = useState(false);
 
@@ -921,9 +978,9 @@ export function UserProfileScreen({
 
                 <div className="flex items-center gap-4">
                   <div className="h-16 w-16 rounded-full bg-[#F3F4F6] border border-[#EAECEF] overflow-hidden flex items-center justify-center shrink-0">
-                    {formAvatarUrl ? (
+                    {formAvatarUrl || effectiveAvatarUrl ? (
                       <img
-                        src={formAvatarUrl}
+                        src={formAvatarUrl || effectiveAvatarUrl}
                         alt={formFullName}
                         className="h-full w-full object-cover"
                       />
@@ -1410,9 +1467,9 @@ export function UserProfileScreen({
             className="inline-flex items-center gap-2 rounded-xl bg-[#F8F9FB] hover:bg-[#EAECEF]/60 px-2.5 py-1 border border-[#EAECEF] cursor-pointer"
           >
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#FDE68A] text-[#92400E] text-[11px] font-bold overflow-hidden">
-              {profile.avatarUrl ? (
+              {effectiveAvatarUrl ? (
                 <img
-                  src={profile.avatarUrl}
+                  src={effectiveAvatarUrl}
                   alt={profile.fullName}
                   className="h-full w-full object-cover"
                 />
@@ -1631,9 +1688,9 @@ export function UserProfileScreen({
             <div className="flex flex-col sm:flex-row sm:items-end gap-4">
               {/* Circular Avatar with White Ring */}
               <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-full border-4 border-[#FFFFFF] bg-[#DBEAFE] shadow-md overflow-hidden flex items-center justify-center shrink-0">
-                {profile.avatarUrl ? (
+                {effectiveAvatarUrl ? (
                   <img
-                    src={profile.avatarUrl}
+                    src={effectiveAvatarUrl}
                     alt={profile.fullName}
                     className="h-full w-full object-cover"
                   />

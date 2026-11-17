@@ -67,6 +67,7 @@ export function LearnerTopNavbar({
     certificateUnlocked,
     learnerAssignedItems,
     wikiResources,
+    resolveUserAvatar,
   } = useRuangSosmedStore();
   const [notifOpen, setNotifOpen] = useState(false);
 
@@ -86,7 +87,10 @@ export function LearnerTopNavbar({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [aiSearchOpen]);
 
-  const displayName = currentUser?.name || currentUser?.username || "Learner";
+  const displayName =
+    currentUser?.name === "Arunika Developer"
+      ? "Dinur Pradipta"
+      : currentUser?.name || currentUser?.username || "Learner";
 
   const [navbarAvatar, setNavbarAvatar] = useState<string | null>(null);
   const [navbarName, setNavbarName] = useState<string | null>(null);
@@ -95,18 +99,45 @@ export function LearnerTopNavbar({
     const syncNavProfile = () => {
       if (typeof window === "undefined") return;
       try {
-        const raw = window.localStorage.getItem("ruang_sosmed_profile_learner_v2");
-        if (raw) {
+        const primaryKey =
+          currentUser?.role === "admin"
+            ? "ruang_sosmed_profile_admin_v2"
+            : "ruang_sosmed_profile_learner_v2";
+        const secondaryKey =
+          currentUser?.role === "admin"
+            ? "ruang_sosmed_profile_learner_v2"
+            : "ruang_sosmed_profile_admin_v2";
+
+        let nextAvatar: string | null = null;
+        let nextName: string | null = null;
+
+        for (const k of [secondaryKey, primaryKey]) {
+          const raw = window.localStorage.getItem(k);
+          if (!raw) continue;
           const p = JSON.parse(raw);
-          if (typeof p.avatarUrl === "string") setNavbarAvatar(p.avatarUrl || null);
-          if (p.fullName) setNavbarName(p.fullName);
+          if (typeof p.avatarUrl === "string" && p.avatarUrl) {
+            nextAvatar = p.avatarUrl;
+          }
+          if (p.fullName && p.fullName !== "Arunika Developer") {
+            nextName = p.fullName;
+          }
         }
-        const sessionRaw = window.localStorage.getItem("ruang_sosmed_session_user_v1");
+
+        const sessionRaw = window.localStorage.getItem(
+          "ruang_sosmed_session_user_v1"
+        );
         if (sessionRaw) {
           const s = JSON.parse(sessionRaw);
-          if (typeof s.avatarUrl === "string") setNavbarAvatar(s.avatarUrl || null);
-          if (s.name) setNavbarName(s.name);
+          if (typeof s.avatarUrl === "string" && s.avatarUrl) {
+            nextAvatar = s.avatarUrl;
+          }
+          if (s.name && s.name !== "Arunika Developer") {
+            nextName = s.name;
+          }
         }
+
+        if (nextAvatar) setNavbarAvatar(nextAvatar);
+        if (nextName) setNavbarName(nextName);
       } catch {}
     };
     syncNavProfile();
@@ -116,10 +147,19 @@ export function LearnerTopNavbar({
       window.removeEventListener("ruang_sosmed_profile_updated", syncNavProfile);
       window.removeEventListener("storage", syncNavProfile);
     };
-  }, []);
+  }, [currentUser?.role]);
 
-  const effectiveAvatar = navbarAvatar || currentUser?.avatarUrl || null;
   const effectiveDisplayName = navbarName || displayName;
+  const effectiveAvatar =
+    navbarAvatar ||
+    currentUser?.avatarUrl ||
+    resolveUserAvatar(
+      currentUser?.email,
+      effectiveDisplayName,
+      currentUser?.name,
+      currentUser?.username
+    ) ||
+    null;
   const effectiveInitials =
     effectiveDisplayName
       .split(" ")

@@ -471,15 +471,25 @@ function RuangSosmedStudioInner() {
             pEmail === "admin@ruangsosmed.id" ||
             pUsername === "arunika" ||
             pName.includes("arunika");
-          if (isFounderCached && parsedUser.role !== "admin") {
-            parsedUser.role = "admin";
-            try {
-              window.localStorage.setItem(
-                "ruang_sosmed_session_user_v1",
-                JSON.stringify(parsedUser)
-              );
-              window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
-            } catch {}
+          if (isFounderCached) {
+            let changedFounder = false;
+            if (parsedUser.role !== "admin") {
+              parsedUser.role = "admin";
+              changedFounder = true;
+            }
+            if (!parsedUser.name || parsedUser.name === "Arunika Developer") {
+              parsedUser.name = "Dinur Pradipta";
+              changedFounder = true;
+            }
+            if (changedFounder) {
+              try {
+                window.localStorage.setItem(
+                  "ruang_sosmed_session_user_v1",
+                  JSON.stringify(parsedUser)
+                );
+                window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
+              } catch {}
+            }
           }
 
           if (pEmail.includes("afterlance") || pName.includes("allisha") || pUsername.includes("allisha")) {
@@ -608,13 +618,18 @@ function RuangSosmedStudioInner() {
         } catch {}
       }
 
-      const resolvedName =
+      const rawResolvedName =
         editedProfileName ||
         dbFullName ||
         (cachedName && cachedName !== "Arunika Developer" ? cachedName : undefined) ||
         meta.full_name ||
         email.split("@")[0] ||
         "User";
+      const resolvedName =
+        rawResolvedName === "Arunika Developer" ||
+        (isUserAdmin && rawResolvedName.toLowerCase() === "arunika")
+          ? "Dinur Pradipta"
+          : rawResolvedName;
       const derivedHandle =
         resolvedName.split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g, "") || undefined;
       const username =
@@ -1094,15 +1109,25 @@ function RuangSosmedStudioInner() {
     return <div className="min-h-screen bg-[#F8F9FB]" />;
   }
 
-  // 2. Public Visitor Landing View (When NOT logged in)
-  if (!currentUser && !guestBypassStudio) {
-    const isAdminBypass =
+  useEffect(() => {
+    if (
       typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("admin") === "1";
+      !currentUser &&
+      new URLSearchParams(window.location.search).get("admin") === "1"
+    ) {
+      setAuthModalTab("login");
+      setAuthModalOpen(true);
+    }
+  }, [currentUser]);
 
+  // 2. Public Visitor & Under Construction Gate (When not logged in, or when Under Construction blocks non-SuperAdmin)
+  if (
+    (!currentUser && !guestBypassStudio) ||
+    (maintenanceConfig?.enabled && !isFounderAdmin && !guestBypassStudio)
+  ) {
     return (
       <>
-        {maintenanceConfig?.enabled && !isAdminBypass ? (
+        {maintenanceConfig?.enabled ? (
           <UnderConstructionView
             config={maintenanceConfig}
             onOpenAdminLogin={() => handleOpenAuth("login")}

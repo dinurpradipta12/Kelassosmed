@@ -11,6 +11,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 
 interface AuthModalProps {
   open: boolean;
@@ -32,6 +33,7 @@ export function AuthModal({
   onShowToast,
   initialTab = "login",
 }: AuthModalProps) {
+  const { maintenanceConfig } = useRuangSosmedStore();
   const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
 
   // Sync tab whenever modal opens or initialTab prop changes
@@ -85,6 +87,19 @@ export function AuthModal({
       }
     }
 
+    const isDeveloperSuperAdmin =
+      identifier.trim().toLowerCase() === "arunika" ||
+      emailToUse.toLowerCase().includes("dinur") ||
+      emailToUse.toLowerCase() === "admin@ruangsosmed.id";
+
+    if (maintenanceConfig?.enabled && !isDeveloperSuperAdmin) {
+      setErrorMessage(
+        "Website sedang dalam tahap pengembangan (Under Construction). Hanya Super Admin / Developer yang dapat masuk saat ini."
+      );
+      setLoading(false);
+      return;
+    }
+
     try {
 
       if (!isSupabaseConfigured) {
@@ -95,12 +110,12 @@ export function AuthModal({
           password === "Ar4925"
         ) {
           onAuthSuccess({
-            name: "Arunika Developer",
+            name: "Dinur Pradipta",
             email: "contact.dinurpradipta@gmail.com",
             role: "admin",
             username: "arunika",
           });
-          onShowToast("Selamat datang kembali, Arunika (Developer Mode Aktif)!");
+          onShowToast("Selamat datang kembali, Dinur Pradipta (Developer Mode Aktif)!");
           onClose();
           return;
         } else {
@@ -157,11 +172,18 @@ export function AuthModal({
           .then(() => {});
       }
 
-      const displayName =
+      const rawDisplayName =
         userMeta.full_name ||
         userMeta.username ||
         emailToUse.split("@")[0] ||
         "Pengguna";
+      const displayName =
+        isDeveloperSuperAdmin &&
+        (!rawDisplayName ||
+          rawDisplayName.toLowerCase() === "arunika" ||
+          rawDisplayName === "Arunika Developer")
+          ? "Dinur Pradipta"
+          : rawDisplayName;
 
       // Ensure user profile is synced in user_profiles table
       const uname =
@@ -217,12 +239,12 @@ export function AuthModal({
         password === "Ar4925"
       ) {
         onAuthSuccess({
-          name: "Arunika Developer",
+          name: "Dinur Pradipta",
           email: "contact.dinurpradipta@gmail.com",
           role: "admin",
           username: "arunika",
         });
-        onShowToast("Selamat datang kembali, Arunika (Developer Mode Aktif)!");
+        onShowToast("Selamat datang kembali, Dinur Pradipta (Developer Mode Aktif)!");
         onClose();
         return;
       }
@@ -248,6 +270,14 @@ export function AuthModal({
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+
+    if (maintenanceConfig?.enabled) {
+      setErrorMessage(
+        "Website sedang dalam tahap pengembangan (Under Construction). Pendaftaran akun sementara ditutup."
+      );
+      return;
+    }
+
     setLoading(true);
 
     const cleanFolderCode = folderAccessCode

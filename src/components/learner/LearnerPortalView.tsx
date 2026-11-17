@@ -302,6 +302,7 @@ export function LearnerPortalView({
     toggleLearnerItemFavorite,
     getCourseCurriculum,
     redeemFolderAccessCode,
+    resolveUserAvatar,
   } = useRuangSosmedStore();
 
   const [folderCodeInput, setFolderCodeInput] = useState("");
@@ -876,20 +877,45 @@ export function LearnerPortalView({
     const syncLearner = () => {
       if (typeof window === "undefined") return;
       try {
-        const raw = window.localStorage.getItem("ruang_sosmed_profile_learner_v2");
-        if (raw) {
+        const primaryKey =
+          currentUser?.role === "admin"
+            ? "ruang_sosmed_profile_admin_v2"
+            : "ruang_sosmed_profile_learner_v2";
+        const secondaryKey =
+          currentUser?.role === "admin"
+            ? "ruang_sosmed_profile_learner_v2"
+            : "ruang_sosmed_profile_admin_v2";
+
+        let nextAvatar: string | null = null;
+        let nextName: string | null = null;
+
+        for (const k of [secondaryKey, primaryKey]) {
+          const raw = window.localStorage.getItem(k);
+          if (!raw) continue;
           const p = JSON.parse(raw);
-          if (typeof p.avatarUrl === "string") setLearnerAvatar(p.avatarUrl || null);
-          if (p.fullName) setLearnerProfileName(p.fullName);
+          if (typeof p.avatarUrl === "string" && p.avatarUrl) {
+            nextAvatar = p.avatarUrl;
+          }
+          if (p.fullName && p.fullName !== "Arunika Developer") {
+            nextName = p.fullName;
+          }
         }
+
         const sessionRaw = window.localStorage.getItem(
           "ruang_sosmed_session_user_v1"
         );
         if (sessionRaw) {
           const s = JSON.parse(sessionRaw);
-          if (typeof s.avatarUrl === "string") setLearnerAvatar(s.avatarUrl || null);
-          if (s.name) setLearnerProfileName(s.name);
+          if (typeof s.avatarUrl === "string" && s.avatarUrl) {
+            nextAvatar = s.avatarUrl;
+          }
+          if (s.name && s.name !== "Arunika Developer") {
+            nextName = s.name;
+          }
         }
+
+        if (nextAvatar) setLearnerAvatar(nextAvatar);
+        if (nextName) setLearnerProfileName(nextName);
       } catch {}
     };
     syncLearner();
@@ -899,11 +925,24 @@ export function LearnerPortalView({
       window.removeEventListener("ruang_sosmed_profile_updated", syncLearner);
       window.removeEventListener("storage", syncLearner);
     };
-  }, []);
+  }, [currentUser?.role]);
 
-  const activeLearnerAvatar = learnerAvatar || currentUser?.avatarUrl || null;
   const activeLearnerDisplayName =
-    learnerProfileName || currentUser?.name || learnerDisplayName;
+    learnerProfileName ||
+    (currentUser?.name === "Arunika Developer"
+      ? "Dinur Pradipta"
+      : currentUser?.name) ||
+    learnerDisplayName;
+  const activeLearnerAvatar =
+    learnerAvatar ||
+    currentUser?.avatarUrl ||
+    resolveUserAvatar(
+      currentUser?.email,
+      activeLearnerDisplayName,
+      currentUser?.name,
+      currentUser?.username
+    ) ||
+    null;
   const activeLearnerInitials =
     activeLearnerDisplayName
       .split(" ")
