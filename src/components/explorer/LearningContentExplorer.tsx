@@ -12,6 +12,8 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   ArrowUpDown,
   LayoutGrid,
   List,
@@ -64,6 +66,9 @@ interface LearningContentExplorerProps {
   onShowToast: (msg: string) => void;
   activeProjectName?: string;
   activeSubView?: "recents" | "shared" | "archived" | "templates";
+  showProjectPicker?: boolean;
+  onSelectProject?: (projectName: string) => void;
+  onBackToProjects?: () => void;
 }
 
 const FILTER_TABS: ("All" | ExplorerItemType)[] = [
@@ -530,8 +535,14 @@ export function LearningContentExplorer({
   onShowToast,
   activeProjectName = "Ruang Sosmed Class",
   activeSubView = "recents",
+  showProjectPicker = false,
+  onSelectProject,
+  onBackToProjects,
 }: LearningContentExplorerProps) {
-  const { assignees, cohortProjects } = useRuangSosmedStore();
+  const { assignees, cohortProjects, addCohortProject } = useRuangSosmedStore();
+  const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
+  const [newProjectTitle, setNewProjectTitle] = useState("");
+  const [newProjectColor, setNewProjectColor] = useState("#4F39F6");
   const getItemAssignedCount = (item: ExplorerContentItem) => {
     const raw = item.assignedLearners;
     if (Array.isArray(raw)) {
@@ -908,6 +919,196 @@ export function LearningContentExplorer({
     viewMode === "grid" &&
     (selectedTab === "All" || selectedTab === "Folder");
 
+  if (showProjectPicker && !currentFolder) {
+    const primaryProjectName = (
+      cohortProjects[0]?.name || "Ruang Sosmed Class"
+    )
+      .trim()
+      .toLowerCase();
+
+    return (
+      <div className="w-full px-4 sm:px-5 pt-5 pb-24 space-y-6">
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="text-[22px] sm:text-2xl font-bold tracking-tight text-[#121215]">
+              Pilih Project / Cohort
+            </h1>
+            <p className="text-xs text-[#64748B]">
+              Pilih salah satu project di bawah ini untuk melihat direktori folder dan materi di dalamnya.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setNewProjectModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-2 text-xs font-semibold text-white shadow-[0_2px_6px_rgba(79,57,246,0.28)] transition-colors cursor-pointer"
+          >
+            <Plus size={14} strokeWidth={2.5} />
+            <span>Buat Project Baru</span>
+          </button>
+        </header>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {(cohortProjects || []).map((proj) => {
+            const pName = proj.name.trim().toLowerCase();
+            const isPrimary =
+              pName === primaryProjectName ||
+              (pName.includes("ruang sosmed") &&
+                primaryProjectName.includes("ruang sosmed"));
+
+            const projItems = items.filter((it) => {
+              if (it.isArchived || it.isTemplate) return false;
+              const itemC = (it.cohort || "").trim().toLowerCase();
+              if (itemC === pName) return true;
+              if (isPrimary && (!itemC || itemC.includes("ruang sosmed"))) {
+                return true;
+              }
+              return false;
+            });
+
+            const projFolders = projItems.filter((i) => i.type === "Folder");
+            const projCourses = projItems.filter((i) => i.type !== "Folder");
+
+            return (
+              <button
+                key={proj.id || proj.name}
+                type="button"
+                onClick={() => onSelectProject?.(proj.name)}
+                className="group relative flex flex-col justify-between rounded-2xl bg-white border border-[#EAECEF] hover:border-[#4F39F6]/60 p-5 text-left shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:shadow-[0_10px_28px_rgba(79,57,246,0.10)] transition-all cursor-pointer"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className="h-3.5 w-3.5 rounded-[4px] shrink-0 shadow-2xs"
+                        style={{ backgroundColor: proj.color || "#4F39F6" }}
+                      />
+                      <h2 className="text-base font-bold text-[#121215] group-hover:text-[#4F39F6] truncate transition-colors">
+                        {proj.name}
+                      </h2>
+                    </div>
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-0.5 text-[11px] font-semibold text-[#475569]">
+                      <Folder size={11} className="text-[#4F39F6]" />
+                      {projFolders.length} Folder
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 min-h-[26px]">
+                    {projFolders.length > 0 ? (
+                      projFolders.slice(0, 3).map((f) => (
+                        <span
+                          key={f.id}
+                          className="inline-flex items-center gap-1 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-0.5 text-[11px] font-medium text-[#475569]"
+                        >
+                          <Folder size={10} className="text-[#64748B]" />
+                          <span className="truncate max-w-[160px]">{f.title}</span>
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[11px] text-[#94A3B8] italic">
+                        Belum ada folder materi
+                      </span>
+                    )}
+                    {projFolders.length > 3 && (
+                      <span className="inline-flex items-center rounded-md bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-semibold text-[#64748B]">
+                        +{projFolders.length - 3} lagi
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-3 border-t border-[#F1F5F9] flex items-center justify-between text-xs">
+                  <span className="text-[#64748B] font-medium">
+                    {projCourses.length} materi pembelajaran
+                  </span>
+                  <span className="inline-flex items-center gap-1 font-bold text-[#4F39F6] group-hover:translate-x-0.5 transition-transform">
+                    <span>Buka Project</span>
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <ModalDialog
+          open={newProjectModalOpen}
+          onClose={() => setNewProjectModalOpen(false)}
+          titleId="new-project-modal-title"
+          title="Buat Project / Cohort Baru"
+          subtitle="Kelompokkan folder dan kurikulum ke dalam project atau batch kelas terpisah."
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const trimmed = newProjectTitle.trim();
+              if (!trimmed) return;
+              addCohortProject(trimmed, newProjectColor);
+              setNewProjectTitle("");
+              setNewProjectModalOpen(false);
+              onShowToast(`Project "${trimmed}" berhasil dibuat.`);
+              onSelectProject?.(trimmed);
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <label className="block text-xs font-semibold text-[#121215] mb-1.5">
+                Nama Project / Cohort
+              </label>
+              <input
+                type="text"
+                required
+                value={newProjectTitle}
+                onChange={(e) => setNewProjectTitle(e.target.value)}
+                placeholder="Contoh: Batch 2 Intensive"
+                className="w-full rounded-xl border border-[#EAECEF] bg-[#F8F9FB] px-3 py-2 text-xs text-[#121215] focus:bg-white focus:border-[#4F39F6] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#121215] mb-1.5">
+                Warna Label
+              </label>
+              <div className="flex items-center gap-2">
+                {["#4F39F6", "#EC4899", "#10B981", "#0EA5E9", "#F59E0B", "#8B5CF6"].map(
+                  (c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setNewProjectColor(c)}
+                      className={`h-7 w-7 rounded-lg transition-transform cursor-pointer ${
+                        newProjectColor === c
+                          ? "ring-2 ring-offset-2 ring-[#4F39F6] scale-110"
+                          : "hover:scale-105"
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  )
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setNewProjectModalOpen(false)}
+                className="rounded-xl border border-[#EAECEF] px-3.5 py-2 text-xs font-semibold text-[#5E5E5E] hover:bg-[#F8F9FB] cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white cursor-pointer"
+              >
+                Buat &amp; Buka Project
+              </button>
+            </div>
+          </form>
+        </ModalDialog>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full px-4 sm:px-5 pt-5 pb-14">
       {/* 1. Workspace Header (Hanya tampil di level utama workspace) */}
@@ -915,6 +1116,17 @@ export function LearningContentExplorer({
         <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-5 border-b border-[#EAECEF]">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2.5">
+            {onBackToProjects && !currentFolder && (
+              <button
+                type="button"
+                onClick={onBackToProjects}
+                className="inline-flex items-center gap-1 rounded-lg bg-[#FFFFFF] hover:bg-[#F8FAFC] border border-[#EAECEF] px-2.5 py-1 text-xs font-semibold text-[#475569] hover:text-[#4F39F6] transition-colors cursor-pointer"
+                title="Kembali pilih Project / Cohort"
+              >
+                <ChevronLeft size={13} />
+                <span>Semua Projects</span>
+              </button>
+            )}
             <span
               className="h-3 w-3 rounded-sm shrink-0 shadow-2xs"
               style={{ backgroundColor: activeCohortColor }}

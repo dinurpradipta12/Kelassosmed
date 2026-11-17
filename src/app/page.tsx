@@ -143,6 +143,7 @@ function RuangSosmedStudioInner() {
     });
   const [secondarySidebarOpen, setSecondarySidebarOpen] = useState(true);
   const [activeProject, setActiveProject] = useState("Ruang Sosmed Class");
+  const [showProjectHub, setShowProjectHub] = useState(true);
 
   // Phase 3 & Phase 4 Authoring & Grading Studio state (Persisted across refreshes)
   const [authoringMode, setAuthoringMode] =
@@ -856,10 +857,12 @@ function RuangSosmedStudioInner() {
     if (id === "content") {
       setSecondarySidebarOpen(true);
       setSelectedContentDetailId(null);
+      setShowProjectHub(true);
     } else if (id === "archive") {
       setActiveSubNav("archived");
       setSecondarySidebarOpen(true);
       setSelectedContentDetailId(null);
+      setShowProjectHub(false);
     } else if (id === "profile") {
       setSecondarySidebarOpen(false);
       setSelectedContentDetailId(null);
@@ -1196,12 +1199,14 @@ function RuangSosmedStudioInner() {
             activeProject={activeProject}
             onSelectProject={(projectName) => {
               setActiveProject(projectName);
+              setShowProjectHub(false);
               setSelectedContentDetailId(null);
               setAuthoringMode(null);
             }}
             activeSubNav={activeSubNav}
             onSelectSubNav={(subId) => {
               setActiveSubNav(subId);
+              setShowProjectHub(false);
               setSelectedContentDetailId(null);
             }}
             currentUser={currentUser}
@@ -1318,6 +1323,13 @@ function RuangSosmedStudioInner() {
                   activeSubView={
                     activeNav === "archive" ? "archived" : activeSubNav
                   }
+                  showProjectPicker={showProjectHub && activeNav === "content"}
+                  onSelectProject={(projectName) => {
+                    setActiveProject(projectName);
+                    setActiveSubNav("recents");
+                    setShowProjectHub(false);
+                  }}
+                  onBackToProjects={() => setShowProjectHub(true)}
                 />
               )
             ) : activeNav === "landing-builder" ? (
