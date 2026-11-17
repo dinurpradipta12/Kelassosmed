@@ -851,8 +851,13 @@ export function LearningContentExplorer({
       } else {
         // Di Root workspace:
         if (selectedTab === "All") {
-          // Di tab All, tampilkan Folder dan konten yang belum dimasukkan ke folder (root items)
-          if (item.folderName && item.type !== "Folder") return false;
+          // Di halaman Recents (root), hanya tampilkan Project Folder saja agar bersih (kecuali sedang mencari)
+          if (activeSubView === "recents" && !searchQuery.trim()) {
+            if (item.type !== "Folder") return false;
+          } else {
+            // Di tab lain (Shared/Archived/Templates) atau saat mencari, sembunyikan item yang sudah ada di dalam folder
+            if (item.folderName && item.type !== "Folder") return false;
+          }
         } else if (selectedTab === "Folder") {
           if (item.type !== "Folder") return false;
         } else {
