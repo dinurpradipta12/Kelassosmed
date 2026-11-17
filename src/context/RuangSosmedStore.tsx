@@ -153,7 +153,7 @@ export const DEFAULT_MAINTENANCE_CONFIG: MaintenanceConfig = {
   title: "Ruang Sosmed Sedang Dalam Pengembangan",
   subtitle:
     "Halaman ini sementara ditutup untuk persiapan peluncuran. Silakan kembali lagi dalam waktu dekat.",
-  customImageUrl: "",
+  customImageUrl: "/404.svg",
   displayMode: "card",
 };
 
