@@ -76,7 +76,12 @@ import {
 } from "lucide-react";
 
 export type ActiveAuthoringMode =
-  | { kind: "course-page"; contentType: "Course" | "Page"; title: string }
+  | {
+      kind: "course-page";
+      contentType: "Course" | "Page";
+      title: string;
+      folderName?: string;
+    }
   | { kind: "learning-path" }
   | { kind: "wiki"; title?: string }
   | { kind: "quiz-builder"; title?: string }
@@ -900,6 +905,7 @@ function RuangSosmedStudioInner() {
       setAuthoringMode({
         kind: "course-page",
         contentType: defaultType,
+        folderName: targetFolder || undefined,
         title:
           defaultType === "Course"
             ? targetFolder
@@ -952,8 +958,11 @@ function RuangSosmedStudioInner() {
     title: string,
     description?: string,
     urgency?: "Urgent" | "Not Urgent",
-    sections?: CourseSectionAccordion[]
+    sections?: CourseSectionAccordion[],
+    folderNameOverride?: string
   ) => {
+    const resolvedFolder =
+      folderNameOverride || activeFolderForCreation || undefined;
     publishContentToStudioAndCatalog(
       type,
       title,
@@ -961,11 +970,11 @@ function RuangSosmedStudioInner() {
       urgency,
       sections,
       activeProject,
-      activeFolderForCreation || undefined
+      resolvedFolder
     );
     triggerToast(
-      activeFolderForCreation
-        ? `Published ${type}: "${title}" di dalam folder "${activeFolderForCreation}"!`
+      resolvedFolder
+        ? `Published ${type}: "${title}" di dalam folder "${resolvedFolder}"!`
         : `Published ${type}: "${title}" — ditambahkan ke cohort "${activeProject}"!`
     );
     setActiveFolderForCreation(null);
@@ -1240,7 +1249,14 @@ function RuangSosmedStudioInner() {
                 }
                 onBack={() => setAuthoringMode(null)}
                 onPublish={(title, type, sections, desc) => {
-                  handleCreatedContent(type, title, desc, "Not Urgent", sections);
+                  handleCreatedContent(
+                    type,
+                    title,
+                    desc,
+                    "Not Urgent",
+                    sections,
+                    authoringMode.folderName
+                  );
                   setAuthoringMode(null);
                   setActiveNav("content");
                   if (typeof window !== "undefined") {
