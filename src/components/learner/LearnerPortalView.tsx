@@ -43,6 +43,7 @@ import { LearnerQuizRunner } from "@/components/learner/LearnerQuizRunner";
 import { UserProfileScreen } from "@/components/profile/UserProfileScreen";
 import { type LearnerAssignedItem } from "@/lib/phase5-data";
 import { ContentBadge } from "@/components/ui/ContentBadge";
+import { ThemeSwitchDockButton } from "@/components/theme/ThemeCustomizerModal";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
@@ -3636,6 +3637,8 @@ export function LearnerPortalView({
         aria-label="Learner Quick Profile & Settings Rail"
         className="fixed bottom-4 left-3 z-40 flex flex-col items-center gap-2 rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-2 shadow-[0_4px_16px_rgba(16,15,17,0.08)]"
       >
+        <ThemeSwitchDockButton />
+
         <div className="relative group flex items-center justify-center">
           <button
             type="button"

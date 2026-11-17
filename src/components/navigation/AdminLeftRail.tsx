@@ -34,6 +34,7 @@ import { type ExplorerItemType } from "@/lib/phase2-data";
 import { ContentIconBox } from "@/components/ui/ContentBadge";
 import { type AuthenticatedUser } from "./GlobalRoleSwitcher";
 import { MentorGuideModal } from "@/components/admin/MentorGuideModal";
+import { ThemeSwitchDockButton } from "@/components/theme/ThemeCustomizerModal";
 import {
   useRuangSosmedStore,
   type CohortProjectItem,
@@ -503,6 +504,12 @@ export function AdminLeftRail({
           >
             <HelpCircle size={17} strokeWidth={2} />
           </RailIconButton>
+
+          {/* Theme Switch & Live Customizer */}
+          <ThemeSwitchDockButton
+            tooltipOffsetClass="left-[48px]"
+            sizeClass="h-9 w-9"
+          />
 
           {/* Settings Gear Icon */}
           <RailIconButton
