@@ -2131,7 +2131,7 @@ export function RuangSosmedProvider({
             .from("contents")
             .select("*")
             .in("status", ["published", "archived"])
-            .order("created_at", { ascending: false }),
+            .order("created_at", { ascending: true }),
           supabase.auth.getUser(),
           supabase
             .from("mentor_inbox_threads")
@@ -3484,25 +3484,34 @@ export function RuangSosmedProvider({
           updatedCurriculums[title.toLowerCase().trim()] = sections;
         }
 
+        const existingIdx = prev.explorerItems.findIndex(
+          (i) => i.title.toLowerCase() === title.toLowerCase()
+        );
+        const nextExplorer =
+          existingIdx >= 0
+            ? prev.explorerItems.map((i, idx) =>
+                idx === existingIdx ? newExplorerItem : i
+              )
+            : [...prev.explorerItems, newExplorerItem];
+
+        const existingCatIdx = prev.learnerAssignedItems.findIndex(
+          (i) => i.title.toLowerCase() === title.toLowerCase()
+        );
+        const nextCatalog = newCatalogItem
+          ? existingCatIdx >= 0
+            ? prev.learnerAssignedItems.map((i, idx) =>
+                idx === existingCatIdx ? newCatalogItem : i
+              )
+            : [...prev.learnerAssignedItems, newCatalogItem]
+          : prev.learnerAssignedItems;
+
         return {
           ...prev,
           courseSections:
             sections !== undefined ? sections : prev.courseSections,
           courseCurriculums: updatedCurriculums,
-          explorerItems: deduplicateExplorerItems([
-            newExplorerItem,
-            ...prev.explorerItems.filter(
-              (i) => i.title.toLowerCase() !== title.toLowerCase()
-            ),
-          ]),
-          learnerAssignedItems: newCatalogItem
-            ? [
-                newCatalogItem,
-                ...prev.learnerAssignedItems.filter(
-                  (i) => i.title.toLowerCase() !== title.toLowerCase()
-                ),
-              ]
-            : prev.learnerAssignedItems,
+          explorerItems: deduplicateExplorerItems(nextExplorer),
+          learnerAssignedItems: nextCatalog,
           versions: [
             newVersion,
             ...prev.versions.map((v) => ({ ...v, isCurrent: false })),
