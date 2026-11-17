@@ -331,6 +331,9 @@ export function AdminLeftRail({
         pName === cohortProjects[0].name.toLowerCase());
 
     const count = (explorerItems || []).filter((item) => {
+      if (item.type !== "Folder" || item.isArchived || item.isTemplate) {
+        return false;
+      }
       const itemCohort = (item.cohort || "").trim().toLowerCase();
       if (itemCohort === pName) return true;
       if (
