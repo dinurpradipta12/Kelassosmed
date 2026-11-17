@@ -16,14 +16,16 @@ export function UnderConstructionView({
   onOpenAdminLogin,
   isNotFoundRoute = false,
 }: UnderConstructionViewProps) {
-  const hasCustomImage = Boolean(config.customImageUrl?.trim());
+  const rawImg = config.customImageUrl?.trim();
+  const resolvedImageUrl = rawImg === "none" ? "" : rawImg || "/404.svg";
+  const hasCustomImage = Boolean(resolvedImageUrl);
   const isFullscreen = hasCustomImage && config.displayMode === "fullscreen";
 
   if (isFullscreen) {
     return (
       <main className="relative min-h-screen w-full bg-[#0B0C10] flex items-center justify-center overflow-hidden">
         <img
-          src={config.customImageUrl}
+          src={resolvedImageUrl}
           alt={config.title || "404 Web Under Construction"}
           className="w-full h-full min-h-screen max-h-screen object-contain select-none"
         />
@@ -59,7 +61,7 @@ export function UnderConstructionView({
         {hasCustomImage ? (
           <div className="w-full bg-slate-50 border-b border-[#EAECEF] flex items-center justify-center">
             <img
-              src={config.customImageUrl}
+              src={resolvedImageUrl}
               alt={config.title || "404 Web Under Construction"}
               className="w-full max-h-[420px] object-contain"
             />
