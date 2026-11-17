@@ -1273,6 +1273,16 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
   toggleShareContent: (id: string) => void;
   updateExplorerItemThumbnail: (id: string, thumbnailUrl: string) => void;
   updateContentLanguage: (itemIdOrTitle: string, language: string) => void;
+  updateExplorerItemDetails: (
+    idOrTitle: string,
+    patch: {
+      title?: string;
+      thumbnailUrl?: string;
+      bannerGradient?: string;
+      language?: string;
+      description?: string;
+    }
+  ) => void;
   addWikiResourceCard: (card: WikiResourceCard) => void;
   deleteWikiResourceCard: (id: string) => void;
 
@@ -4052,6 +4062,127 @@ export function RuangSosmedProvider({
     []
   );
 
+  const updateExplorerItemDetails = useCallback(
+    (
+      idOrTitle: string,
+      patch: {
+        title?: string;
+        thumbnailUrl?: string;
+        bannerGradient?: string;
+        language?: string;
+        description?: string;
+      }
+    ) => {
+      const normalizedNeedle = idOrTitle.trim().toLowerCase();
+      const target = stateRef.current.explorerItems.find(
+        (i) =>
+          i.id === idOrTitle ||
+          i.title.trim().toLowerCase() === normalizedNeedle
+      );
+      if (!target) return;
+
+      const oldKey = target.title.trim().toLowerCase();
+      const nextTitle =
+        patch.title && patch.title.trim() ? patch.title.trim() : target.title;
+      const newKey = nextTitle.trim().toLowerCase();
+      const isRenamed = oldKey !== newKey;
+
+      const updatedItem: ExplorerContentItem = {
+        ...target,
+        title: nextTitle,
+        ...(patch.thumbnailUrl !== undefined
+          ? { thumbnailUrl: patch.thumbnailUrl || undefined }
+          : {}),
+        ...(patch.bannerGradient !== undefined
+          ? { bannerGradient: patch.bannerGradient }
+          : {}),
+        ...(patch.language !== undefined ? { language: patch.language } : {}),
+        ...(patch.description !== undefined
+          ? { description: patch.description }
+          : {}),
+      };
+
+      if (typeof window !== "undefined") {
+        try {
+          if (patch.thumbnailUrl !== undefined) {
+            if (patch.thumbnailUrl) {
+              window.localStorage.setItem(
+                `ruang_sosmed_thumb_${target.id}`,
+                patch.thumbnailUrl
+              );
+              window.localStorage.setItem(
+                `ruang_sosmed_thumb_${newKey}`,
+                patch.thumbnailUrl
+              );
+            } else {
+              window.localStorage.removeItem(`ruang_sosmed_thumb_${target.id}`);
+              window.localStorage.removeItem(`ruang_sosmed_thumb_${newKey}`);
+            }
+          }
+          if (isRenamed) {
+            for (const prefix of [
+              "ruang_sosmed_curriculum_",
+              "ruang_sosmed_editor_sections_",
+              "ruang_sosmed_course_tier_",
+              "ruang_sosmed_thumb_",
+            ]) {
+              const existingVal = window.localStorage.getItem(`${prefix}${oldKey}`);
+              if (existingVal !== null) {
+                window.localStorage.setItem(`${prefix}${newKey}`, existingVal);
+                window.localStorage.removeItem(`${prefix}${oldKey}`);
+              }
+            }
+          }
+        } catch {}
+      }
+
+      setState((prev) => {
+        const nextExplorer = prev.explorerItems.map((item) =>
+          item.id === target.id ? updatedItem : item
+        );
+        const nextCatalog = prev.learnerAssignedItems.map((item) =>
+          item.id === target.id ||
+          item.title.trim().toLowerCase() === oldKey
+            ? {
+                ...item,
+                title: nextTitle,
+                ...(patch.thumbnailUrl !== undefined
+                  ? { thumbnailUrl: patch.thumbnailUrl || undefined }
+                  : {}),
+                ...(patch.bannerGradient !== undefined
+                  ? { bannerGradient: patch.bannerGradient }
+                  : {}),
+                ...(patch.description !== undefined
+                  ? { description: patch.description }
+                  : {}),
+              }
+            : item
+        );
+
+        let nextCurriculums = prev.courseCurriculums;
+        if (isRenamed && prev.courseCurriculums?.[oldKey]) {
+          nextCurriculums = { ...prev.courseCurriculums };
+          nextCurriculums[newKey] = nextCurriculums[oldKey];
+          delete nextCurriculums[oldKey];
+        }
+
+        return {
+          ...prev,
+          explorerItems: nextExplorer,
+          learnerAssignedItems: nextCatalog,
+          courseCurriculums: nextCurriculums,
+        };
+      });
+
+      const currentCurr =
+        stateRef.current.courseCurriculums?.[newKey] ??
+        stateRef.current.courseCurriculums?.[oldKey] ??
+        null;
+      void pushContentToSupabase(updatedItem, currentCurr);
+    },
+    []
+  );
+
   const addWikiResourceCard = useCallback((card: WikiResourceCard) => {
     setState((prev) => ({
       ...prev,
@@ -6698,6 +6829,7 @@ export function RuangSosmedProvider({
     toggleShareContent,
     updateExplorerItemThumbnail,
     updateContentLanguage,
+    updateExplorerItemDetails,
     addWikiResourceCard,
     deleteWikiResourceCard,
     assignContentToLearners,

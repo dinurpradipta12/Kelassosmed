@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ChevronLeft,
   Clock,
@@ -50,6 +50,7 @@ import {
   Zap,
   Lock,
   Check,
+  Save,
 } from "lucide-react";
 import {
   INITIAL_EDITOR_SECTIONS,
@@ -262,8 +263,10 @@ export function CoursePageEditor({
     saveCourseCurriculumLive,
     explorerItems,
     updateContentLanguage,
+    updateExplorerItemDetails,
   } = useRuangSosmedStore();
   const [docTitle, setDocTitle] = useState(initialTitle);
+  const savedTitleRef = useRef(initialTitle);
 
   const [sections, setSections] = useState<EditorSection[]>(() => {
     // 1. Cek prop initialSections jika dikirim eksplisit
@@ -328,8 +331,11 @@ export function CoursePageEditor({
   });
 
   const currentExplorerItem = explorerItems?.find(
-    (it) => it.title.trim().toLowerCase() === docTitle.trim().toLowerCase()
+    (it) =>
+      it.title.trim().toLowerCase() ===
+      savedTitleRef.current.trim().toLowerCase()
   );
+  const isEditingExisting = Boolean(currentExplorerItem);
   const [courseLang, setCourseLang] = useState<string>(() => {
     return currentExplorerItem?.language || "Bahasa Indonesia";
   });
@@ -396,8 +402,18 @@ export function CoursePageEditor({
   const [timelineSliderIndex, setTimelineSliderIndex] = useState(0);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
-  const [bannerPresetIdx, setBannerPresetIdx] = useState(0);
-  const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
+  const [bannerPresetIdx, setBannerPresetIdx] = useState<number>(() => {
+    if (currentExplorerItem?.bannerGradient) {
+      const idx = COLOR_AND_GRADIENT_PRESETS.findIndex(
+        (c) => c.bg === currentExplorerItem.bannerGradient
+      );
+      if (idx >= 0) return COLOR_AND_GRADIENT_PRESETS[idx].idx;
+    }
+    return 0;
+  });
+  const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(
+    () => currentExplorerItem?.thumbnailUrl || null
+  );
   const [hasBanner, setHasBanner] = useState(true);
   const [thumbnailPopoverOpen, setThumbnailPopoverOpen] = useState(false);
   const [thumbnailTab, setThumbnailTab] = useState<
@@ -874,16 +890,24 @@ export function CoursePageEditor({
             )}
           </div>
 
-          <input
-            type="text"
-            value={docTitle}
-            onChange={(e) => {
-              setDocTitle(e.target.value);
-              setLastSavedLabel("Saved in Ruang Sosmed 2.0");
-            }}
-            aria-label="Content Title"
-            className="min-w-0 flex-1 max-w-md rounded-lg bg-transparent px-2 py-1 text-sm font-bold text-[#121215] hover:bg-[#F8F9FB] focus:bg-[#FFFFFF] focus:border focus:border-[#4F39F6] focus:outline-none truncate"
-          />
+          <div className="relative min-w-0 flex-1 max-w-md flex items-center">
+            <input
+              type="text"
+              value={docTitle}
+              onChange={(e) => {
+                setDocTitle(e.target.value);
+                setLastSavedLabel("Belum disimpan");
+              }}
+              placeholder="Ketik judul kursus / konten..."
+              aria-label="Content Title"
+              title="Klik untuk mengedit judul kursus"
+              className="w-full rounded-lg bg-[#F8F9FB] hover:bg-[#FFFFFF] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] px-2.5 pr-7 py-1 text-sm font-bold text-[#121215] focus:outline-none truncate transition-colors"
+            />
+            <Pencil
+              size={12}
+              className="pointer-events-none absolute right-2.5 text-[#9CA3AF]"
+            />
+          </div>
 
           <span className="hidden md:inline-flex items-center gap-1.5 rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-1 text-[11px] font-medium text-[#5E5E5E]">
             <CheckCircle2 size={12} className="text-[#10B981]" />
@@ -916,54 +940,134 @@ export function CoursePageEditor({
             <span>{previewMode ? "Exit Preview" : "Preview"}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              const mappedSections = editorSectionsToAccordion(sections);
+          {isEditingExisting ? (
+            <button
+              type="button"
+              onClick={() => {
+                const cleanTitle = docTitle.trim() || savedTitleRef.current;
+                const mappedSections = editorSectionsToAccordion(sections);
+                const selectedPreset =
+                  COLOR_AND_GRADIENT_PRESETS.find(
+                    (c) => c.idx === bannerPresetIdx
+                  ) || COLOR_AND_GRADIENT_PRESETS[0];
 
-              // Simpan permanen ke localStorage & Store untuk kursus ini
-              if (typeof window !== "undefined") {
-                try {
-                  const key = docTitle.toLowerCase().trim();
-                  window.localStorage.setItem(
-                    `ruang_sosmed_curriculum_${key}`,
-                    JSON.stringify(mappedSections)
-                  );
-                  window.localStorage.setItem(
-                    `ruang_sosmed_editor_sections_${key}`,
-                    JSON.stringify(sections)
-                  );
-                  // Simpan video URL setiap chapter agar classroom langsung dapat memuat embed
-                  for (const sec of mappedSections) {
-                    for (const ch of sec.chapters) {
-                      if (ch.videoUrl) {
-                        window.localStorage.setItem(
-                          `ruang_sosmed_video_url_${ch.id}`,
-                          ch.videoUrl
-                        );
-                        window.localStorage.setItem(
-                          `ruang_sosmed_video_url_${key}`,
-                          ch.videoUrl
-                        );
+                if (typeof window !== "undefined") {
+                  try {
+                    const key = cleanTitle.toLowerCase().trim();
+                    window.localStorage.setItem(
+                      `ruang_sosmed_curriculum_${key}`,
+                      JSON.stringify(mappedSections)
+                    );
+                    window.localStorage.setItem(
+                      `ruang_sosmed_editor_sections_${key}`,
+                      JSON.stringify(sections)
+                    );
+                    window.localStorage.setItem(
+                      `ruang_sosmed_course_tier_${key}`,
+                      courseIsPro ? "pro" : "free"
+                    );
+                    for (const sec of mappedSections) {
+                      for (const ch of sec.chapters) {
+                        if (ch.videoUrl) {
+                          window.localStorage.setItem(
+                            `ruang_sosmed_video_url_${ch.id}`,
+                            ch.videoUrl
+                          );
+                          window.localStorage.setItem(
+                            `ruang_sosmed_video_url_${key}`,
+                            ch.videoUrl
+                          );
+                        }
                       }
                     }
-                  }
-                } catch {}
-              }
-              saveCourseCurriculumLive(docTitle, mappedSections);
+                  } catch {}
+                }
 
-              setLastSavedLabel("Published in Ruang Sosmed 2.0");
-              onPublish(
-                docTitle,
-                contentType,
-                mappedSections,
-                currentChapter?.bodyText?.slice(0, 200) || ""
-              );
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_2px_6px_rgba(79,57,246,0.28)] transition-colors cursor-pointer"
-          >
-            <span>Publish</span>
-          </button>
+                updateExplorerItemDetails(
+                  currentExplorerItem?.id || savedTitleRef.current,
+                  {
+                    title: cleanTitle,
+                    thumbnailUrl: hasBanner ? bannerImageUrl || "" : "",
+                    bannerGradient: hasBanner ? selectedPreset?.bg : undefined,
+                    language: courseLang,
+                    description: currentChapter?.bodyText?.slice(0, 200) || "",
+                  }
+                );
+                saveCourseCurriculumLive(cleanTitle, mappedSections);
+                savedTitleRef.current = cleanTitle;
+                if (cleanTitle !== docTitle) setDocTitle(cleanTitle);
+
+                setLastSavedLabel("Saved in Ruang Sosmed 2.0");
+                onShowToast(
+                  `Perubahan judul, cover & pengaturan "${cleanTitle}" berhasil disimpan.`
+                );
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_2px_6px_rgba(79,57,246,0.28)] transition-colors cursor-pointer"
+            >
+              <Save size={13} />
+              <span>Save</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                const cleanTitle = docTitle.trim() || "Untitled Course";
+                const mappedSections = editorSectionsToAccordion(sections);
+                const selectedPreset =
+                  COLOR_AND_GRADIENT_PRESETS.find(
+                    (c) => c.idx === bannerPresetIdx
+                  ) || COLOR_AND_GRADIENT_PRESETS[0];
+
+                // Simpan permanen ke localStorage & Store untuk kursus ini
+                if (typeof window !== "undefined") {
+                  try {
+                    const key = cleanTitle.toLowerCase().trim();
+                    window.localStorage.setItem(
+                      `ruang_sosmed_curriculum_${key}`,
+                      JSON.stringify(mappedSections)
+                    );
+                    window.localStorage.setItem(
+                      `ruang_sosmed_editor_sections_${key}`,
+                      JSON.stringify(sections)
+                    );
+                    for (const sec of mappedSections) {
+                      for (const ch of sec.chapters) {
+                        if (ch.videoUrl) {
+                          window.localStorage.setItem(
+                            `ruang_sosmed_video_url_${ch.id}`,
+                            ch.videoUrl
+                          );
+                          window.localStorage.setItem(
+                            `ruang_sosmed_video_url_${key}`,
+                            ch.videoUrl
+                          );
+                        }
+                      }
+                    }
+                  } catch {}
+                }
+                saveCourseCurriculumLive(cleanTitle, mappedSections);
+
+                setLastSavedLabel("Published in Ruang Sosmed 2.0");
+                onPublish(
+                  cleanTitle,
+                  contentType,
+                  mappedSections,
+                  currentChapter?.bodyText?.slice(0, 200) || ""
+                );
+                if (hasBanner && (bannerImageUrl || selectedPreset?.bg)) {
+                  updateExplorerItemDetails(cleanTitle, {
+                    thumbnailUrl: bannerImageUrl || "",
+                    bannerGradient: selectedPreset?.bg,
+                    language: courseLang,
+                  });
+                }
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_2px_6px_rgba(79,57,246,0.28)] transition-colors cursor-pointer"
+            >
+              <span>Publish</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -1678,17 +1782,27 @@ export function CoursePageEditor({
                         found >= 0 ? COLOR_AND_GRADIENT_PRESETS[found].idx : 0
                       );
                     }
+                    if (isEditingExisting) {
+                      setLastSavedLabel("Belum disimpan");
+                    }
                     setBannerUploadProgress(47);
                     window.setTimeout(() => setBannerUploadProgress(78), 380);
                     window.setTimeout(() => {
                       setBannerUploadProgress(null);
-                      onShowToast("Cover thumbnail bab berhasil disimpan.");
+                      onShowToast(
+                        isEditingExisting
+                          ? "Cover diperbarui. Klik Save di kanan atas untuk menyimpan permanen."
+                          : "Cover thumbnail bab berhasil dipilih."
+                      );
                     }, 820);
                   }}
                   onRemoveThumbnail={() => {
                     setHasBanner(false);
                     setBannerImageUrl(null);
                     setThumbnailPopoverOpen(false);
+                    if (isEditingExisting) {
+                      setLastSavedLabel("Belum disimpan");
+                    }
                     onShowToast("Cover thumbnail bab dihapus.");
                   }}
                   onShowToast={onShowToast}
