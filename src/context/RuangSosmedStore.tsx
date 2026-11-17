@@ -1761,11 +1761,20 @@ export function RuangSosmedProvider({
           rsLessonReviews: (() => {
             const list = Array.isArray(parsed.rsLessonReviews)
               ? parsed.rsLessonReviews
-              : RS_LEARNING_26_REVIEWS_SEED;
+              : [];
 
             const activeUser = getActiveSessionUser();
 
-            return list.map((r: RsLessonReviewItem) => {
+            return list
+              .filter(
+                (r: RsLessonReviewItem) =>
+                  r &&
+                  !String(r.id || "").startsWith("rev-seed-") &&
+                  !["Nisa Amelia", "Dimas Prakoso", "Siti Sarah"].includes(
+                    r.reviewerName
+                  )
+              )
+              .map((r: RsLessonReviewItem) => {
               if (
                 r.reviewerName === "Raka Pratama" ||
                 r.reviewerUsername === "raka.pratama" ||
@@ -2881,6 +2890,14 @@ export function RuangSosmedProvider({
             const existingIds = new Set(nextReviews.map((r) => r.id));
             const toAdd: RsLessonReviewItem[] = [];
             for (const r of remoteReviews) {
+              if (
+                String(r.id || "").startsWith("rev-seed-") ||
+                ["Nisa Amelia", "Dimas Prakoso", "Siti Sarah"].includes(
+                  r.reviewerName
+                )
+              ) {
+                continue;
+              }
               if (!existingIds.has(r.id)) {
                 const resolvedReviewer =
                   r.reviewerName === "Raka Pratama" ||

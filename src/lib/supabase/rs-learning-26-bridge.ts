@@ -468,38 +468,7 @@ export const RS_LEARNING_26_LESSONS_SEED: RsLessonItem[] = [
   },
 ];
 
-export const RS_LEARNING_26_REVIEWS_SEED: RsLessonReviewItem[] = [
-  {
-    id: "rev-seed-1",
-    lessonKey: "content-planning",
-    reviewerName: "Nisa Amelia",
-    reviewerUsername: "nisa",
-    rating: 5,
-    feedback:
-      "Materinya jelas, contoh yang dipakai gampang diikuti untuk menyusun content pillar dan jadwal mingguan.",
-    createdAt: "2026-10-24T10:15:00Z",
-  },
-  {
-    id: "rev-seed-2",
-    lessonKey: "content-planning",
-    reviewerName: "Dimas Prakoso",
-    reviewerUsername: "dimas",
-    rating: 5,
-    feedback:
-      "Alur videonya enak dan template content brief langsung kepakai di tim sosmed kami.",
-    createdAt: "2026-10-25T14:30:00Z",
-  },
-  {
-    id: "rev-seed-3",
-    lessonKey: "asset-reels",
-    reviewerName: "Siti Sarah",
-    reviewerUsername: "siti",
-    rating: 5,
-    feedback:
-      "Preset subtitle dan reel cover pack sangat menghemat waktu editing harian.",
-    createdAt: "2026-10-26T09:20:00Z",
-  },
-];
+export const RS_LEARNING_26_REVIEWS_SEED: RsLessonReviewItem[] = [];
 
 // -----------------------------------------------------------------------------
 // 4. SUPABASE DATA FETCH & MUTATION SERVICES FOR `rs-learning-26` TABLES

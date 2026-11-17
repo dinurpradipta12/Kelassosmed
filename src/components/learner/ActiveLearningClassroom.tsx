@@ -185,26 +185,54 @@ export function ActiveLearningClassroom({
 
   const allSanitizedReviews = React.useMemo(() => {
     const list = rsLessonReviews ?? [];
-    return list.map((rev) => {
-      const resolvedReviewer =
-        rev.reviewerName === "Raka Pratama" ||
-        rev.reviewerUsername === "raka.pratama" ||
-        rev.feedback === "tes feedback"
-          ? learnerName || "Learner"
-          : rev.reviewerName;
-
-      return {
-        ...rev,
-        reviewerName: resolvedReviewer,
-      };
+    const courseKeys = new Set<string>();
+    if (courseTitle?.trim()) {
+      courseKeys.add(courseTitle.trim().toLowerCase());
+    }
+    sections.forEach((sec) => {
+      if (sec.sectionTitle?.trim()) {
+        courseKeys.add(sec.sectionTitle.trim().toLowerCase());
+      }
+      (sec.chapters || []).forEach((ch) => {
+        if (ch.id?.trim()) courseKeys.add(ch.id.trim().toLowerCase());
+        if (ch.title?.trim()) courseKeys.add(ch.title.trim().toLowerCase());
+      });
     });
-  }, [rsLessonReviews, learnerName]);
+
+    return list
+      .filter((rev) => {
+        if (!rev) return false;
+        if (String(rev.id || "").startsWith("rev-seed-")) return false;
+        if (
+          ["Nisa Amelia", "Dimas Prakoso", "Siti Sarah"].includes(
+            rev.reviewerName
+          )
+        ) {
+          return false;
+        }
+        const lk = (rev.lessonKey || "").trim().toLowerCase();
+        return Boolean(lk && courseKeys.has(lk));
+      })
+      .map((rev) => {
+        const resolvedReviewer =
+          rev.reviewerName === "Raka Pratama" ||
+          rev.reviewerUsername === "raka.pratama" ||
+          rev.feedback === "tes feedback"
+            ? learnerName || "Learner"
+            : rev.reviewerName;
+
+        return {
+          ...rev,
+          reviewerName: resolvedReviewer,
+        };
+      });
+  }, [rsLessonReviews, learnerName, courseTitle, sections]);
 
   const reviewStats = React.useMemo(() => {
     const total = allSanitizedReviews.length;
     if (total === 0) {
       return {
-        average: "5.0",
+        average: "0.0",
         total: 0,
         counts: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>,
         pcts: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>,
