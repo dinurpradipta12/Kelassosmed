@@ -296,7 +296,79 @@ export function ContentDetailView({
     );
   };
 
-  const filteredThreads = threads.filter((t) => {
+  // Filter diskusi & kendala agar hanya menampilkan milik course ini (tidak bocor dari course lain)
+  const { courseThreads, courseIssues } = React.useMemo(() => {
+    const currentTitleLower = liveExplorerItem.title.trim().toLowerCase();
+    const otherCourseTitles = new Set(
+      explorerItems
+        .filter(
+          (e) =>
+            e.id !== liveExplorerItem.id &&
+            e.title.trim().toLowerCase() !== currentTitleLower
+        )
+        .map((e) => e.title.trim().toLowerCase())
+    );
+
+    const curr =
+      getCourseCurriculum(liveExplorerItem.title) || courseSections || [];
+    const chapterTitles = new Set<string>();
+    curr.forEach((sec) => {
+      if (sec.sectionTitle?.trim())
+        chapterTitles.add(sec.sectionTitle.trim().toLowerCase());
+      (sec.chapters || []).forEach((ch) => {
+        if (ch.title?.trim()) chapterTitles.add(ch.title.trim().toLowerCase());
+      });
+    });
+
+    const belongsToThisCourse = (
+      badgeOrChapter: string | undefined,
+      titleText: string | undefined
+    ) => {
+      const badge = (badgeOrChapter || "").trim().toLowerCase();
+      const title = (titleText || "").trim().toLowerCase();
+
+      if (
+        badge === currentTitleLower ||
+        (currentTitleLower && title.includes(currentTitleLower))
+      ) {
+        return true;
+      }
+
+      if (badge && otherCourseTitles.has(badge)) {
+        return false;
+      }
+      for (const other of otherCourseTitles) {
+        if (other && title.includes(other)) {
+          return false;
+        }
+      }
+
+      if (badge && chapterTitles.has(badge)) return true;
+      for (const ch of chapterTitles) {
+        if (ch && title.includes(ch)) return true;
+      }
+      return false;
+    };
+
+    return {
+      courseThreads: threads.filter((t) =>
+        belongsToThisCourse(t.chapterBadge, t.title)
+      ),
+      courseIssues: issues.filter((i) =>
+        belongsToThisCourse(i.chapter, i.title)
+      ),
+    };
+  }, [
+    threads,
+    issues,
+    liveExplorerItem.id,
+    liveExplorerItem.title,
+    explorerItems,
+    getCourseCurriculum,
+    courseSections,
+  ]);
+
+  const filteredThreads = courseThreads.filter((t) => {
     if (
       chapterFilter !== "All Chapters" &&
       !t.chapterBadge.startsWith(chapterFilter)
@@ -501,7 +573,7 @@ export function ContentDetailView({
               <AlertCircle size={14} />
               <span>Report Issues</span>
               <span className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 px-1.5 py-0.2 text-[10px] font-bold text-[#EF4444]">
-                {issues.filter((i) => i.status === "Open").length}
+                {courseIssues.filter((i) => i.status === "Open").length}
               </span>
               {activeTab === "issues" && (
                 <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#4F39F6]" />
@@ -522,7 +594,7 @@ export function ContentDetailView({
               <MessageSquare size={14} />
               <span>Discussion</span>
               <span className="rounded-md bg-[#4F39F6]/10 px-1.5 py-0.2 text-[10px] font-bold text-[#4F39F6]">
-                {threads.length}
+                {courseThreads.length}
               </span>
               {activeTab === "discussion" && (
                 <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#4F39F6]" />
@@ -1071,7 +1143,7 @@ export function ContentDetailView({
                     <h4 className="text-xs font-bold text-[#121215]">Laporan Kendala Murid</h4>
                   </div>
                   <p className="text-[11px] text-[#5E5E5E]">
-                    {issues.filter((i) => i.status === "Open").length} kendala terbuka butuh tindak lanjut.
+                    {courseIssues.filter((i) => i.status === "Open").length} kendala terbuka butuh tindak lanjut.
                   </p>
                 </div>
                 <button
@@ -1093,7 +1165,7 @@ export function ContentDetailView({
                     <h4 className="text-xs font-bold text-[#121215]">Forum Diskusi Chapter</h4>
                   </div>
                   <p className="text-[11px] text-[#5E5E5E]">
-                    {threads.length} utas pertanyaan dari murid di ruang belajar.
+                    {courseThreads.length} utas pertanyaan dari murid di ruang belajar.
                   </p>
                 </div>
                 <button
@@ -1421,8 +1493,8 @@ export function ContentDetailView({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-bold text-[#121215]">
-                    Report Issue ({issues.length} Total Report
-                    {issues.length !== 1 ? "s" : ""})
+                    Report Issue ({courseIssues.length} Total Report
+                    {courseIssues.length !== 1 ? "s" : ""})
                   </h2>
                   <p className="text-xs text-[#5E5E5E]">
                     Breakdown of content feedback submitted by learners across
@@ -1449,16 +1521,16 @@ export function ContentDetailView({
               <div className="space-y-2.5">
                 {ISSUE_CATEGORIES_META.map((cat, idx) => {
                   const catCount =
-                    issues.length === 0
+                    courseIssues.length === 0
                       ? 0
-                      : issues.filter((iss) =>
+                      : courseIssues.filter((iss) =>
                           iss.category
                             ? iss.category === cat.label
                             : idx === 0
                         ).length;
                   const catPct =
-                    issues.length > 0
-                      ? Math.round((catCount / issues.length) * 100)
+                    courseIssues.length > 0
+                      ? Math.round((catCount / courseIssues.length) * 100)
                       : 0;
                   return (
                     <div key={cat.label} className="space-y-1">
@@ -1489,7 +1561,7 @@ export function ContentDetailView({
             {/* Reported Issue Cards with [Send a Message] & [Mark Resolved] (ref_08) */}
             <div className="space-y-3">
               {(() => {
-                const visibleIssues = issues.filter(
+                const visibleIssues = courseIssues.filter(
                   (iss) =>
                     issueTypeFilter === "All type issue" ||
                     (iss.category || "Content Outdated") === issueTypeFilter
