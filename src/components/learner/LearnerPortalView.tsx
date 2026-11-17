@@ -3564,7 +3564,7 @@ export function LearnerPortalView({
               <div className="w-full lg:w-[310px] overflow-hidden rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_8px_28px_rgba(16,15,17,0.08)]">
                 {/* Top Amber Gradient Header + Clean Full-Width Price Box */}
                 <div
-                  className="p-4 relative space-y-3"
+                  className="p-4 relative space-y-3 pro-amber-gradient-header"
                   style={{
                     background:
                       "linear-gradient(135deg, #FEF3C7 0%, #FDE68A 48%, #F59E0B 100%)",

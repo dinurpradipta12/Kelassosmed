@@ -300,30 +300,52 @@ html[data-theme-active="true"] body {
   accent-color: var(--theme-button-bg) !important;
 }
 
-/* Main Page Canvas Backgrounds */
+/* Main Page Canvas Backgrounds (including opacity variants) */
 html[data-theme-active="true"] .bg-\[\#F8F9FB\],
+html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/60,
+html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/70,
+html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/80,
 html[data-theme-active="true"] .bg-\[\#F9FAFB\],
-html[data-theme-active="true"] .bg-\[\#F8FAFC\] {
+html[data-theme-active="true"] .bg-\[\#F9FAFB\]\/50,
+html[data-theme-active="true"] .bg-\[\#F9FAFB\]\/60,
+html[data-theme-active="true"] .bg-\[\#F8FAFC\],
+html[data-theme-active="true"] .bg-\[\#F8FAFC\]\/50,
+html[data-theme-active="true"] .bg-\[\#FAFAFA\],
+html[data-theme-active="true"] .bg-\[\#FAFAFC\] {
   background-color: var(--theme-canvas) !important;
 }
 
-/* Elevated Surfaces (Cards, Sidebars, Modals, Inputs) */
+/* Elevated Surfaces (Cards, Sidebars, Modals, Inputs - preserving /10-/35 glass overlays) */
 html[data-theme-active="true"] .bg-\[\#FFFFFF\],
+html[data-theme-active="true"] .bg-\[\#FFFFFF\]\/95,
+html[data-theme-active="true"] .bg-\[\#FFFFFF\]\/90,
+html[data-theme-active="true"] .bg-\[\#FFFFFF\]\/80,
 html[data-theme-active="true"] .bg-white,
 html[data-theme-active="true"] .bg-white\/95,
 html[data-theme-active="true"] .bg-white\/90,
-html[data-theme-active="true"] .bg-\[\#FFFFFF\]\/95,
-html[data-theme-active="true"] .bg-\[\#FFFFFF\]\/90,
-html[data-theme-active="true"] .bg-\[\#FFFFFF\]\/80 {
+html[data-theme-active="true"] .bg-white\/85,
+html[data-theme-active="true"] .bg-white\/80,
+html[data-theme-active="true"] .bg-white\/70 {
   background-color: var(--theme-surface) !important;
 }
 
 /* Muted / Soft Secondary Surfaces */
 html[data-theme-active="true"] .bg-\[\#F1F5F9\],
+html[data-theme-active="true"] .bg-\[\#F1F3F9\],
 html[data-theme-active="true"] .bg-\[\#F3F4F6\],
+html[data-theme-active="true"] .bg-\[\#ECEEF2\],
+html[data-theme-active="true"] .bg-\[\#EAECEF\],
+html[data-theme-active="true"] .bg-\[\#EAECEF\]\/30,
+html[data-theme-active="true"] .bg-\[\#EAECEF\]\/50,
+html[data-theme-active="true"] .bg-\[\#EAECEF\]\/60,
+html[data-theme-active="true"] .bg-\[\#EAECEF\]\/70,
+html[data-theme-active="true"] .bg-\[\#E5E7EB\],
 html[data-theme-active="true"] .bg-slate-50,
+html[data-theme-active="true"] .bg-slate-50\/50,
+html[data-theme-active="true"] .bg-slate-50\/70,
 html[data-theme-active="true"] .bg-slate-50\/80,
 html[data-theme-active="true"] .bg-slate-100,
+html[data-theme-active="true"] .bg-slate-100\/70,
 html[data-theme-active="true"] .bg-slate-200\/70,
 html[data-theme-active="true"] .bg-slate-200\/60 {
   background-color: var(--theme-surface-soft) !important;
@@ -334,16 +356,22 @@ html[data-theme-active="true"] .hover\:bg-\[\#F8F9FB\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#F8FAFC\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#F1F5F9\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#FFFFFF\]:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/60:hover,
 html[data-theme-active="true"] .hover\:bg-white:hover,
 html[data-theme-active="true"] .hover\:bg-slate-50:hover,
 html[data-theme-active="true"] .hover\:bg-slate-100:hover,
-html[data-theme-active="true"] .hover\:bg-slate-200\/80:hover {
+html[data-theme-active="true"] .hover\:bg-slate-200\/80:hover,
+html[data-theme-active="true"] .hover\:bg-black\/\[0\.04\]:hover {
   background-color: var(--theme-surface-hover) !important;
 }
 
 /* Hairline Borders */
 html[data-theme-active="true"] .border-\[\#EAECEF\],
+html[data-theme-active="true"] .border-\[\#EAECEF\]\/70,
 html[data-theme-active="true"] .border-\[\#E2E8F0\],
+html[data-theme-active="true"] .border-\[\#D1D5DB\],
+html[data-theme-active="true"] .border-\[\#CBD5E1\],
 html[data-theme-active="true"] .border-\[\#F0F2F5\],
 html[data-theme-active="true"] .border-\[\#F1F5F9\],
 html[data-theme-active="true"] .border-slate-200,
@@ -355,6 +383,7 @@ html[data-theme-active="true"] .divide-\[\#EAECEF\] > :not(:last-child) {
 }
 
 /* Text Colors (Guaranteed Readability) */
+html[data-theme-active="true"] .text-\[\#0F172A\],
 html[data-theme-active="true"] .text-\[\#121215\],
 html[data-theme-active="true"] .text-\[\#1E293B\],
 html[data-theme-active="true"] .text-slate-900,
@@ -362,6 +391,7 @@ html[data-theme-active="true"] .text-slate-800 {
   color: var(--theme-text) !important;
 }
 
+html[data-theme-active="true"] .text-\[\#334155\],
 html[data-theme-active="true"] .text-\[\#5E5E5E\],
 html[data-theme-active="true"] .text-\[\#475569\],
 html[data-theme-active="true"] .text-\[\#64748B\],
@@ -373,6 +403,7 @@ html[data-theme-active="true"] .text-slate-500 {
 
 html[data-theme-active="true"] .text-\[\#9CA3AF\],
 html[data-theme-active="true"] .text-\[\#94A3B8\],
+html[data-theme-active="true"] .text-\[\#CBD5E1\],
 html[data-theme-active="true"] .text-slate-400,
 html[data-theme-active="true"] .placeholder\:text-slate-400::placeholder,
 html[data-theme-active="true"] input::placeholder,
@@ -380,6 +411,7 @@ html[data-theme-active="true"] textarea::placeholder {
   color: var(--theme-text-muted) !important;
 }
 
+html[data-theme-active="true"] .hover\:text-\[\#0F172A\]:hover,
 html[data-theme-active="true"] .hover\:text-\[\#121215\]:hover,
 html[data-theme-active="true"] .hover\:text-slate-800:hover,
 html[data-theme-active="true"] .hover\:text-slate-900:hover {
@@ -430,45 +462,134 @@ html[data-theme-mode="dark"] .hover\:bg-\[\#27272A\]:hover {
   background-color: #2E3B54 !important;
 }
 
+/* Preserve dark text when button background is vivid bright orange #F59E0B (Upgrade PRO) */
+html[data-theme-mode="dark"] .bg-\[\#F59E0B\],
+html[data-theme-mode="dark"] .bg-\[\#F59E0B\].text-\[\#121215\],
+html[data-theme-mode="dark"] .bg-\[\#F59E0B\] .text-\[\#121215\] {
+  color: #121215 !important;
+}
+
+/* PRO Amber Gradient Banner Headers (Learner Portal Right Card & Admin Dashboard) */
+html[data-theme-mode="dark"] .pro-amber-gradient-header {
+  background: linear-gradient(
+    135deg,
+    rgba(245, 158, 11, 0.22) 0%,
+    rgba(180, 83, 9, 0.12) 55%,
+    var(--theme-surface) 100%
+  ) !important;
+}
+
+/* Amber / Warm Tinted Pills & Boxes in Dark Mode */
+html[data-theme-mode="dark"] .bg-\[\#FFFBEB\],
+html[data-theme-mode="dark"] .bg-\[\#FFFBEB\]\/70,
+html[data-theme-mode="dark"] .bg-\[\#FFFBEB\]\/95,
 html[data-theme-mode="dark"] .bg-\[\#FEF3C7\],
-html[data-theme-mode="dark"] .bg-amber-50 {
+html[data-theme-mode="dark"] .bg-\[\#FEF3C7\]\/40,
+html[data-theme-mode="dark"] .bg-\[\#FEF3C7\]\/60,
+html[data-theme-mode="dark"] .bg-\[\#FEF3C7\]\/70,
+html[data-theme-mode="dark"] .bg-\[\#FDE68A\],
+html[data-theme-mode="dark"] .bg-\[\#FEF08A\],
+html[data-theme-mode="dark"] .bg-\[\#FFF7ED\],
+html[data-theme-mode="dark"] .bg-amber-50,
+html[data-theme-mode="dark"] .bg-amber-50\/60,
+html[data-theme-mode="dark"] .bg-amber-50\/70,
+html[data-theme-mode="dark"] .bg-amber-50\/90,
+html[data-theme-mode="dark"] .bg-amber-100 {
   background-color: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(245, 158, 11, 0.34) !important;
+}
+
+html[data-theme-mode="dark"] .hover\:bg-\[\#FDE68A\]:hover {
+  background-color: rgba(245, 158, 11, 0.26) !important;
 }
 
 html[data-theme-mode="dark"] .text-\[\#92400E\],
+html[data-theme-mode="dark"] .text-\[\#B45309\],
+html[data-theme-mode="dark"] .text-\[\#D97706\],
+html[data-theme-mode="dark"] .text-amber-600,
 html[data-theme-mode="dark"] .text-amber-700,
-html[data-theme-mode="dark"] .text-amber-800 {
+html[data-theme-mode="dark"] .text-amber-800,
+html[data-theme-mode="dark"] .text-amber-900 {
   color: #FCD34D !important;
 }
 
+/* Emerald / Green Tinted Pills in Dark Mode */
 html[data-theme-mode="dark"] .bg-\[\#ECFDF5\],
-html[data-theme-mode="dark"] .bg-emerald-50 {
+html[data-theme-mode="dark"] .bg-\[\#D1FAE5\],
+html[data-theme-mode="dark"] .bg-emerald-50,
+html[data-theme-mode="dark"] .bg-emerald-50\/60 {
   background-color: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(52, 211, 153, 0.32) !important;
+}
+
+html[data-theme-mode="dark"] .hover\:bg-\[\#D1FAE5\]:hover {
+  background-color: rgba(16, 185, 129, 0.25) !important;
 }
 
 html[data-theme-mode="dark"] .text-\[\#059669\],
-html[data-theme-mode="dark"] .text-emerald-700 {
+html[data-theme-mode="dark"] .text-\[\#047857\],
+html[data-theme-mode="dark"] .text-emerald-600,
+html[data-theme-mode="dark"] .text-emerald-700,
+html[data-theme-mode="dark"] .text-emerald-800 {
   color: #6EE7B7 !important;
 }
 
+/* Indigo / Blue / Lavender Tinted Pills, Buttons & Callout Boxes in Dark Mode */
+html[data-theme-mode="dark"] .bg-\[\#EEF2FF\],
+html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/20,
+html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/40,
+html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/60,
+html[data-theme-mode="dark"] .bg-\[\#E0E7FF\],
+html[data-theme-mode="dark"] .bg-\[\#E0F2FE\],
+html[data-theme-mode="dark"] .bg-\[\#DBEAFE\],
+html[data-theme-mode="dark"] .bg-\[\#DDD6FE\],
 html[data-theme-mode="dark"] .bg-\[\#EFF6FF\],
+html[data-theme-mode="dark"] .bg-\[\#EFF6FF\]\/50,
+html[data-theme-mode="dark"] .bg-\[\#F0FDFA\],
+html[data-theme-mode="dark"] .bg-\[\#FCE7F3\],
+html[data-theme-mode="dark"] .bg-\[\#FDF2F8\],
 html[data-theme-mode="dark"] .bg-blue-50,
-html[data-theme-mode="dark"] .bg-indigo-50 {
-  background-color: rgba(59, 130, 246, 0.18) !important;
+html[data-theme-mode="dark"] .bg-blue-50\/50,
+html[data-theme-mode="dark"] .bg-indigo-50,
+html[data-theme-mode="dark"] .bg-indigo-50\/40,
+html[data-theme-mode="dark"] .bg-indigo-50\/60,
+html[data-theme-mode="dark"] .bg-indigo-50\/70 {
+  background-color: rgba(59, 130, 246, 0.16) !important;
+  border-color: rgba(96, 165, 250, 0.32) !important;
 }
 
+html[data-theme-mode="dark"] .hover\:bg-\[\#E0E7FF\]:hover,
+html[data-theme-mode="dark"] .hover\:bg-\[\#EFF6FF\]\/50:hover {
+  background-color: rgba(59, 130, 246, 0.25) !important;
+}
+
+html[data-theme-mode="dark"] .text-\[\#1E40AF\],
 html[data-theme-mode="dark"] .text-\[\#2563EB\],
+html[data-theme-mode="dark"] .text-blue-600,
 html[data-theme-mode="dark"] .text-blue-700,
-html[data-theme-mode="dark"] .text-indigo-700 {
+html[data-theme-mode="dark"] .text-indigo-600,
+html[data-theme-mode="dark"] .text-indigo-700,
+html[data-theme-mode="dark"] .text-indigo-800 {
   color: #93C5FD !important;
 }
 
+/* Rose / Red Tinted Hidden Banners & Alert Boxes in Dark Mode */
 html[data-theme-mode="dark"] .bg-\[\#FEF2F2\],
-html[data-theme-mode="dark"] .bg-rose-50 {
+html[data-theme-mode="dark"] .bg-\[\#FEF2F2\]\/60,
+html[data-theme-mode="dark"] .bg-\[\#FEE2E2\],
+html[data-theme-mode="dark"] .bg-\[\#FEE2E2\]\/50,
+html[data-theme-mode="dark"] .bg-\[\#FEE2E2\]\/60,
+html[data-theme-mode="dark"] .bg-\[\#FCA5A5\]\/60,
+html[data-theme-mode="dark"] .bg-rose-50,
+html[data-theme-mode="dark"] .bg-red-50 {
   background-color: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(248, 113, 113, 0.38) !important;
 }
 
 html[data-theme-mode="dark"] .text-\[\#DC2626\],
+html[data-theme-mode="dark"] .text-\[\#EF4444\],
+html[data-theme-mode="dark"] .text-red-600,
+html[data-theme-mode="dark"] .text-rose-500,
 html[data-theme-mode="dark"] .text-rose-600,
 html[data-theme-mode="dark"] .text-rose-700 {
   color: #FCA5A5 !important;

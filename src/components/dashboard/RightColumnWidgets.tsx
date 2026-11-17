@@ -217,7 +217,7 @@ export function RightColumnWidgets({
       {/* Widget 2: Learner PRO Subscriptions & Access Control (Admin Monitor) */}
       <article className="overflow-hidden rounded-xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]">
         <div
-          className="p-5 border-b border-[#EAECEF]"
+          className="p-5 border-b border-[#EAECEF] pro-amber-gradient-header"
           style={{
             background:
               "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 65%, #FFFFFF 100%)",

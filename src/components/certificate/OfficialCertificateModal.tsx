@@ -650,9 +650,13 @@ export function OfficialCertificateModal({
 
               <div className="py-1">
                 <h3
-                  className={`text-2xl sm:text-4xl tracking-tight ${nameFontClass}`}
+                  className={`text-2xl sm:text-4xl tracking-tight text-[#121215] ${nameFontClass}`}
                   style={{
-                    color: cfg.recipientNameColor || "#121215",
+                    color:
+                      cfg.recipientNameColor &&
+                      cfg.recipientNameColor.toUpperCase() !== "#121215"
+                        ? cfg.recipientNameColor
+                        : undefined,
                     fontSize: cfg.recipientNameFontSize
                       ? `${cfg.recipientNameFontSize}px`
                       : undefined,
@@ -662,8 +666,14 @@ export function OfficialCertificateModal({
                 </h3>
                 {cfg.showRole && (
                   <p
-                    className="text-xs font-semibold mt-1"
-                    style={{ color: cfg.recipientRoleColor || "#5E5E5E" }}
+                    className="text-xs font-semibold mt-1 text-[#5E5E5E]"
+                    style={{
+                      color:
+                        cfg.recipientRoleColor &&
+                        cfg.recipientRoleColor.toUpperCase() !== "#5E5E5E"
+                          ? cfg.recipientRoleColor
+                          : undefined,
+                    }}
                   >
                     {learnerRole}
                   </p>
@@ -679,11 +689,15 @@ export function OfficialCertificateModal({
               </p>
 
               <h4
-                className={`font-bold leading-snug ${
+                className={`font-bold leading-snug text-[#121215] ${
                   cfg.courseTitleAlign === "center" ? "text-center" : "text-left"
                 }`}
                 style={{
-                  color: cfg.courseTitleColor || "#121215",
+                  color:
+                    cfg.courseTitleColor &&
+                    cfg.courseTitleColor.toUpperCase() !== "#121215"
+                      ? cfg.courseTitleColor
+                      : undefined,
                   fontSize: cfg.courseTitleFontSize
                     ? `${cfg.courseTitleFontSize}px`
                     : "18px",
