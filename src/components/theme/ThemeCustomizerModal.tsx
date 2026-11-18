@@ -328,13 +328,18 @@ export function applyThemeToDocument(config: AppThemeConfig) {
   root.style.setProperty("--theme-text", config.textColor);
   root.style.setProperty("--theme-text-secondary", config.textSecondaryColor);
   root.style.setProperty("--theme-text-muted", config.textMutedColor);
+  const isVeryLightAccentInLight =
+    config.mode === "light" && getContrastTextColor(config.accentColor) === "#121215";
   const isVeryLightAccentInDark =
     config.mode === "dark" && getContrastTextColor(config.accentColor) === "#121215";
+  const resolvedAccentTextColor = isVeryLightAccentInLight
+    ? config.textColor
+    : config.accentColor;
   const resolvedAccentSoft = isVeryLightAccentInDark
     ? "rgba(59, 130, 246, 0.14)"
     : hexToRgba(config.accentColor, config.mode === "dark" ? 0.14 : 0.12);
 
-  root.style.setProperty("--theme-accent", config.accentColor);
+  root.style.setProperty("--theme-accent", resolvedAccentTextColor);
   root.style.setProperty("--theme-accent-soft", resolvedAccentSoft);
   root.style.setProperty("--theme-accent-contrast", accentText);
   root.style.setProperty("--theme-button-bg", config.buttonBg);

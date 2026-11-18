@@ -2543,11 +2543,7 @@ export function RuangSosmedProvider({
               (r) =>
                 r &&
                 r.title &&
-                r.title !== "__SYSTEM_REWARDS_CATALOG__" &&
-                r.title !== "__SYSTEM_CERTIFICATE_CONFIG__" &&
-                r.title !== "__SYSTEM_LEARNER_PRO_CONFIG__" &&
-                r.title !== "__SYSTEM_MAINTENANCE_CONFIG__" &&
-                r.title !== "__SYSTEM_USER_AVATARS__" &&
+                !String(r.title).startsWith("__SYSTEM_") &&
                 !isLegacyDummyItem({ id: r.id, title: r.title })
             );
             const dbIds = new Set(dbRows.map((r) => r.id));
@@ -6729,6 +6725,17 @@ export function RuangSosmedProvider({
         if (parts.length >= 3) {
           const firstLast = `${parts[0]} ${parts[parts.length - 1]}`;
           if (map[firstLast]) return map[firstLast];
+        }
+      }
+      for (const rawId of identifiers) {
+        if (!rawId) continue;
+        const clean = rawId.trim().toLowerCase();
+        if (
+          clean.includes("dinur") ||
+          clean === "arunika" ||
+          clean === "admin@ruangsosmed.id"
+        ) {
+          return "/avatars/Frame 23.png";
         }
       }
       return "";

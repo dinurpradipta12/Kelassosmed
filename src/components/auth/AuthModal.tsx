@@ -21,6 +21,7 @@ interface AuthModalProps {
     email: string;
     role: "admin" | "learner";
     username?: string;
+    avatarUrl?: string;
   }) => void;
   onShowToast: (msg: string) => void;
   initialTab?: "login" | "register";
@@ -160,6 +161,7 @@ export function AuthModal({
         email: "contact.dinurpradipta@gmail.com",
         role: "admin",
         username: "arunika",
+        avatarUrl: "/avatars/Frame 23.png",
       });
       onShowToast(
         "Selamat datang kembali, Dinur Pradipta (Developer Mode Aktif)!"
@@ -276,6 +278,7 @@ export function AuthModal({
         email: user?.email || emailToUse,
         role: userRole,
         username: userMeta.username || (emailToUse.includes("dinur") ? "arunika" : undefined),
+        avatarUrl: userRole === "admin" ? "/avatars/Frame 23.png" : undefined,
       });
 
       onShowToast(

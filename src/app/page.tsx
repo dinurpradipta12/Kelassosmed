@@ -540,11 +540,15 @@ function RuangSosmedStudioInner() {
               }
               if (typeof profData?.avatarUrl === "string" && profData.avatarUrl) {
                 parsedUser.avatarUrl = profData.avatarUrl;
+              } else if (isFounderCached && !parsedUser.avatarUrl) {
+                parsedUser.avatarUrl = "/avatars/Frame 23.png";
               }
               window.localStorage.setItem(
                 "ruang_sosmed_session_user_v1",
                 JSON.stringify(parsedUser)
               );
+            } else if (isFounderCached && !parsedUser.avatarUrl) {
+              parsedUser.avatarUrl = "/avatars/Frame 23.png";
             }
           } catch {}
 
@@ -680,7 +684,11 @@ function RuangSosmedStudioInner() {
         email,
         role,
         username,
-        avatarUrl: editedProfileAvatar || cachedAvatar || dbAvatarUrl || undefined,
+        avatarUrl:
+          editedProfileAvatar ||
+          cachedAvatar ||
+          dbAvatarUrl ||
+          (isUserAdmin ? "/avatars/Frame 23.png" : undefined),
       };
     };
 

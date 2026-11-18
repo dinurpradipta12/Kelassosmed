@@ -97,10 +97,10 @@ const DEFAULT_ADMIN_PROFILE: UserProfileData = {
   fullName: "Dinur Pradipta",
   initials: "DP",
   userRole: "Super Admin",
-  avatarUrl: "",
+  avatarUrl: "/avatars/Frame 23.png",
   ssnNumber: "317-884-2026",
   gender: "Male",
-  email: "admin@ruangsosmed.id",
+  email: "contact.dinurpradipta@gmail.com",
   phoneCountryCode: "+62",
   phoneNumber: "812-9482-7710",
   website: "https://ruangsosmed.id",
@@ -108,7 +108,7 @@ const DEFAULT_ADMIN_PROFILE: UserProfileData = {
   state: "DKI Jakarta",
   city: "Jakarta Selatan",
   postalCode: "12190",
-  address: "Jl. Jenderal Sudirman Kav. 52-53, SCBD, Jakarta Selatan, 12190",
+  address: "Jakarta Selatan, DKI Jakarta, 12190",
   professionalRole: "Social Media Strategist & Platform Admin",
   skills: [
     "Social Media Strategy",
@@ -181,6 +181,51 @@ interface UserProfileScreenProps {
   onShowToast: (msg: string) => void;
 }
 
+async function syncProfileToSupabaseSystemRow(
+  profileData: UserProfileData,
+  roleMode: "admin" | "learner"
+): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  const sysTitle =
+    roleMode === "admin"
+      ? "__SYSTEM_USER_PROFILE_ADMIN__"
+      : "__SYSTEM_USER_PROFILE_LEARNER__";
+  try {
+    const { data: existing } = await supabase
+      .from("contents")
+      .select("id")
+      .eq("title", sysTitle)
+      .maybeSingle();
+
+    const payload = { userProfile: profileData };
+    if (existing?.id) {
+      await supabase
+        .from("contents")
+        .update({
+          settings_json: payload,
+          status: "published",
+        })
+        .eq("id", existing.id);
+    } else {
+      const generatedId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `00000000-0000-4000-8000-${String(Date.now()).padStart(12, "0").slice(-12)}`;
+      await supabase.from("contents").insert({
+        id: generatedId,
+        title: sysTitle,
+        type: "page",
+        status: "published",
+        description: `System storage for ${roleMode} user profile`,
+        urgency: "not_urgent",
+        estimated_minutes: 0,
+        points_reward: 0,
+        settings_json: payload,
+      });
+    }
+  } catch {}
+}
+
 export function UserProfileScreen({
   mode,
   currentUser,
@@ -228,7 +273,11 @@ export function UserProfileScreen({
               ? fallback.fullName
               : parsed.fullName;
           const cleanAvatar =
-            parsed.avatarUrl || currentUser?.avatarUrl || siblingAvatar || "";
+            parsed.avatarUrl ||
+            currentUser?.avatarUrl ||
+            siblingAvatar ||
+            fallback.avatarUrl ||
+            "";
           // Auto-sanitize legacy dummy values from old template cache
           if (
             parsed.professionalRole?.includes("UI / UX Designer") ||
@@ -271,7 +320,11 @@ export function UserProfileScreen({
         ...fallback,
         fullName: resolvedInitName,
         initials: computedInitials,
-        avatarUrl: currentUser.avatarUrl || siblingAvatar || "",
+        avatarUrl:
+          currentUser.avatarUrl ||
+          siblingAvatar ||
+          fallback.avatarUrl ||
+          "",
         email: currentUser.email || fallback.email,
         userRole:
           currentUser.role === "admin"
@@ -304,6 +357,51 @@ export function UserProfileScreen({
       } catch {}
     }
   }, [profile, storageKey]);
+
+  // Fetch synced profile across origins from Supabase __SYSTEM_USER_PROFILE_*__
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+    const sysTitle =
+      mode === "admin"
+        ? "__SYSTEM_USER_PROFILE_ADMIN__"
+        : "__SYSTEM_USER_PROFILE_LEARNER__";
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("contents")
+          .select("settings_json")
+          .eq("title", sysTitle)
+          .maybeSingle();
+        if (cancelled) return;
+        const remoteProfile = data?.settings_json?.userProfile as
+          | Partial<UserProfileData>
+          | undefined;
+        if (remoteProfile && typeof remoteProfile === "object") {
+          setProfile((prev) => {
+            const merged: UserProfileData = {
+              ...prev,
+              ...remoteProfile,
+              fullName:
+                remoteProfile.fullName &&
+                remoteProfile.fullName !== "Arunika Developer"
+                  ? remoteProfile.fullName
+                  : prev.fullName,
+              avatarUrl: remoteProfile.avatarUrl || prev.avatarUrl,
+            };
+            try {
+              window.localStorage.setItem(storageKey, JSON.stringify(merged));
+              window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
+            } catch {}
+            return merged;
+          });
+        }
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, storageKey]);
 
   // Sub-views: "profile" (Bottom-Left & Bottom-Right of image) vs "manual-setup" (Top-Left) vs "email-invite" (Top-Right)
   const [subView, setSubView] = useState<
@@ -407,6 +505,8 @@ export function UserProfileScreen({
         window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
       } catch {}
     }
+
+    void syncProfileToSupabaseSystemRow(updatedProfile, mode);
 
     if (isSupabaseConfigured) {
       supabase.auth.getUser().then(({ data: { user } }) => {
@@ -528,6 +628,7 @@ export function UserProfileScreen({
       name: updatedUser.name,
       username: updatedUser.username,
     });
+    void syncProfileToSupabaseSystemRow(updatedProfile, mode);
 
     if (isSupabaseConfigured) {
       const targetEmail = (updatedUser.email || "").trim();
@@ -710,6 +811,7 @@ export function UserProfileScreen({
       name: updatedUser.name,
       username: updatedUser.username,
     });
+    void syncProfileToSupabaseSystemRow(updatedProfile, mode);
 
     // Persist to Supabase profiles, user_profiles & auth metadata if connected
     if (isSupabaseConfigured) {
@@ -1396,7 +1498,7 @@ export function UserProfileScreen({
       <header
         className={`sticky ${
           mode === "learner" ? "top-0" : "top-10"
-        } z-20 bg-[#FFFFFF] border-b border-[#EAECEF] px-6 py-3 flex flex-wrap items-center justify-between gap-4`}
+        } z-30 bg-[#FFFFFF] border-b border-[#EAECEF] px-6 py-3 flex flex-wrap items-center justify-between gap-4`}
       >
         <div className="flex items-center gap-3">
           {onBack && (
@@ -1598,7 +1700,7 @@ export function UserProfileScreen({
                 <button
                   type="button"
                   onClick={() => setHeaderPickerOpen((prev) => !prev)}
-                  className="absolute top-3 right-3 z-20 inline-flex items-center gap-1.5 rounded-xl bg-black/45 hover:bg-black/65 backdrop-blur-md px-3 py-1.5 text-xs font-semibold text-white border border-white/20 shadow-sm transition-all cursor-pointer"
+                  className="absolute top-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-xl bg-black/45 hover:bg-black/65 backdrop-blur-md px-3 py-1.5 text-xs font-semibold text-white border border-white/20 shadow-sm transition-all cursor-pointer"
                 >
                   <ImageIcon size={13} />
                   <span>Ganti Header</span>

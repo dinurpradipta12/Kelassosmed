@@ -44,7 +44,7 @@ export function GlobalRoleSwitcher({
   onOpenAuth,
   onLogout,
 }: GlobalRoleSwitcherProps) {
-  const { workspaceCollaborators } = useRuangSosmedStore();
+  const { workspaceCollaborators, resolveUserAvatar } = useRuangSosmedStore();
   const [roleRevision, setRoleRevision] = React.useState(0);
 
   // Force component re-render when role overrides are updated across tabs or in Learners Directory
@@ -201,15 +201,25 @@ export function GlobalRoleSwitcher({
 
           {/* User Auth Status / Login Button */}
           {currentUser ? (
+            (() => {
+              const effectiveAvatar =
+                currentUser.avatarUrl ||
+                resolveUserAvatar(
+                  currentUser.email,
+                  currentUser.name,
+                  currentUser.username
+                ) ||
+                (isAdmin ? "/avatars/Frame 23.png" : "");
+              return (
             <div className="flex items-center gap-1.5 pl-1.5 border-l border-[#EAECEF]">
               <span
                 title={`Login aktif: ${currentUser.email} (${currentUser.role})`}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6]/10 px-2 py-1 text-[11px] font-bold text-[#4F39F6]"
               >
-                {currentUser.avatarUrl ? (
+                {effectiveAvatar ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={currentUser.avatarUrl}
+                    src={effectiveAvatar}
                     alt={currentUser.name}
                     className="h-4 w-4 rounded-full object-cover"
                   />
@@ -240,6 +250,8 @@ export function GlobalRoleSwitcher({
                 </button>
               )}
             </div>
+              );
+            })()
           ) : (
             onOpenAuth && (
               <button
