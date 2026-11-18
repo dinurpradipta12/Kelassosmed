@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   Upload,
@@ -66,6 +66,27 @@ const UNSPLASH_CURATED = [
   },
 ];
 
+function resolveInitialSelection(currentValue?: string): SelectedThumbnailValue {
+  if (
+    currentValue?.startsWith("/") ||
+    currentValue?.startsWith("http") ||
+    currentValue?.startsWith("data:image/")
+  ) {
+    return { type: "image", value: currentValue };
+  }
+  if (currentValue?.includes("gradient")) {
+    return { type: "gradient", value: currentValue };
+  }
+  if (currentValue?.startsWith("#")) {
+    return { type: "color", value: currentValue };
+  }
+  return {
+    type: "image",
+    value:
+      RUANG_SOSMED_DEFAULT_THUMBNAILS[0]?.src || "/thumbnail/thumbnail1.png",
+  };
+}
+
 export function ThumbnailPickerModal({
   open,
   onClose,
@@ -78,38 +99,40 @@ export function ThumbnailPickerModal({
   const [activeTab, setActiveTab] = useState<"gallery" | "upload" | "unsplash">(
     "gallery"
   );
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Selected state pending confirmation
   const [pendingSelection, setPendingSelection] =
-    useState<SelectedThumbnailValue>(() => {
-      if (currentValue?.startsWith("/thumbnail/")) {
-        return { type: "image", value: currentValue };
-      }
-      if (currentValue?.includes("gradient")) {
-        return { type: "gradient", value: currentValue };
-      }
-      if (currentValue?.startsWith("#")) {
-        return { type: "color", value: currentValue };
-      }
-      return {
-        type: "image",
-        value: RUANG_SOSMED_DEFAULT_THUMBNAILS[0]?.src || "/thumbnail/thumbnail1.png",
-      };
-    });
+    useState<SelectedThumbnailValue>(() =>
+      resolveInitialSelection(currentValue)
+    );
 
-  // Simulated upload progress
+  // Real upload preview & progress state
+  const [uploadedPreview, setUploadedPreview] = useState<{
+    dataUrl: string;
+    fileName: string;
+  } | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [unsplashSearch, setUnsplashSearch] = useState("");
 
   useEffect(() => {
-    if (open && currentValue) {
-      if (currentValue.startsWith("/thumbnail/")) {
-        setPendingSelection({ type: "image", value: currentValue });
-      } else if (currentValue.includes("gradient")) {
-        setPendingSelection({ type: "gradient", value: currentValue });
-      } else if (currentValue.startsWith("#")) {
-        setPendingSelection({ type: "color", value: currentValue });
+    if (!open) return;
+    setUploadError(null);
+    setUploadProgress(null);
+    if (currentValue) {
+      setPendingSelection(resolveInitialSelection(currentValue));
+      if (currentValue.startsWith("data:image/")) {
+        setUploadedPreview({
+          dataUrl: currentValue,
+          fileName: "Cover Kustom Terpasang",
+        });
+      } else {
+        setUploadedPreview(null);
       }
+    } else {
+      setUploadedPreview(null);
     }
   }, [open, currentValue]);
 
@@ -127,33 +150,116 @@ export function ThumbnailPickerModal({
 
   if (!open) return null;
 
-  const handleSimulateUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processUploadedFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      const msg = "Format file harus berupa gambar (PNG, JPG, WebP).";
+      setUploadError(msg);
+      onShowToast?.(msg);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      const msg = "Ukuran file maksimal 10MB.";
+      setUploadError(msg);
+      onShowToast?.(msg);
+      return;
+    }
 
-    setUploadProgress(47);
-    setTimeout(() => {
-      setUploadProgress(78);
-      setTimeout(() => {
-        setUploadProgress(100);
-        // Fallback to one of the user's uploaded thumbnails
-        const assignedThumb =
-          RUANG_SOSMED_DEFAULT_THUMBNAILS[
-            Math.floor(Math.random() * RUANG_SOSMED_DEFAULT_THUMBNAILS.length)
-          ]?.src || "/thumbnail/thumbnail1.png";
+    setUploadError(null);
+    setUploadProgress(35);
 
+    const reader = new FileReader();
+    reader.onerror = () => {
+      setUploadProgress(null);
+      const msg = "Gagal membaca file gambar. Silakan coba file lain.";
+      setUploadError(msg);
+      onShowToast?.(msg);
+    };
+    reader.onload = () => {
+      const rawDataUrl =
+        typeof reader.result === "string" ? reader.result : "";
+      if (!rawDataUrl) {
+        setUploadProgress(null);
+        setUploadError("File gambar kosong atau rusak.");
+        return;
+      }
+
+      setUploadProgress(70);
+      const img = new window.Image();
+      img.onerror = () => {
+        // Fallback: gunakan hasil data URL langsung bila browser tidak merender canvas
+        setUploadedPreview({ dataUrl: rawDataUrl, fileName: file.name });
         setPendingSelection({
           type: "image",
-          value: assignedThumb,
+          value: rawDataUrl,
+          label: file.name,
+        });
+        setUploadProgress(100);
+        window.setTimeout(() => {
+          setUploadProgress(null);
+          onShowToast?.(
+            `Preview cover "${file.name}" siap. Klik Save untuk menerapkan.`
+          );
+        }, 250);
+      };
+      img.onload = () => {
+        let optimizedUrl = rawDataUrl;
+        try {
+          const maxW = 1280;
+          const maxH = 720;
+          let targetW = img.naturalWidth || img.width || maxW;
+          let targetH = img.naturalHeight || img.height || maxH;
+          if (targetW > maxW || targetH > maxH) {
+            const ratio = Math.min(maxW / targetW, maxH / targetH);
+            targetW = Math.max(1, Math.round(targetW * ratio));
+            targetH = Math.max(1, Math.round(targetH * ratio));
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, targetW, targetH);
+            optimizedUrl = canvas.toDataURL("image/jpeg", 0.86);
+          }
+        } catch {
+          optimizedUrl = rawDataUrl;
+        }
+
+        setUploadProgress(100);
+        setUploadedPreview({ dataUrl: optimizedUrl, fileName: file.name });
+        setPendingSelection({
+          type: "image",
+          value: optimizedUrl,
           label: file.name,
         });
 
-        setTimeout(() => {
+        window.setTimeout(() => {
           setUploadProgress(null);
-          onShowToast?.("Berhasil mengunggah custom cover image.");
-        }, 400);
-      }, 350);
-    }, 350);
+          onShowToast?.(
+            `Preview cover "${file.name}" siap. Klik Save untuk menerapkan.`
+          );
+        }, 250);
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    processUploadedFile(file);
+  };
+
+  const handleDropFile = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processUploadedFile(file);
+    }
   };
 
   const handleSave = () => {
@@ -412,28 +518,52 @@ export function ThumbnailPickerModal({
 
           {activeTab === "upload" && (
             <div className="space-y-4">
-              <label className="relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#D1D5DB] hover:border-[#4F39F6] bg-[#F8F9FB] p-8 text-center transition-colors cursor-pointer">
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragOver(false);
+                }}
+                onDrop={handleDropFile}
+                className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-7 text-center transition-colors cursor-pointer ${
+                  isDragOver
+                    ? "border-[#4F39F6] bg-[#EEF2FF]/60"
+                    : "border-[#D1D5DB] hover:border-[#4F39F6] bg-[#F8F9FB]"
+                }`}
+              >
                 <input
+                  ref={fileInputRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept="image/png,image/jpeg,image/webp,image/*"
                   className="hidden"
-                  onChange={handleSimulateUpload}
+                  onChange={handleFileInputChange}
                 />
-                <Upload size={28} className="text-[#4F39F6] mb-2" />
+                <Upload size={26} className="text-[#4F39F6] mb-2" />
                 <p className="text-xs font-bold text-[#121215]">
-                  Click to upload custom cover image
+                  Klik atau seret gambar untuk upload cover
                 </p>
                 <p className="mt-1 text-[11px] text-[#9CA3AF]">
-                  Recommended size: 1200 × 360px (PNG, JPG, WebP up to 5MB)
+                  Rekomendasi 1200 × 360px / 16:9 (PNG, JPG, WebP maks. 10MB)
                 </p>
               </label>
+
+              {uploadError && (
+                <div className="rounded-xl border border-[#FCA5A5] bg-[#FEF2F2] px-3.5 py-2.5 text-xs font-semibold text-[#DC2626]">
+                  {uploadError}
+                </div>
+              )}
 
               {uploadProgress !== null && (
                 <div className="rounded-xl border border-[#EAECEF] bg-[#FFFFFF] p-3 space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-[#121215]">
                     <span className="flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full border-2 border-[#EAECEF] border-t-[#4F39F6] animate-spin" />
-                      Uploading cover image...
+                      Memproses gambar cover...
                     </span>
                     <span className="tabular-nums text-[#4F39F6]">
                       {uploadProgress}%
@@ -444,6 +574,53 @@ export function ThumbnailPickerModal({
                       className="h-full bg-[#4F39F6] transition-all duration-300"
                       style={{ width: `${uploadProgress}%` }}
                     />
+                  </div>
+                </div>
+              )}
+
+              {uploadedPreview && (
+                <div className="rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] p-3 space-y-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <ImageIcon size={13} className="text-[#4F39F6] shrink-0" />
+                      <span className="text-xs font-bold text-[#121215] truncate">
+                        Preview Cover: {uploadedPreview.fileName}
+                      </span>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] border border-[#10B981]/30 px-2 py-0.5 text-[10px] font-bold text-[#059669] shrink-0">
+                      <Check size={10} strokeWidth={3} />
+                      <span>Siap Disimpan</span>
+                    </span>
+                  </div>
+
+                  <div className="relative h-44 w-full overflow-hidden rounded-xl border border-[#EAECEF] bg-[#F8F9FB]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={uploadedPreview.dataUrl}
+                      alt={`Preview Cover ${uploadedPreview.fileName}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/70 border border-[#EAECEF] px-3 py-1.5 text-[11px] font-semibold text-[#121215] cursor-pointer transition-colors"
+                    >
+                      <Upload size={12} className="text-[#4F39F6]" />
+                      <span>Ganti Gambar Lain</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadedPreview(null);
+                        setPendingSelection(resolveInitialSelection(currentValue));
+                      }}
+                      className="text-[11px] font-semibold text-[#EF4444] hover:underline cursor-pointer"
+                    >
+                      Batal Upload
+                    </button>
                   </div>
                 </div>
               )}
@@ -518,6 +695,38 @@ export function ThumbnailPickerModal({
               </div>
             </div>
           )}
+        </div>
+
+        {/* Selected Cover Live Preview Strip */}
+        <div className="flex items-center gap-3 border-t border-[#EAECEF] bg-[#FFFFFF] px-5 py-2.5">
+          <div
+            className="h-11 w-20 shrink-0 overflow-hidden rounded-lg border border-[#EAECEF] bg-[#F8F9FB]"
+            style={
+              pendingSelection.type !== "image"
+                ? { background: pendingSelection.value }
+                : undefined
+            }
+          >
+            {pendingSelection.type === "image" && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={pendingSelection.value}
+                alt="Preview cover terpilih"
+                className="h-full w-full object-cover"
+              />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+              Preview Cover Terpilih
+            </p>
+            <p className="text-xs font-semibold text-[#121215] truncate">
+              {pendingSelection.label ||
+                (pendingSelection.type === "image"
+                  ? "Custom Cover Image"
+                  : "Color / Gradient Cover")}
+            </p>
+          </div>
         </div>
 
         {/* Footer: Remove thumbnail (left) | Cancel | Save (right) */}

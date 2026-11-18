@@ -3608,6 +3608,14 @@ export function RuangSosmedProvider({
             .toUpperCase()
             .replace(/\s+/g, "-")
         : existingSameTitle?.accessCode;
+      const savedLocalThumb =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(
+              `ruang_sosmed_thumb_${title.trim().toLowerCase()}`
+            )
+          : null;
+      const resolvedThumbnailUrl =
+        savedLocalThumb || existingSameTitle?.thumbnailUrl || undefined;
 
       const newExplorerItem: ExplorerContentItem = {
         id: existingSameTitle?.id || (isFolder ? `folder-${nowId}` : `exp-${nowId}`),
@@ -3629,6 +3637,7 @@ export function RuangSosmedProvider({
           ? folderColor || existingSameTitle?.bannerAccent || "blue"
           : cfg.colorHex,
         bannerPattern: "wiki",
+        thumbnailUrl: resolvedThumbnailUrl,
         description: finalDesc,
         cohort: parentFolder?.cohort || cohort || existingSameTitle?.cohort,
         folderName: effectiveFolderName,
@@ -3647,6 +3656,7 @@ export function RuangSosmedProvider({
             pointsReward: 100,
             duration: type === "Quiz" ? "15 Mins" : "2 Hours",
             skillTags: [type, "Ruang Sosmed 2.0", "New Release"],
+            thumbnailUrl: resolvedThumbnailUrl,
             description: finalDesc,
             isFavorite: false,
           };

@@ -1121,6 +1121,12 @@ export function CoursePageEditor({
                       `ruang_sosmed_course_tier_${key}`,
                       courseIsPro ? "pro" : "free"
                     );
+                    if (hasBanner && bannerImageUrl) {
+                      window.localStorage.setItem(
+                        `ruang_sosmed_thumb_${key}`,
+                        bannerImageUrl
+                      );
+                    }
                     if (draftSessionId) {
                       window.localStorage.removeItem(
                         `ruang_sosmed_editor_draft_${draftSessionId}`
