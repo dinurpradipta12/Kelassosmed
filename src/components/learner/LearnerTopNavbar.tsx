@@ -112,7 +112,8 @@ export function LearnerTopNavbar({
   }, [aiSearchOpen]);
 
   const displayName =
-    currentUser?.name === "Arunika Developer"
+    currentUser?.name === "Arunika Developer" ||
+    currentUser?.name?.trim().toLowerCase() === "arunika"
       ? "Dinur Pradipta"
       : currentUser?.name || currentUser?.username || "Learner";
 
@@ -142,7 +143,11 @@ export function LearnerTopNavbar({
           if (typeof p.avatarUrl === "string" && p.avatarUrl) {
             nextAvatar = p.avatarUrl;
           }
-          if (p.fullName && p.fullName !== "Arunika Developer") {
+          if (
+            p.fullName &&
+            p.fullName !== "Arunika Developer" &&
+            p.fullName.trim().toLowerCase() !== "arunika"
+          ) {
             nextName = p.fullName;
           }
         }
@@ -155,7 +160,11 @@ export function LearnerTopNavbar({
           if (typeof s.avatarUrl === "string" && s.avatarUrl) {
             nextAvatar = s.avatarUrl;
           }
-          if (s.name && s.name !== "Arunika Developer") {
+          if (
+            s.name &&
+            s.name !== "Arunika Developer" &&
+            s.name.trim().toLowerCase() !== "arunika"
+          ) {
             nextName = s.name;
           }
         }

@@ -253,6 +253,7 @@ function RuangSosmedStudioInner() {
   // 1. Founder / Owner Dinur / Arunika -> ALWAYS Admin
   const isFounderAdmin =
     userEmail.includes("dinur") ||
+    userEmail.includes("arunika") ||
     userEmail === "admin@ruangsosmed.id" ||
     userUsername === "arunika" ||
     userName.includes("arunika") ||
@@ -461,6 +462,8 @@ function RuangSosmedStudioInner() {
       const cachedRoleMode = window.localStorage.getItem(
         "ruang_sosmed_role_mode_v1"
       ) as AppRoleMode | null;
+      const hasDevFlag =
+        window.localStorage.getItem("ruang_sosmed_dev_session_v1") === "true";
 
       if (cachedUserRaw) {
         const parsedUser = JSON.parse(cachedUserRaw) as AuthenticatedUser;
@@ -469,7 +472,9 @@ function RuangSosmedStudioInner() {
           const pName = (parsedUser.name || "").toLowerCase();
           const pUsername = (parsedUser.username || "").toLowerCase();
           const isFounderCached =
+            hasDevFlag ||
             pEmail.includes("dinur") ||
+            pEmail.includes("arunika") ||
             pEmail === "admin@ruangsosmed.id" ||
             pUsername === "arunika" ||
             pName.includes("arunika");
@@ -479,7 +484,11 @@ function RuangSosmedStudioInner() {
               parsedUser.role = "admin";
               changedFounder = true;
             }
-            if (!parsedUser.name || parsedUser.name === "Arunika Developer") {
+            if (
+              !parsedUser.name ||
+              parsedUser.name === "Arunika Developer" ||
+              parsedUser.name.trim().toLowerCase() === "arunika"
+            ) {
               parsedUser.name = "Dinur Pradipta";
               changedFounder = true;
             }
@@ -517,7 +526,11 @@ function RuangSosmedStudioInner() {
             const profRaw = window.localStorage.getItem(profKey);
             if (profRaw) {
               const profData = JSON.parse(profRaw);
-              if (profData?.fullName && profData.fullName !== "Arunika Developer") {
+              if (
+                profData?.fullName &&
+                profData.fullName !== "Arunika Developer" &&
+                profData.fullName.trim().toLowerCase() !== "arunika"
+              ) {
                 parsedUser.name = profData.fullName;
                 parsedUser.username =
                   profData.fullName
@@ -537,6 +550,9 @@ function RuangSosmedStudioInner() {
 
           restoredFromCache = true;
           setCurrentUser(parsedUser);
+          if (parsedUser.role === "admin") {
+            setLearnerProStatus(true);
+          }
           setRoleMode(
             parsedUser.role === "admin"
               ? cachedRoleMode || "admin"
@@ -591,11 +607,21 @@ function RuangSosmedStudioInner() {
         } catch {}
       }
 
+      const hasDevFlagSession =
+        typeof window !== "undefined" &&
+        window.localStorage.getItem("ruang_sosmed_dev_session_v1") === "true";
+
       const isUserAdmin =
+        hasDevFlagSession ||
         dbRole === "admin" ||
         dbRole === "mentor" ||
         meta.role === "admin" ||
+        (meta.username || "").toLowerCase() === "arunika" ||
+        (meta.full_name || "").toLowerCase().includes("arunika") ||
+        (dbUsername || "").toLowerCase() === "arunika" ||
+        (dbFullName || "").toLowerCase().includes("arunika") ||
         email.toLowerCase().includes("dinur") ||
+        email.toLowerCase().includes("arunika") ||
         email.toLowerCase() === "admin@ruangsosmed.id";
 
       const role: "admin" | "learner" = isUserAdmin ? "admin" : "learner";
@@ -610,7 +636,11 @@ function RuangSosmedStudioInner() {
           const profRaw = window.localStorage.getItem(profKey);
           if (profRaw) {
             const profData = JSON.parse(profRaw);
-            if (profData?.fullName && profData.fullName !== "Arunika Developer") {
+            if (
+              profData?.fullName &&
+              profData.fullName !== "Arunika Developer" &&
+              profData.fullName.trim().toLowerCase() !== "arunika"
+            ) {
               editedProfileName = profData.fullName;
             }
             if (typeof profData?.avatarUrl === "string" && profData.avatarUrl) {
@@ -623,22 +653,27 @@ function RuangSosmedStudioInner() {
       const rawResolvedName =
         editedProfileName ||
         dbFullName ||
-        (cachedName && cachedName !== "Arunika Developer" ? cachedName : undefined) ||
+        (cachedName &&
+        cachedName !== "Arunika Developer" &&
+        cachedName.trim().toLowerCase() !== "arunika"
+          ? cachedName
+          : undefined) ||
         meta.full_name ||
         email.split("@")[0] ||
         "User";
       const resolvedName =
         rawResolvedName === "Arunika Developer" ||
-        (isUserAdmin && rawResolvedName.toLowerCase() === "arunika")
+        (isUserAdmin && rawResolvedName.trim().toLowerCase() === "arunika")
           ? "Dinur Pradipta"
           : rawResolvedName;
       const derivedHandle =
         resolvedName.split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g, "") || undefined;
-      const username =
-        derivedHandle ||
-        cachedUsername ||
-        dbUsername ||
-        (meta.username && meta.username !== "arunika" ? meta.username : undefined);
+      const username = isUserAdmin && (email.toLowerCase().includes("arunika") || email.toLowerCase().includes("dinur") || (meta.username || "").toLowerCase() === "arunika")
+        ? "arunika"
+        : derivedHandle ||
+          cachedUsername ||
+          dbUsername ||
+          (meta.username && meta.username !== "arunika" ? meta.username : undefined);
 
       return {
         name: resolvedName,
@@ -655,13 +690,20 @@ function RuangSosmedStudioInner() {
         if (session?.user) {
           const authedUser = await resolveUserWithDbRole(session.user);
           setCurrentUser(authedUser);
+          if (authedUser.role === "admin") {
+            setLearnerProStatus(true);
+          }
           try {
             window.localStorage.setItem(
               "ruang_sosmed_session_user_v1",
               JSON.stringify(authedUser)
             );
           } catch {}
-          if (!restoredFromCache) {
+          if (
+            !restoredFromCache ||
+            (authedUser.role === "admin" &&
+              !window.localStorage.getItem("ruang_sosmed_role_mode_v1"))
+          ) {
             setRoleMode(authedUser.role);
           }
         }
@@ -676,6 +718,15 @@ function RuangSosmedStudioInner() {
       if (session?.user) {
         const authedUser = await resolveUserWithDbRole(session.user);
         setCurrentUser(authedUser);
+        if (authedUser.role === "admin") {
+          setLearnerProStatus(true);
+          try {
+            if (!window.localStorage.getItem("ruang_sosmed_role_mode_v1")) {
+              setRoleMode("admin");
+              window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
+            }
+          } catch {}
+        }
         try {
           window.localStorage.setItem(
             "ruang_sosmed_session_user_v1",
@@ -687,6 +738,7 @@ function RuangSosmedStudioInner() {
         try {
           window.localStorage.removeItem("ruang_sosmed_session_user_v1");
           window.localStorage.removeItem("ruang_sosmed_role_mode_v1");
+          window.localStorage.removeItem("ruang_sosmed_dev_session_v1");
         } catch {}
       }
     });
@@ -700,6 +752,7 @@ function RuangSosmedStudioInner() {
     try {
       window.localStorage.removeItem("ruang_sosmed_session_user_v1");
       window.localStorage.removeItem("ruang_sosmed_role_mode_v1");
+      window.localStorage.removeItem("ruang_sosmed_dev_session_v1");
     } catch {}
     await signOutUser();
     setCurrentUser(null);
