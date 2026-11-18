@@ -287,7 +287,7 @@ export function buildCustomPaletteFromHues(
     surfaceBg: hslToHex(canvasHue, 45, 99),
     surfaceSoftBg: hslToHex(canvasHue, 36, 92),
     surfaceMutedBg: hslToHex(canvasHue, 34, 89),
-    surfaceHoverBg: hslToHex(canvasHue, 34, 86),
+    surfaceHoverBg: hslToHex(canvasHue, 30, 95),
     borderColor: hslToHex(canvasHue, 30, 84),
     textColor: hslToHex(canvasHue, 28, 14),
     textSecondaryColor: hslToHex(canvasHue, 18, 36),

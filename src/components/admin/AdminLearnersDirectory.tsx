@@ -10,13 +10,22 @@ import {
   Star,
   Award,
   Eye,
+  EyeOff,
   CheckCircle2,
   Shield,
+  ShieldCheck,
   Mail,
   Zap,
   Plus,
   Edit3,
   Coins,
+  KeyRound,
+  Copy,
+  Check,
+  RefreshCw,
+  BookOpen,
+  Gift,
+  Send,
 } from "lucide-react";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 import { type ExplorerContentItem } from "@/lib/phase2-data";
@@ -91,6 +100,8 @@ export function AdminLearnersDirectory({
     workspaceCollaborators,
     updateMemberAccessRole,
     explorerItems,
+    courseCurriculums,
+    claimedRewards,
     assignContentToLearners,
     resolveUserAvatar,
     unassignLearnerFromContent,
@@ -134,29 +145,106 @@ export function AdminLearnersDirectory({
     INITIAL_DIRECTORY_EXTRA
   );
 
-  // Fetch registered learners directly from Supabase (`profiles` & `user_profiles`)
+  const [userEnrollmentsMap, setUserEnrollmentsMap] = useState<
+    Record<
+      string,
+      { contentId: string; completedCount: number; progressPercent: number }[]
+    >
+  >({});
+
+  const [adminResetPasswordsMap, setAdminResetPasswordsMap] = useState<
+    Record<string, { password: string; updatedAt: string; updatedBy?: string }>
+  >(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(
+          "ruang_sosmed_admin_reset_passwords_v1"
+        );
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") return parsed;
+        }
+      } catch {}
+    }
+    return {};
+  });
+
+  // Fetch registered learners directly from Supabase (`profiles`, `user_profiles`, & `__SYSTEM_USER_PASSWORDS__`)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
     const loadSupabaseDirectory = async () => {
       try {
-        const [profilesRes, userProfilesRes, enrollmentsRes, submissionsRes] =
-          await Promise.all([
-            supabase
-              .from("profiles")
-              .select("*")
-              .order("created_at", { ascending: false }),
-            supabase
-              .from("user_profiles")
-              .select("*")
-              .order("updated_at", { ascending: false }),
-            supabase
-              .from("enrollments")
-              .select("learner_id, completed_chapter_ids, progress_percent"),
-            supabase
-              .from("submissions")
-              .select("learner_id, score_percent"),
-          ]);
+        const [
+          profilesRes,
+          userProfilesRes,
+          enrollmentsRes,
+          submissionsRes,
+          passwordsRes,
+        ] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("*")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("user_profiles")
+            .select("*")
+            .order("updated_at", { ascending: false }),
+          supabase
+            .from("enrollments")
+            .select("learner_id, content_id, completed_chapter_ids, progress_percent"),
+          supabase
+            .from("submissions")
+            .select("learner_id, score_percent"),
+          supabase
+            .from("contents")
+            .select("settings_json")
+            .eq("title", "__SYSTEM_USER_PASSWORDS__")
+            .order("updated_at", { ascending: false })
+            .limit(1),
+        ]);
+
+        const nextEnrollMap: Record<
+          string,
+          { contentId: string; completedCount: number; progressPercent: number }[]
+        > = {};
+        if (Array.isArray(enrollmentsRes.data)) {
+          enrollmentsRes.data.forEach((row: any) => {
+            if (!row?.learner_id || !row?.content_id) return;
+            const list = nextEnrollMap[row.learner_id] || [];
+            list.push({
+              contentId: row.content_id,
+              completedCount: Array.isArray(row.completed_chapter_ids)
+                ? row.completed_chapter_ids.length
+                : 0,
+              progressPercent: Number(row.progress_percent || 0),
+            });
+            nextEnrollMap[row.learner_id] = list;
+          });
+        }
+        setUserEnrollmentsMap(nextEnrollMap);
+
+        const pwRow =
+          Array.isArray(passwordsRes.data) && passwordsRes.data.length > 0
+            ? (passwordsRes.data[0] as any)
+            : null;
+        if (
+          pwRow?.settings_json?.passwords &&
+          typeof pwRow.settings_json.passwords === "object"
+        ) {
+          setAdminResetPasswordsMap((prev) => {
+            const mergedPw = { ...prev, ...pwRow.settings_json.passwords };
+            try {
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem(
+                  "ruang_sosmed_admin_reset_passwords_v1",
+                  JSON.stringify(mergedPw)
+                );
+              }
+            } catch {}
+            return mergedPw;
+          });
+        }
 
         const merged: DirectoryMember[] = [];
         const totalChCount = courseSections.flatMap((s) => s.chapters).length;
@@ -340,12 +428,21 @@ export function AdminLearnersDirectory({
     setInviteModalOpen(true);
   };
 
-  // Portfolio Inspector Modal state
+  // Portfolio & Security Inspector Modal state
   const [inspectedMember, setInspectedMember] =
     useState<DirectoryMember | null>(null);
-  const [profileTab, setProfileTab] = useState<"activity" | "assigned" | "review">("activity");
+  const [profileTab, setProfileTab] = useState<
+    "activity" | "assigned" | "security"
+  >("activity");
   const [certificateMember, setCertificateMember] =
     useState<DirectoryMember | null>(null);
+
+  // Admin Direct Password Reset states
+  const [resetPasswordInput, setResetPasswordInput] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [isSendingResetEmail, setIsSendingResetEmail] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
 
   // List of materials assigned to the currently inspected member
   const memberAssignedItems = useMemo(() => {
@@ -382,6 +479,35 @@ export function AdminLearnersDirectory({
     });
   }, [inspectedMember, explorerItems]);
 
+  const memberUnassignedMaterials = useMemo(() => {
+    const assignedIds = new Set(memberAssignedItems.map((m) => m.id));
+    return availableMaterials.filter((m) => !assignedIds.has(m.id));
+  }, [availableMaterials, memberAssignedItems]);
+
+  const memberClaimedRewards = useMemo(() => {
+    if (!inspectedMember) return [];
+    const emailKey = (inspectedMember.email || "").toLowerCase().trim();
+    const nameKey = (inspectedMember.name || "").toLowerCase().trim();
+    return (claimedRewards || []).filter((r) => {
+      const rEmail = (r.claimedByEmail || "").toLowerCase().trim();
+      const rName = (r.claimedByName || "").toLowerCase().trim();
+      return (emailKey && rEmail === emailKey) || (nameKey && rName === nameKey);
+    });
+  }, [inspectedMember, claimedRewards]);
+
+  const handleAssignMaterialToMember = (
+    member: DirectoryMember,
+    mat: ExplorerContentItem
+  ) => {
+    assignContentToLearners(
+      mat,
+      [member.name, member.email].filter(Boolean),
+      "2026-12-31",
+      "Individual"
+    );
+    onShowToast(`Materi "${mat.title}" berhasil ditambahkan ke ${member.name}.`);
+  };
+
   const handleRevokeMemberAccess = (
     member: DirectoryMember,
     contentId: string,
@@ -399,6 +525,164 @@ export function AdminLearnersDirectory({
       });
     }
     onShowToast(`Akses ke "${contentTitle}" untuk ${member.name} berhasil dicabut & otomatis hilang dari halaman siswa.`);
+  };
+
+  const getMemberPasswordRecord = (member: DirectoryMember | null) => {
+    if (!member) return null;
+    const emailKey = (member.email || "").toLowerCase().trim();
+    const usernameKey = emailKey.includes("@") ? emailKey.split("@")[0] : "";
+    const nameKey = (member.name || "").toLowerCase().trim();
+    return (
+      adminResetPasswordsMap[emailKey] ||
+      adminResetPasswordsMap[usernameKey] ||
+      adminResetPasswordsMap[nameKey] ||
+      null
+    );
+  };
+
+  const handleGenerateResetPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    let suffix = "";
+    for (let i = 0; i < 6; i++) {
+      suffix += chars[Math.floor(Math.random() * chars.length)];
+    }
+    setResetPasswordInput(`RS-${suffix}`);
+    setShowResetPassword(true);
+  };
+
+  const handleCopyResetPassword = async (value: string) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedPassword(true);
+      onShowToast("Password baru berhasil disalin ke clipboard.");
+      setTimeout(() => setCopiedPassword(false), 2000);
+    } catch {
+      onShowToast("Gagal menyalin password.");
+    }
+  };
+
+  const handleAdminDirectPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inspectedMember) return;
+    const nextPassword = resetPasswordInput.trim();
+    if (nextPassword.length < 4) {
+      onShowToast("Password minimal harus 4 karakter.");
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      const emailKey = (inspectedMember.email || "").toLowerCase().trim();
+      const usernameKey = emailKey.includes("@") ? emailKey.split("@")[0] : "";
+      const nameKey = (inspectedMember.name || "").toLowerCase().trim();
+      const entry = {
+        password: nextPassword,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser?.name || "Admin",
+      };
+
+      const nextMap: Record<
+        string,
+        { password: string; updatedAt: string; updatedBy?: string }
+      > = { ...adminResetPasswordsMap };
+      if (emailKey) nextMap[emailKey] = entry;
+      if (usernameKey) nextMap[usernameKey] = entry;
+      if (nameKey) nextMap[nameKey] = entry;
+
+      setAdminResetPasswordsMap(nextMap);
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            "ruang_sosmed_admin_reset_passwords_v1",
+            JSON.stringify(nextMap)
+          );
+        } catch {}
+      }
+
+      if (isSupabaseConfigured) {
+        const { data: existingRows } = await supabase
+          .from("contents")
+          .select("id, settings_json")
+          .eq("title", "__SYSTEM_USER_PASSWORDS__")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+
+        const existing =
+          Array.isArray(existingRows) && existingRows.length > 0
+            ? (existingRows[0] as any)
+            : null;
+        const remotePasswords =
+          existing?.settings_json?.passwords &&
+          typeof existing.settings_json.passwords === "object"
+            ? existing.settings_json.passwords
+            : {};
+        const mergedPasswords = { ...remotePasswords, ...nextMap };
+        const payload = {
+          passwords: mergedPasswords,
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (existing?.id) {
+          await supabase
+            .from("contents")
+            .update({
+              settings_json: payload,
+              status: "published",
+            })
+            .eq("id", existing.id);
+        } else {
+          const generatedId =
+            typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+              ? crypto.randomUUID()
+              : "00000000-0000-4000-8000-000000000101";
+          await supabase.from("contents").insert({
+            id: generatedId,
+            title: "__SYSTEM_USER_PASSWORDS__",
+            type: "page",
+            status: "published",
+            description: "System storage for admin-assisted password resets",
+            urgency: "not_urgent",
+            estimated_minutes: 0,
+            points_reward: 0,
+            settings_json: payload,
+          });
+        }
+      }
+
+      onShowToast(
+        `🔑 Password untuk ${inspectedMember.name} berhasil direset dan langsung aktif untuk login.`
+      );
+      setResetPasswordInput("");
+    } catch (err: any) {
+      onShowToast(`Gagal mereset password: ${err?.message || "Error"}`);
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
+  const handleSendSupabaseResetEmail = async () => {
+    if (!inspectedMember?.email || !isSupabaseConfigured) return;
+    setIsSendingResetEmail(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        inspectedMember.email,
+        {
+          redirectTo:
+            typeof window !== "undefined" ? window.location.origin : undefined,
+        }
+      );
+      if (error) throw error;
+      onShowToast(
+        `📧 Link reset password dikirim ke email ${inspectedMember.email}.`
+      );
+    } catch (err: any) {
+      onShowToast(
+        `Tidak dapat mengirim email reset Supabase: ${err?.message || "Gunakan Reset Password Langsung di sebelah kiri."}`
+      );
+    } finally {
+      setIsSendingResetEmail(false);
+    }
   };
 
   const currentTargetPoints = adjustPointsTarget ? adjustPointsTarget.points : 0;
@@ -1174,11 +1458,18 @@ export function AdminLearnersDirectory({
                 return (
                   <tr
                     key={member.id}
-                    className="hover:bg-[#F8F9FB]/80 transition-colors"
+                    onClick={() => {
+                      setInspectedMember(member);
+                      setProfileTab("activity");
+                      setResetPasswordInput("");
+                      setShowResetPassword(false);
+                    }}
+                    title={`Klik baris untuk membuka profil, progress belajar, sisa koin & reset password ${member.name}`}
+                    className="group transition-colors cursor-pointer"
                   >
                     <th
                       scope="row"
-                      className="py-3.5 px-4 font-semibold text-[#121215] text-left"
+                      className="py-3.5 px-4 font-semibold text-[#121215] text-left transition-colors"
                     >
                       <div className="flex items-center gap-3">
                         {(() => {
@@ -1207,7 +1498,7 @@ export function AdminLearnersDirectory({
                           );
                         })()}
                         <div>
-                          <p className="font-bold text-[#121215]">
+                          <p className="font-bold text-[#121215] group-hover:text-[#4F39F6] transition-colors">
                             {member.name}
                           </p>
                           <p className="text-[11px] font-normal text-[#5E5E5E]">
@@ -1217,13 +1508,13 @@ export function AdminLearnersDirectory({
                       </div>
                     </th>
 
-                    <td className="py-3.5 px-4">
+                    <td className="py-3.5 px-4 transition-colors">
                       <span className="rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-1 text-[11px] font-semibold text-[#121215]">
                         {member.cohort}
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-4">
+                    <td className="py-3.5 px-4 transition-colors">
                       <div className="flex items-center gap-2 min-w-[140px]">
                         <div className="flex-1 h-2 rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
                           <div
@@ -1238,7 +1529,10 @@ export function AdminLearnersDirectory({
                       </div>
                     </td>
 
-                    <td className="py-3.5 px-4">
+                    <td
+                      className="py-3.5 px-4 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -1248,7 +1542,7 @@ export function AdminLearnersDirectory({
                             setAdjustPointsValue(100);
                             setAdjustPointsReason("Bonus Keaktifan");
                           }}
-                          title={`Klik untuk ubah / tambah poin manual untuk ${member.name}`}
+                          title={`Klik untuk ubah / tambah koin manual untuk ${member.name}`}
                           className="group/pts inline-flex items-center gap-1 font-bold text-[#B45309] bg-[#FEF3C7]/60 hover:bg-[#FEF3C7] border border-[#F59E0B]/30 hover:border-[#F59E0B]/60 px-2 py-0.5 rounded-md transition-all cursor-pointer shadow-2xs"
                         >
                           <Star
@@ -1269,7 +1563,10 @@ export function AdminLearnersDirectory({
                       </div>
                     </td>
 
-                    <td className="py-3.5 px-4">
+                    <td
+                      className="py-3.5 px-4 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="inline-flex items-center gap-1.5">
                         <Shield size={12} className="text-[#4F39F6]" />
                         <select
@@ -1290,7 +1587,10 @@ export function AdminLearnersDirectory({
                       </div>
                     </td>
 
-                    <td className="py-3.5 px-4 text-right">
+                    <td
+                      className="py-3.5 px-4 text-right transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="inline-flex items-center gap-2">
                         {member.accessRole === "Learner" && (() => {
                           const emailKey = member.email.toLowerCase();
@@ -1332,11 +1632,16 @@ export function AdminLearnersDirectory({
                         })()}
                         <button
                           type="button"
-                          onClick={() => setInspectedMember(member)}
+                          onClick={() => {
+                            setInspectedMember(member);
+                            setProfileTab("activity");
+                            setResetPasswordInput("");
+                            setShowResetPassword(false);
+                          }}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#4F39F6] hover:text-white px-3 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
                         >
                           <Eye size={13} />
-                          <span>Inspect Portfolio</span>
+                          <span>Lihat Profil</span>
                         </button>
                       </div>
                     </td>
@@ -1565,15 +1870,19 @@ export function AdminLearnersDirectory({
         </form>
       </ModalDialog>
 
-      {/* Modal 2: Individual Learner Portfolio Inspector */}
+      {/* Modal 2: Individual User Profile, Learning Progress, Coins & Password Reset */}
       <ModalDialog
         open={Boolean(inspectedMember)}
-        onClose={() => setInspectedMember(null)}
+        onClose={() => {
+          setInspectedMember(null);
+          setResetPasswordInput("");
+          setShowResetPassword(false);
+        }}
         titleId="learner-portfolio-inspector-title"
         title={
           inspectedMember
-            ? `${inspectedMember.name} — Learner Portfolio`
-            : "Learner Portfolio"
+            ? `Profil User — ${inspectedMember.name}`
+            : "Profil User"
         }
         subtitle={
           inspectedMember
@@ -1582,347 +1891,711 @@ export function AdminLearnersDirectory({
         }
         maxWidthClass="max-w-3xl"
       >
-        {inspectedMember && (
-          <div className="space-y-5">
-            {/* Profile Avatar Header */}
-            <div className="flex items-center gap-3.5 rounded-xl bg-[#F8F9FB] px-4 py-3 border border-[#EAECEF]">
-              {(() => {
-                const inspectedAvatar =
-                  resolveUserAvatar(
-                    inspectedMember.email,
-                    inspectedMember.name,
-                    inspectedMember.id
-                  ) || inspectedMember.avatarUrl;
-                if (inspectedAvatar) {
-                  return (
-                    <img
-                      src={inspectedAvatar}
-                      alt={inspectedMember.name}
-                      className="h-12 w-12 shrink-0 rounded-full object-cover border border-[#E2E8F0]"
-                    />
-                  );
-                }
-                return (
-                  <span
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-bold"
-                    style={{
-                      backgroundColor: inspectedMember.avatarBg,
-                      color: inspectedMember.avatarText,
-                    }}
-                  >
-                    {inspectedMember.initials}
-                  </span>
-                );
-              })()}
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-[#121215] truncate">
-                  {inspectedMember.name}
-                </p>
-                <p className="text-xs text-[#64748B] truncate">
-                  {inspectedMember.email} • {inspectedMember.jobTitle}
-                </p>
-              </div>
-            </div>
+        {inspectedMember && (() => {
+          const activeMember =
+            allDirectoryMembers.find(
+              (m) =>
+                m.email.toLowerCase() === inspectedMember.email.toLowerCase() ||
+                m.id === inspectedMember.id
+            ) || inspectedMember;
+          const emailKey = activeMember.email.toLowerCase().trim();
+          const resolvedTier =
+            activeMember.accessRole === "Admin"
+              ? "PRO"
+              : learnerSubscriptions?.[emailKey] ??
+                learnerSubscriptions?.[activeMember.name] ??
+                supabaseProMap[emailKey] ??
+                supabaseProMap[activeMember.name] ??
+                "Free";
+          const isMemberPro = resolvedTier === "PRO";
+          const overallPct =
+            activeMember.totalChapters > 0
+              ? Math.min(
+                  100,
+                  Math.round(
+                    (activeMember.completedChapters / activeMember.totalChapters) *
+                      100
+                  )
+                )
+              : 0;
+          const totalCoinsSpent = memberClaimedRewards.reduce(
+            (sum, item) => sum + (Number(item.pointsSpent) || 0),
+            0
+          );
+          const pwRecord = getMemberPasswordRecord(activeMember);
+          const memberEnrolls = userEnrollmentsMap[activeMember.id] || [];
 
-            {/* Top Summary Banner */}
-            <div className="rounded-xl bg-[#F8F9FB] p-4 border border-[#EAECEF] grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <div>
-                <div className="flex items-center justify-between">
+          return (
+            <div className="space-y-5">
+              {/* Profile Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#F8F9FB] px-4 py-3.5 border border-[#EAECEF]">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  {(() => {
+                    const inspectedAvatar =
+                      resolveUserAvatar(
+                        activeMember.email,
+                        activeMember.name,
+                        activeMember.id
+                      ) || activeMember.avatarUrl;
+                    if (inspectedAvatar) {
+                      return (
+                        <img
+                          src={inspectedAvatar}
+                          alt={activeMember.name}
+                          className="h-12 w-12 shrink-0 rounded-full object-cover border border-[#E2E8F0]"
+                        />
+                      );
+                    }
+                    return (
+                      <span
+                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+                        style={{
+                          backgroundColor: activeMember.avatarBg,
+                          color: activeMember.avatarText,
+                        }}
+                      >
+                        {activeMember.initials}
+                      </span>
+                    );
+                  })()}
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-bold text-[#121215] truncate">
+                        {activeMember.name}
+                      </p>
+                      <span className="rounded-md bg-[#EEF2FF] border border-[#4F39F6]/20 px-2 py-0.5 text-[10px] font-bold text-[#4F39F6]">
+                        {activeMember.accessRole}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold border ${
+                          isMemberPro
+                            ? "bg-[#FEF3C7] text-[#B45309] border-[#F59E0B]/40"
+                            : "bg-[#FFFFFF] text-[#5E5E5E] border-[#EAECEF]"
+                        }`}
+                      >
+                        <Zap size={10} fill="currentColor" />
+                        <span>{isMemberPro ? "PRO Member" : "Free Tier"}</span>
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#64748B] truncate mt-0.5">
+                      {activeMember.email} • {activeMember.jobTitle} •{" "}
+                      {activeMember.cohort}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {activeMember.accessRole === "Learner" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleStudentProByAdmin(
+                          activeMember.name,
+                          activeMember.email
+                        );
+                        setSupabaseProMap((prev) => ({
+                          ...prev,
+                          [activeMember.name]: isMemberPro ? "Free" : "PRO",
+                          [emailKey]: isMemberPro ? "Free" : "PRO",
+                        }));
+                        onShowToast(
+                          `Status paket ${activeMember.name} diubah ke ${
+                            isMemberPro ? "Free Tier" : "Learner PRO"
+                          }.`
+                        );
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#FFFFFF] hover:bg-[#F8F9FB] px-2.5 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
+                    >
+                      <Zap size={12} className="text-[#F59E0B]" />
+                      <span>{isMemberPro ? "Ubah ke Free" : "Set PRO"}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setProfileTab("security")}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3 py-1.5 text-xs font-bold text-white transition-colors cursor-pointer"
+                  >
+                    <KeyRound size={12} />
+                    <span>Reset Password</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4 Summary Metric Cards: Sisa Koin, Progress Belajar, Skor Kuis, Status Password */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* 1. Remaining Coins */}
+                <div className="rounded-xl bg-[#F8F9FB] p-3.5 border border-[#EAECEF]">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase text-[#9CA3AF] flex items-center gap-1">
+                      <Coins size={11} className="text-[#F59E0B]" />
+                      <span>Sisa Koin / Poin</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdjustPointsTarget(activeMember);
+                        setAdjustPointsMode("add");
+                        setAdjustPointsValue(100);
+                        setAdjustPointsReason("Bonus Keaktifan");
+                      }}
+                      className="text-[10px] font-bold text-[#D97706] hover:underline flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Edit3 size={10} />
+                      <span>Ubah Saldo</span>
+                    </button>
+                  </div>
+                  <p className="text-lg font-extrabold text-[#B45309] mt-1 flex items-center gap-1">
+                    <Star size={14} className="text-[#F59E0B]" fill="#F59E0B" />
+                    <span className="tabular-nums">
+                      {activeMember.points.toLocaleString()}
+                    </span>
+                    <span className="text-xs font-semibold">Koin</span>
+                  </p>
+                  <p className="text-[11px] text-[#5E5E5E] mt-1">
+                    Terpakai:{" "}
+                    <span className="font-semibold">
+                      {totalCoinsSpent.toLocaleString()} Koin
+                    </span>{" "}
+                    ({memberClaimedRewards.length} hadiah)
+                  </p>
+                </div>
+
+                {/* 2. Learning Progress */}
+                <div className="rounded-xl bg-[#F8F9FB] p-3.5 border border-[#EAECEF]">
+                  <p className="text-[10px] font-bold uppercase text-[#9CA3AF] flex items-center gap-1">
+                    <BookOpen size={11} className="text-[#4F39F6]" />
+                    <span>Progress Belajar</span>
+                  </p>
+                  <p className="text-lg font-extrabold text-[#121215] mt-1 tabular-nums">
+                    {overallPct}%{" "}
+                    <span className="text-xs font-semibold text-[#5E5E5E]">
+                      ({activeMember.completedChapters}/
+                      {activeMember.totalChapters} Bab)
+                    </span>
+                  </p>
+                  <div className="mt-2 h-1.5 rounded-full bg-[#FFFFFF] border border-[#EAECEF] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[#4F39F6]"
+                      style={{ width: `${overallPct}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#5E5E5E] mt-1">
+                    {memberAssignedItems.length} Materi di-assign
+                  </p>
+                </div>
+
+                {/* 3. Quiz Avg & Certificate */}
+                <div className="rounded-xl bg-[#F8F9FB] p-3.5 border border-[#EAECEF]">
                   <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">
-                    Mastery Points
+                    Skor Kuis &amp; Sertifikat
+                  </p>
+                  <p className="text-lg font-extrabold text-[#10B981] mt-1">
+                    {activeMember.avgQuizScore}%{" "}
+                    <span className="text-xs font-semibold text-[#5E5E5E]">
+                      Rata-rata
+                    </span>
+                  </p>
+                  <p className="text-[11px] font-semibold text-[#4F39F6] mt-1 truncate">
+                    ID: {activeMember.credentialId}
+                  </p>
+                </div>
+
+                {/* 4. Password Security Status */}
+                <div className="rounded-xl bg-[#F8F9FB] p-3.5 border border-[#EAECEF]">
+                  <p className="text-[10px] font-bold uppercase text-[#9CA3AF] flex items-center gap-1">
+                    <ShieldCheck size={11} className="text-[#10B981]" />
+                    <span>Keamanan Akun</span>
+                  </p>
+                  <p className="text-xs font-bold text-[#121215] mt-1.5">
+                    {pwRecord
+                      ? "Password Admin Aktif"
+                      : "Password Default / Auth"}
+                  </p>
+                  <p className="text-[11px] text-[#5E5E5E] mt-0.5 truncate">
+                    {pwRecord
+                      ? `Diperbarui ${new Date(pwRecord.updatedAt).toLocaleDateString("id-ID")}`
+                      : "Belum direset manual"}
                   </p>
                   <button
                     type="button"
-                    onClick={() => {
-                      setAdjustPointsTarget(inspectedMember);
-                      setAdjustPointsMode("add");
-                      setAdjustPointsValue(100);
-                      setAdjustPointsReason("Bonus Keaktifan");
-                    }}
-                    className="text-[10px] font-bold text-[#D97706] hover:underline flex items-center gap-0.5 cursor-pointer"
+                    onClick={() => setProfileTab("security")}
+                    className="mt-1.5 text-[11px] font-bold text-[#4F39F6] hover:underline cursor-pointer"
                   >
-                    <Edit3 size={10} />
-                    <span>Ubah</span>
+                    Atur Password Baru &rarr;
                   </button>
                 </div>
-                <p className="text-base font-extrabold text-[#B45309] mt-0.5 flex items-center gap-1">
-                  <Star size={14} className="text-[#F59E0B]" fill="#F59E0B" />
-                  {inspectedMember.points.toLocaleString()} pts
-                </p>
               </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">
-                  Chapters Completed
-                </p>
-                <p className="text-base font-extrabold text-[#121215] mt-0.5">
-                  {inspectedMember.completedChapters} /{" "}
-                  {inspectedMember.totalChapters}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">
-                  Average Quiz Score
-                </p>
-                <p className="text-base font-extrabold text-[#10B981] mt-0.5">
-                  {inspectedMember.avgQuizScore}%
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">
-                  Credential ID
-                </p>
-                <p className="text-xs font-bold text-[#4F39F6] mt-1">
-                  {inspectedMember.credentialId}
-                </p>
-              </div>
-            </div>
 
-            {/* Trenning 3-Tab Profile Switcher: Activity | Assigned (2) | Need to review (ref_13b) */}
-            <div className="flex items-center gap-1 rounded-xl bg-[#F8F9FB] p-1 border border-[#EAECEF]">
-              {(
-                [
-                  { id: "activity", label: "Activity" },
-                  {
-                    id: "assigned",
-                    label: `Assigned (${memberAssignedItems.length})`,
-                  },
-                  { id: "review", label: "Need to review (2)" },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setProfileTab(tab.id)}
-                  className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                    profileTab === tab.id
-                      ? "bg-[#FFFFFF] text-[#4F39F6] shadow-2xs"
-                      : "text-[#5E5E5E] hover:text-[#121215]"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+              {/* 3-Tab Switcher */}
+              <div className="flex items-center gap-1 rounded-xl bg-[#F8F9FB] p-1 border border-[#EAECEF]">
+                {(
+                  [
+                    { id: "activity", label: "Progress Belajar & Koin" },
+                    {
+                      id: "assigned",
+                      label: `Kelola Materi (${memberAssignedItems.length})`,
+                    },
+                    { id: "security", label: "Reset Password" },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setProfileTab(tab.id)}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                      profileTab === tab.id
+                        ? "bg-[#FFFFFF] text-[#4F39F6] shadow-2xs"
+                        : "text-[#5E5E5E] hover:text-[#121215]"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
-            {profileTab === "activity" && (
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                {/* Trending contents progress bars (ref_13b) */}
-                <div className="md:col-span-5 rounded-xl bg-[#F8F9FB] p-4 border border-[#EAECEF] space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#121215]">
-                    Trending Contents
-                  </h3>
-                  {[
-                    { title: "Creating Engaging Learning Journeys", pct: 92, color: "#4F39F6" },
-                    { title: "Mastering UI Heuristics & Tokens", pct: 78, color: "#10B981" },
-                    { title: "Social Media Hook Retention Lab", pct: 64, color: "#0EA5E9" },
-                  ].map((tc) => (
-                    <div key={tc.title} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-[#121215] truncate pr-2">
-                          {tc.title}
-                        </span>
-                        <span className="font-bold text-[#5E5E5E]">
-                          {tc.pct}%
-                        </span>
-                      </div>
-                      <div className="h-2 rounded-full bg-[#FFFFFF] border border-[#EAECEF] overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{ width: `${tc.pct}%`, backgroundColor: tc.color }}
-                        />
-                      </div>
+              {profileTab === "activity" && (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Per-Course Learning Progress */}
+                  <div className="md:col-span-7 rounded-xl bg-[#F8F9FB] p-4 border border-[#EAECEF] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#121215]">
+                        Progress Per Kelas ({memberAssignedItems.length})
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setProfileTab("assigned")}
+                        className="text-[11px] font-semibold text-[#4F39F6] hover:underline cursor-pointer"
+                      >
+                        + Tambah / Cabut Materi
+                      </button>
                     </div>
-                  ))}
-                </div>
 
-                {/* Chronological Log Timeline (ref_13b) */}
-                <div className="md:col-span-7 rounded-xl bg-[#FFFFFF] p-4 border border-[#EAECEF] space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#121215]">
-                    Activity Log
-                  </h3>
-                  <div className="space-y-3">
-                    {[
-                      {
-                        time: "Today, 14:20",
-                        action: "Completed Quiz: Heuristic Evaluation Principles",
-                        detail: "Scored 92/100 pts (Passed on 1st attempt)",
-                        dot: "#10B981",
-                      },
-                      {
-                        time: "Today, 11:05",
-                        action: "Uploaded assignment attachment",
-                        detail: "Instagram-Carousel-Audit-Worksheet.pdf (2.4 MB)",
-                        dot: "#4F39F6",
-                      },
-                      {
-                        time: "Yesterday, 16:40",
-                        action: "Started Course: Creating Engaging Learning Journeys",
-                        detail: "Completed Chapter 1 & Chapter 2",
-                        dot: "#0EA5E9",
-                      },
-                      {
-                        time: "2 days ago",
-                        action: "Submitted learning path feedback",
-                        detail: "Rated 5.0 ★ — 'Very clear framework and examples'",
-                        dot: "#F59E0B",
-                      },
-                    ].map((log, lIdx) => (
-                      <div key={lIdx} className="flex items-start gap-2.5 text-xs">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full mt-1 shrink-0"
-                          style={{ backgroundColor: log.dot }}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-bold text-[#121215]">{log.action}</p>
-                            <span className="text-[10px] text-[#9CA3AF] shrink-0">
-                              {log.time}
+                    {memberAssignedItems.length === 0 ? (
+                      <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] p-5 text-center space-y-2">
+                        <p className="text-xs text-[#5E5E5E]">
+                          Belum ada kelas/materi yang di-assign ke{" "}
+                          <span className="font-semibold">{activeMember.name}</span>.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setProfileTab("assigned")}
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#4F39F6] px-3 py-1.5 text-xs font-semibold text-white cursor-pointer"
+                        >
+                          <Plus size={12} />
+                          <span>Assign Materi Sekarang</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                        {memberAssignedItems.map((item) => {
+                          const currSections =
+                            courseCurriculums?.[item.title.trim().toLowerCase()] ||
+                            [];
+                          const totalCourseCh = currSections.reduce(
+                            (acc, sec) => acc + (sec.chapters?.length || 0),
+                            0
+                          );
+                          const enrollMatch = memberEnrolls.find(
+                            (en) => en.contentId === item.id
+                          );
+                          const coursePct = enrollMatch
+                            ? enrollMatch.progressPercent
+                            : item.progressPercent || 0;
+                          const completedChInCourse = enrollMatch
+                            ? enrollMatch.completedCount
+                            : Math.round((coursePct / 100) * totalCourseCh);
+
+                          return (
+                            <div
+                              key={item.id}
+                              className="rounded-lg bg-[#FFFFFF] p-3 border border-[#EAECEF] space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between gap-2 text-xs">
+                                <span className="font-bold text-[#121215] truncate">
+                                  {item.title}
+                                </span>
+                                <span className="font-bold text-[#4F39F6] shrink-0 tabular-nums">
+                                  {coursePct}%
+                                </span>
+                              </div>
+                              <div className="h-2 rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-[#4F39F6]"
+                                  style={{ width: `${coursePct}%` }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-[#5E5E5E]">
+                                <span>
+                                  {item.folderName || item.cohort || item.category}
+                                </span>
+                                <span className="tabular-nums">
+                                  {totalCourseCh > 0
+                                    ? `${completedChInCourse}/${totalCourseCh} Bab selesai`
+                                    : item.type}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remaining Coins & Rewards History */}
+                  <div className="md:col-span-5 rounded-xl bg-[#FFFFFF] p-4 border border-[#EAECEF] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#121215] flex items-center gap-1.5">
+                        <Gift size={13} className="text-[#F59E0B]" />
+                        <span>Koin &amp; Penukaran Hadiah</span>
+                      </h3>
+                    </div>
+
+                    <div className="rounded-lg bg-[#FEF3C7]/40 border border-[#F59E0B]/30 p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase text-[#B45309]">
+                          Remaining Coins
+                        </p>
+                        <p className="text-base font-extrabold text-[#B45309] tabular-nums">
+                          {activeMember.points.toLocaleString()} Koin
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdjustPointsTarget(activeMember);
+                          setAdjustPointsMode("add");
+                          setAdjustPointsValue(100);
+                          setAdjustPointsReason("Bonus Keaktifan");
+                        }}
+                        className="rounded-lg bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-bold text-[#B45309] border border-[#F59E0B]/40 cursor-pointer"
+                      >
+                        + Atur Koin
+                      </button>
+                    </div>
+
+                    <div className="space-y-2 max-h-44 overflow-y-auto">
+                      {memberClaimedRewards.length === 0 ? (
+                        <p className="text-xs text-[#5E5E5E] py-3 text-center">
+                          Belum ada hadiah yang ditukarkan oleh user ini.
+                        </p>
+                      ) : (
+                        memberClaimedRewards.map((rw) => (
+                          <div
+                            key={rw.id}
+                            className="rounded-lg bg-[#F8F9FB] p-2.5 border border-[#EAECEF] flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-bold text-[#121215] truncate">
+                                {rw.rewardTitle}
+                              </p>
+                              <p className="text-[10px] text-[#5E5E5E]">
+                                {new Date(rw.claimedAt).toLocaleDateString("id-ID")} •{" "}
+                                {rw.status}
+                              </p>
+                            </div>
+                            <span className="shrink-0 font-bold text-[#EF4444] tabular-nums">
+                              -{rw.pointsSpent} pts
                             </span>
                           </div>
-                          <p className="text-[11px] text-[#5E5E5E] mt-0.5">
-                            {log.detail}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {profileTab === "assigned" && (
-              /* Assigned Courses & Assessments Breakdown */
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#9CA3AF]">
-                    Assigned Courses &amp; Modules ({memberAssignedItems.length})
-                  </h3>
-                  <span className="text-[11px] text-[#5E5E5E]">
-                    Klik &quot;Cabut Akses&quot; untuk menghapus hak akses siswa dari kelas
-                  </span>
-                </div>
-
-                <div className="divide-y divide-[#EAECEF] rounded-xl border border-[#EAECEF] bg-[#FFFFFF] max-h-64 overflow-y-auto">
-                  {memberAssignedItems.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-[#5E5E5E]">
-                      Belum ada materi pembelajaran yang di-assign untuk siswa ini.
+              {profileTab === "assigned" && (
+                /* Assigned Courses & Add/Revoke Access */
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#9CA3AF]">
+                        Materi yang Sudah Di-assign ({memberAssignedItems.length})
+                      </h3>
+                      <span className="text-[11px] text-[#5E5E5E]">
+                        Klik &quot;Cabut Akses&quot; untuk menghapus hak akses
+                      </span>
                     </div>
-                  ) : (
-                    memberAssignedItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="p-3.5 flex items-center justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <ContentBadge type={item.type} size="sm" />
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-[#121215] truncate">
-                              {item.title}
-                            </p>
-                            <p className="text-[11px] text-[#5E5E5E]">
-                              {item.category} • {item.type}
-                            </p>
+
+                    <div className="divide-y divide-[#EAECEF] rounded-xl border border-[#EAECEF] bg-[#FFFFFF] max-h-48 overflow-y-auto">
+                      {memberAssignedItems.length === 0 ? (
+                        <div className="p-5 text-center text-xs text-[#5E5E5E]">
+                          Belum ada materi pembelajaran yang di-assign untuk user ini.
+                        </div>
+                      ) : (
+                        memberAssignedItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="p-3 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <ContentBadge type={item.type} size="sm" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-[#121215] truncate">
+                                  {item.title}
+                                </p>
+                                <p className="text-[11px] text-[#5E5E5E]">
+                                  {item.folderName || item.category} • {item.type}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRevokeMemberAccess(
+                                  activeMember,
+                                  item.id,
+                                  item.title
+                                )
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-[#EF4444] bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FCA5A5]/40 transition-colors cursor-pointer shrink-0"
+                            >
+                              <UserMinus size={12} />
+                              <span>Cabut Akses</span>
+                            </button>
                           </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {memberUnassignedMaterials.length > 0 && (
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#9CA3AF]">
+                        Tambah Materi Baru untuk {activeMember.name}
+                      </h3>
+                      <div className="divide-y divide-[#EAECEF] rounded-xl border border-[#EAECEF] bg-[#F8F9FB] max-h-40 overflow-y-auto">
+                        {memberUnassignedMaterials.map((mat) => (
+                          <div
+                            key={mat.id}
+                            className="p-2.5 px-3 flex items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <ContentBadge type={mat.type} size="sm" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-[#121215] truncate">
+                                  {mat.title}
+                                </p>
+                                <p className="text-[10px] text-[#5E5E5E] truncate">
+                                  {mat.folderName || mat.cohort || mat.category}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleAssignMaterialToMember(activeMember, mat)
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-2.5 py-1 text-[11px] font-bold text-white cursor-pointer shrink-0"
+                            >
+                              <Plus size={12} />
+                              <span>Assign</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {profileTab === "security" && (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Direct Admin Password Reset Form */}
+                  <form
+                    onSubmit={handleAdminDirectPasswordReset}
+                    className="md:col-span-7 rounded-xl bg-[#F8F9FB] p-4 border border-[#EAECEF] space-y-3.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#121215] flex items-center gap-1.5">
+                          <KeyRound size={13} className="text-[#4F39F6]" />
+                          <span>Reset Password Langsung oleh Admin</span>
+                        </h3>
+                        <p className="text-[11px] text-[#5E5E5E] mt-0.5">
+                          Atur password baru untuk{" "}
+                          <span className="font-semibold text-[#121215]">
+                            {activeMember.email}
+                          </span>
+                          . User dapat langsung login menggunakan password ini.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="admin-reset-password-input"
+                        className="block text-xs font-semibold text-[#121215]"
+                      >
+                        Password Baru
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            id="admin-reset-password-input"
+                            type={showResetPassword ? "text" : "password"}
+                            required
+                            minLength={4}
+                            value={resetPasswordInput}
+                            onChange={(e) => setResetPasswordInput(e.target.value)}
+                            placeholder="Masukkan minimal 4 karakter..."
+                            className="w-full rounded-lg bg-[#FFFFFF] px-3 py-2 pr-9 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowResetPassword((v) => !v)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#5E5E5E] hover:text-[#121215] cursor-pointer"
+                            title={
+                              showResetPassword
+                                ? "Sembunyikan password"
+                                : "Tampilkan password"
+                            }
+                          >
+                            {showResetPassword ? (
+                              <EyeOff size={14} />
+                            ) : (
+                              <Eye size={14} />
+                            )}
+                          </button>
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="w-20 h-2 rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-[#10B981]"
-                              style={{ width: `${item.progressPercent}%` }}
-                            />
-                          </div>
-                          <span className="text-xs font-bold text-[#121215] w-8 text-right tabular-nums">
-                            {item.progressPercent}%
-                          </span>
+                        <button
+                          type="button"
+                          onClick={handleGenerateResetPassword}
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#FFFFFF] hover:bg-[#EAECEF]/50 px-2.5 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] cursor-pointer shrink-0"
+                          title="Buat password acak otomatis"
+                        >
+                          <RefreshCw size={12} className="text-[#4F39F6]" />
+                          <span>Generate</span>
+                        </button>
 
+                        {resetPasswordInput && (
                           <button
                             type="button"
                             onClick={() =>
-                              handleRevokeMemberAccess(
-                                inspectedMember,
-                                item.id,
-                                item.title
-                              )
+                              handleCopyResetPassword(resetPasswordInput)
                             }
-                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold text-[#EF4444] bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FCA5A5]/40 transition-colors cursor-pointer"
-                            title="Cabut akses kelas ini untuk siswa"
+                            className="inline-flex items-center gap-1 rounded-lg bg-[#FFFFFF] hover:bg-[#EAECEF]/50 px-2.5 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] cursor-pointer shrink-0"
+                            title="Salin password"
                           >
-                            <UserMinus size={12} />
-                            <span>Cabut Akses</span>
+                            {copiedPassword ? (
+                              <Check size={12} className="text-[#10B981]" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                            <span>Salin</span>
                           </button>
-                        </div>
+                        )}
                       </div>
-                    ))
-                  )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={isSavingPassword || !resetPasswordInput.trim()}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] disabled:opacity-50 px-4 py-2 text-xs font-bold text-white cursor-pointer"
+                      >
+                        <KeyRound size={13} />
+                        <span>
+                          {isSavingPassword
+                            ? "Menyimpan..."
+                            : "Simpan Password Baru (Langsung Aktif)"}
+                        </span>
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Current Reset Record & Optional Email Reset */}
+                  <div className="md:col-span-5 rounded-xl bg-[#FFFFFF] p-4 border border-[#EAECEF] space-y-3 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#121215]">
+                        Info Password Terakhir
+                      </h3>
+                      {pwRecord ? (
+                        <div className="rounded-lg bg-[#ECFDF5] border border-[#10B981]/30 p-3 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold uppercase text-[#059669]">
+                              Password Aktif (Admin Reset)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCopyResetPassword(pwRecord.password)
+                              }
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-[#059669] hover:underline cursor-pointer"
+                            >
+                              <Copy size={11} />
+                              <span>Salin</span>
+                            </button>
+                          </div>
+                          <p className="font-mono text-sm font-bold text-[#121215] select-all">
+                            {pwRecord.password}
+                          </p>
+                          <p className="text-[10px] text-[#5E5E5E]">
+                            Direset oleh {pwRecord.updatedBy || "Admin"} pada{" "}
+                            {new Date(pwRecord.updatedAt).toLocaleString("id-ID")}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg bg-[#F8F9FB] border border-[#EAECEF] p-3 text-xs text-[#5E5E5E]">
+                          Belum pernah dilakukan reset manual dari Admin untuk user
+                          ini.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-[#EAECEF] space-y-2">
+                      <p className="text-[11px] text-[#5E5E5E]">
+                        Alternatif: kirim link reset resmi ke email user via Supabase
+                        Auth:
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleSendSupabaseResetEmail}
+                        disabled={isSendingResetEmail}
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/70 disabled:opacity-50 px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] cursor-pointer"
+                      >
+                        <Send size={12} className="text-[#4F39F6]" />
+                        <span>
+                          {isSendingResetEmail
+                            ? "Mengirim Email..."
+                            : "Kirim Link Reset ke Email"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Portfolio Modal Footer */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#EAECEF]">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#10B981]">
+                  <CheckCircle2 size={14} />
+                  <span>Eligible for Official Ruang Sosmed 2.0 Certificate</span>
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = activeMember;
+                      setInspectedMember(null);
+                      setCertificateMember(target);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white cursor-pointer"
+                  >
+                    <Award size={14} />
+                    <span>
+                      🎓 View &amp; Download Certificate (
+                      {activeMember.credentialId})
+                    </span>
+                  </button>
                 </div>
               </div>
-            )}
-
-            {profileTab === "review" && (
-              <div className="rounded-xl border border-[#EAECEF] bg-[#F8F9FB] p-4 space-y-2.5">
-                <p className="text-xs font-bold text-[#121215]">
-                  Open-Ended Quiz Submissions Awaiting Mentor Review
-                </p>
-                {[
-                  {
-                    qTitle: "Q4: Explain the 10 Usability Heuristics in UI Design",
-                    submittedAt: "Submitted 3 hours ago",
-                    pointsLabel: "Needs Score (Max 20 pts)",
-                  },
-                  {
-                    qTitle: "Q9: Audit Brand Typography Hierarchy Case Study",
-                    submittedAt: "Submitted yesterday",
-                    pointsLabel: "Needs Score (Max 15 pts)",
-                  },
-                ].map((rev) => (
-                  <div
-                    key={rev.qTitle}
-                    className="rounded-lg bg-[#FFFFFF] p-3 border border-[#EAECEF] flex items-center justify-between gap-3"
-                  >
-                    <div>
-                      <p className="text-xs font-bold text-[#121215]">
-                        {rev.qTitle}
-                      </p>
-                      <p className="text-[11px] text-[#5E5E5E]">
-                        {rev.submittedAt}
-                      </p>
-                    </div>
-                    <span className="rounded-md bg-[#FEF3C7] px-2.5 py-1 text-[11px] font-bold text-[#B45309]">
-                      {rev.pointsLabel}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Portfolio Modal Footer */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#EAECEF]">
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#10B981]">
-                <CheckCircle2 size={14} />
-                <span>Eligible for Official Ruang Sosmed 2.0 Certificate</span>
-              </span>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = inspectedMember;
-                    setInspectedMember(null);
-                    setCertificateMember(target);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white cursor-pointer"
-                >
-                  <Award size={14} />
-                  <span>
-                    🎓 View &amp; Download Certificate (
-                    {inspectedMember.credentialId})
-                  </span>
-                </button>
-              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </ModalDialog>
 
       {/* Official Certificate Generator Modal for Selected Learner */}

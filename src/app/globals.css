@@ -143,10 +143,21 @@ dialog::backdrop {
   z-index: 1;
 }
 
+.table-wrapper tbody tr {
+  background: #FFFFFF;
+  transition: background-color 150ms ease;
+}
+
 .table-wrapper tbody th {
   position: sticky;
   inset-inline-start: 0;
-  background: #FFFFFF;
+  background: inherit;
+}
+
+.table-wrapper tbody tr:hover,
+.table-wrapper tbody tr:hover th,
+.table-wrapper tbody tr:hover td {
+  background-color: #F8FAFC;
 }
 
 @container (width < 560px) {
@@ -652,14 +663,25 @@ html[data-theme-mode="dark"] select {
   color: var(--theme-text) !important;
 }
 
+html[data-theme-active="true"] .table-wrapper tbody tr,
+html[data-theme-mode="dark"] .table-wrapper tbody tr {
+  background-color: var(--theme-surface) !important;
+  border-color: var(--theme-border) !important;
+}
+
+html[data-theme-active="true"] .table-wrapper tbody th,
 html[data-theme-mode="dark"] .table-wrapper tbody th {
-  background: var(--theme-surface-soft) !important;
+  background-color: inherit !important;
   color: var(--theme-text) !important;
 }
 
-html[data-theme-mode="dark"] .table-wrapper tbody tr {
-  background: var(--theme-surface) !important;
-  border-color: var(--theme-border) !important;
+html[data-theme-active="true"] .table-wrapper tbody tr:hover,
+html[data-theme-active="true"] .table-wrapper tbody tr:hover th,
+html[data-theme-active="true"] .table-wrapper tbody tr:hover td,
+html[data-theme-mode="dark"] .table-wrapper tbody tr:hover,
+html[data-theme-mode="dark"] .table-wrapper tbody tr:hover th,
+html[data-theme-mode="dark"] .table-wrapper tbody tr:hover td {
+  background-color: var(--theme-surface-hover) !important;
 }
 
 html[data-theme-active="true"] .shadow-\[0_2px_8px_rgba\(16\,15\,17\,0\.04\)\],

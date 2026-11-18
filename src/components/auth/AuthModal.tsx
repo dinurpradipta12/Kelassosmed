@@ -71,6 +71,68 @@ export function AuthModal({
 
   if (!open) return null;
 
+  const verifyAdminResetPassword = async (
+    identifierClean: string,
+    emailClean: string,
+    rawPassword: string
+  ): Promise<{ matched: boolean; matchedKey?: string } | null> => {
+    const candidateKeys = Array.from(
+      new Set(
+        [
+          identifierClean,
+          emailClean,
+          emailClean.includes("@") ? emailClean.split("@")[0] : "",
+        ].filter(Boolean)
+      )
+    );
+
+    // 1. Check localStorage first
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(
+          "ruang_sosmed_admin_reset_passwords_v1"
+        );
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            for (const k of candidateKeys) {
+              const rec = parsed[k];
+              if (rec?.password && rec.password === rawPassword) {
+                return { matched: true, matchedKey: k };
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Check Supabase __SYSTEM_USER_PASSWORDS__
+    if (isSupabaseConfigured) {
+      try {
+        const { data: rows } = await supabase
+          .from("contents")
+          .select("settings_json")
+          .eq("title", "__SYSTEM_USER_PASSWORDS__")
+          .order("updated_at", { ascending: false })
+          .limit(1);
+
+        const row =
+          Array.isArray(rows) && rows.length > 0 ? (rows[0] as any) : null;
+        const remoteMap = row?.settings_json?.passwords;
+        if (remoteMap && typeof remoteMap === "object") {
+          for (const k of candidateKeys) {
+            const rec = remoteMap[k];
+            if (rec?.password && rec.password === rawPassword) {
+              return { matched: true, matchedKey: k };
+            }
+          }
+        }
+      } catch {}
+    }
+
+    return null;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -303,6 +365,87 @@ export function AuthModal({
           username: "arunika",
         });
         onShowToast("Selamat datang kembali, Dinur Pradipta (Developer Mode Aktif)!");
+        onClose();
+        return;
+      }
+
+      // Cek apakah Admin sudah mereset password akun ini via Admin Directory
+      const adminResetMatch = await verifyAdminResetPassword(
+        cleanId,
+        emailToUse.toLowerCase(),
+        cleanPw
+      );
+      if (adminResetMatch?.matched) {
+        let resolvedName = identifier.includes("@")
+          ? identifier.split("@")[0]
+          : identifier.trim();
+        let resolvedEmail = emailToUse;
+        let resolvedRole: "admin" | "learner" = isDeveloperSuperAdmin
+          ? "admin"
+          : "learner";
+        let resolvedUsername: string | undefined = !identifier.includes("@")
+          ? cleanId
+          : undefined;
+        let resolvedAvatar: string | undefined = undefined;
+
+        if (isSupabaseConfigured) {
+          try {
+            const [profRes, uProfRes] = await Promise.all([
+              supabase
+                .from("profiles")
+                .select("*")
+                .or(`email.ilike.${emailToUse},full_name.ilike.${identifier.trim()}`)
+                .limit(1),
+              supabase
+                .from("user_profiles")
+                .select("*")
+                .or(`email.ilike.${emailToUse},username.ilike.${cleanId},name.ilike.${identifier.trim()}`)
+                .limit(1),
+            ]);
+            const pRow =
+              Array.isArray(profRes.data) && profRes.data.length > 0
+                ? (profRes.data[0] as any)
+                : null;
+            const upRow =
+              Array.isArray(uProfRes.data) && uProfRes.data.length > 0
+                ? (uProfRes.data[0] as any)
+                : null;
+            if (pRow || upRow) {
+              resolvedName =
+                pRow?.full_name || upRow?.name || resolvedName;
+              resolvedEmail =
+                pRow?.email || upRow?.email || resolvedEmail;
+              resolvedUsername =
+                upRow?.username || resolvedUsername;
+              resolvedAvatar =
+                pRow?.avatar_url || upRow?.avatar_url || resolvedAvatar;
+              const dbRole = String(
+                pRow?.role || upRow?.role || "learner"
+              ).toLowerCase();
+              if (dbRole === "admin" || dbRole === "mentor") {
+                resolvedRole = "admin";
+              }
+            }
+          } catch {}
+        }
+
+        if (resolvedRole === "admin" && typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem("ruang_sosmed_dev_session_v1", "true");
+            window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
+          } catch {}
+        }
+
+        onAuthSuccess({
+          name: resolvedName,
+          email: resolvedEmail,
+          role: resolvedRole,
+          username: resolvedUsername,
+          avatarUrl: resolvedAvatar,
+        });
+        onShowToast(
+          `Berhasil login sebagai ${resolvedName} dengan password yang telah direset Admin!`
+        );
         onClose();
         return;
       }
