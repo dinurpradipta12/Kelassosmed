@@ -648,6 +648,14 @@ export function AdminLearnersDirectory({
             settings_json: payload,
           });
         }
+
+        // Juga perbarui encrypted_password langsung di Supabase auth.users via RPC bila tersedia
+        try {
+          await supabase.rpc("admin_reset_user_password", {
+            p_identifier: inspectedMember.email || inspectedMember.name,
+            p_new_password: nextPassword,
+          });
+        } catch {}
       }
 
       onShowToast(

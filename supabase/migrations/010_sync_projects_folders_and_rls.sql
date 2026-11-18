@@ -236,3 +236,101 @@ WHERE title IN (
   'Mini Bootcamp Social Media Specialist Batch 2',
   'Mini Bootcamp Social Media Specialist Batch 3'
 );
+
+-- 10. Buka kebijakan RLS pada `enrollments` dan `submissions` agar Modal Profil User
+--     selalu dapat membaca & memperbarui progress belajar serta skor kuis siswa
+ALTER TABLE IF EXISTS public.enrollments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "enrollments_select_own_or_staff" ON public.enrollments;
+DROP POLICY IF EXISTS "enrollments_insert_own_or_staff" ON public.enrollments;
+DROP POLICY IF EXISTS "enrollments_update_own_or_staff" ON public.enrollments;
+DROP POLICY IF EXISTS "enrollments_delete_staff_only" ON public.enrollments;
+DROP POLICY IF EXISTS "enrollments_sync_all" ON public.enrollments;
+CREATE POLICY "enrollments_sync_all"
+  ON public.enrollments FOR ALL
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+ALTER TABLE IF EXISTS public.submissions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "submissions_select_own_or_staff" ON public.submissions;
+DROP POLICY IF EXISTS "submissions_insert_own_or_staff" ON public.submissions;
+DROP POLICY IF EXISTS "submissions_update_staff_only" ON public.submissions;
+DROP POLICY IF EXISTS "submissions_sync_all" ON public.submissions;
+CREATE POLICY "submissions_sync_all"
+  ON public.submissions FOR ALL
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+-- 11. Seed baris sistem `__SYSTEM_USER_PASSWORDS__` untuk penyimpanan reset password Admin lintas perangkat
+INSERT INTO public.contents (
+  id,
+  title,
+  type,
+  status,
+  description,
+  urgency,
+  estimated_minutes,
+  points_reward,
+  settings_json
+)
+SELECT
+  gen_random_uuid(),
+  '__SYSTEM_USER_PASSWORDS__',
+  'page',
+  'published',
+  'System storage for admin-assisted password resets',
+  'not_urgent',
+  0,
+  0,
+  jsonb_build_object('passwords', '{}'::jsonb, 'updatedAt', now())
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.contents WHERE title = '__SYSTEM_USER_PASSWORDS__'
+);
+
+-- 12. RPC Admin Direct Password Reset ke `auth.users` (Supabase Auth)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE OR REPLACE FUNCTION public.admin_reset_user_password(
+  p_identifier text,
+  p_new_password text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_clean_id text := lower(trim(COALESCE(p_identifier, '')));
+  v_target_uid uuid;
+BEGIN
+  IF v_clean_id = '' OR length(trim(COALESCE(p_new_password, ''))) < 4 THEN
+    RETURN false;
+  END IF;
+
+  SELECT u.id
+  INTO v_target_uid
+  FROM auth.users u
+  WHERE lower(u.email) = v_clean_id
+     OR lower(COALESCE(u.raw_user_meta_data->>'username', '')) = v_clean_id
+     OR lower(COALESCE(u.raw_user_meta_data->>'full_name', '')) = v_clean_id
+  ORDER BY u.created_at DESC
+  LIMIT 1;
+
+  IF v_target_uid IS NULL THEN
+    RETURN false;
+  END IF;
+
+  UPDATE auth.users
+  SET
+    encrypted_password = crypt(trim(p_new_password), gen_salt('bf')),
+    email_confirmed_at = COALESCE(email_confirmed_at, now()),
+    updated_at = now()
+  WHERE id = v_target_uid;
+
+  RETURN true;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.admin_reset_user_password(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_reset_user_password(text, text) TO anon, authenticated;
