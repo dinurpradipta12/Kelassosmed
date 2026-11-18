@@ -235,9 +235,41 @@ function BlockVisibilityToggle({
   );
 }
 
+function createBlankEditorSections(seed: string): EditorSection[] {
+  const cleanSeed = seed.replace(/[^a-zA-Z0-9_-]/g, "") || String(Date.now());
+  return [
+    {
+      id: `sec-${cleanSeed}-1`,
+      title: "Section 1",
+      hidden: false,
+      chapters: [
+        {
+          id: `ch-${cleanSeed}-1`,
+          title: "Chapter 1",
+          readingTime: "10 mins",
+          points: "10 pts",
+          bodyText: "",
+          calloutText: "",
+          videoMode: "embed",
+          videoUrl: "",
+          videoFileName: "",
+          imageCaption: "",
+          imageZoomEnabled: false,
+          attachments: [],
+          embeddedBlocks: [],
+          databaseRows: [],
+        },
+      ],
+    },
+  ];
+}
+
 interface CoursePageEditorProps {
   initialTitle?: string;
   contentType?: "Course" | "Page";
+  isNew?: boolean;
+  draftSessionId?: string;
+  folderName?: string;
   initialSections?: CourseSectionAccordion[];
   onBack: () => void;
   onPublish: (
@@ -250,8 +282,11 @@ interface CoursePageEditorProps {
 }
 
 export function CoursePageEditor({
-  initialTitle = "Mastering Instagram Carousel & Viral Hook Strategy",
+  initialTitle = "",
   contentType = "Course",
+  isNew = false,
+  draftSessionId,
+  folderName,
   initialSections,
   onBack,
   onPublish,
@@ -265,16 +300,34 @@ export function CoursePageEditor({
     updateContentLanguage,
     updateExplorerItemDetails,
   } = useRuangSosmedStore();
-  const [docTitle, setDocTitle] = useState(initialTitle);
-  const savedTitleRef = useRef(initialTitle);
+  const [docTitle, setDocTitle] = useState(() =>
+    isNew ? initialTitle || "" : initialTitle
+  );
+  const savedTitleRef = useRef(isNew ? "" : initialTitle);
 
   const [sections, setSections] = useState<EditorSection[]>(() => {
+    if (isNew) {
+      const seed = draftSessionId || String(Date.now());
+      if (typeof window !== "undefined" && draftSessionId) {
+        try {
+          const savedNewDraft = window.localStorage.getItem(
+            `ruang_sosmed_editor_draft_${draftSessionId}`
+          );
+          if (savedNewDraft) {
+            const parsed = JSON.parse(savedNewDraft);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        } catch {}
+      }
+      return createBlankEditorSections(seed);
+    }
+
     // 1. Cek prop initialSections jika dikirim eksplisit
     if (initialSections && initialSections.length > 0) {
       return accordionToEditorSections(initialSections);
     }
     const key = initialTitle.toLowerCase().trim();
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && key) {
       try {
         // 2. Cek apakah ada draft yang pernah diedit di editor untuk course ini
         const draft = window.localStorage.getItem(
@@ -298,10 +351,13 @@ export function CoursePageEditor({
       } catch {}
     }
     // 4. Cek kurikulum di global store
-    if (courseCurriculums && courseCurriculums[key]) {
+    if (key && courseCurriculums && courseCurriculums[key]) {
       return accordionToEditorSections(courseCurriculums[key]);
     }
-    return INITIAL_EDITOR_SECTIONS;
+    // 5. Fallback blank (never pre-populate from another course)
+    return isNew
+      ? createBlankEditorSections(draftSessionId || String(Date.now()))
+      : INITIAL_EDITOR_SECTIONS;
   });
 
   const [activeSectionId, setActiveSectionId] = useState(
@@ -312,14 +368,16 @@ export function CoursePageEditor({
   );
   const [previewMode, setPreviewMode] = useState(false);
   const [versionDrawerOpen, setVersionDrawerOpen] = useState(false);
-  const [versions, setVersions] =
-    useState<ContentVersionItem[]>(INITIAL_VERSIONS);
-  const [lastSavedLabel, setLastSavedLabel] = useState(
-    "Saved in Ruang Sosmed 2.0"
+  const [versions, setVersions] = useState<ContentVersionItem[]>(() =>
+    isNew ? [] : INITIAL_VERSIONS
+  );
+  const [lastSavedLabel, setLastSavedLabel] = useState(() =>
+    isNew ? "Draft Baru (Mulai dari 0)" : "Saved in Ruang Sosmed 2.0"
   );
   const [courseIsPro, setCourseIsPro] = useState<boolean>(() => {
+    if (isNew) return false;
     const key = initialTitle.toLowerCase().trim();
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && key) {
       try {
         const saved = window.localStorage.getItem(
           `ruang_sosmed_course_tier_${key}`
@@ -330,12 +388,14 @@ export function CoursePageEditor({
     return false;
   });
 
-  const currentExplorerItem = explorerItems?.find(
-    (it) =>
-      it.title.trim().toLowerCase() ===
-      savedTitleRef.current.trim().toLowerCase()
-  );
-  const isEditingExisting = Boolean(currentExplorerItem);
+  const currentExplorerItem = isNew
+    ? undefined
+    : explorerItems?.find(
+        (it) =>
+          it.title.trim().toLowerCase() ===
+          savedTitleRef.current.trim().toLowerCase()
+      );
+  const isEditingExisting = !isNew && Boolean(currentExplorerItem);
   const [courseLang, setCourseLang] = useState<string>(() => {
     return currentExplorerItem?.language || "Bahasa Indonesia";
   });
@@ -347,10 +407,23 @@ export function CoursePageEditor({
     }
   }, [currentExplorerItem?.language]);
 
-  // Auto-save draft ke localStorage saat sections berubah; hanya sync live jika sedang mengedit course yang sudah ada (pakai savedTitleRef agar ketikan judul tidak membuat course duplikat)
+  // Auto-save draft ke localStorage saat sections berubah; isolasi draft baru per draftSessionId agar tidak bentrok dengan course sebelumnya
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isNew) {
+      if (draftSessionId) {
+        try {
+          window.localStorage.setItem(
+            `ruang_sosmed_editor_draft_${draftSessionId}`,
+            JSON.stringify(sections)
+          );
+        } catch {}
+      }
+      return;
+    }
+
     const activeSavedTitle = savedTitleRef.current?.trim();
-    if (typeof window !== "undefined" && activeSavedTitle) {
+    if (activeSavedTitle) {
       try {
         const key = activeSavedTitle.toLowerCase();
         window.localStorage.setItem(
@@ -363,7 +436,7 @@ export function CoursePageEditor({
         }
       } catch {}
     }
-  }, [sections, isEditingExisting, saveCourseCurriculumLive]);
+  }, [sections, isNew, draftSessionId, isEditingExisting, saveCourseCurriculumLive]);
   const [textAlign, setTextAlign] = useState<"left" | "center" | "right">(
     "left"
   );
@@ -406,7 +479,7 @@ export function CoursePageEditor({
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
   const [bannerPresetIdx, setBannerPresetIdx] = useState<number>(() => {
-    if (currentExplorerItem?.bannerGradient) {
+    if (!isNew && currentExplorerItem?.bannerGradient) {
       const idx = COLOR_AND_GRADIENT_PRESETS.findIndex(
         (c) => c.bg === currentExplorerItem.bannerGradient
       );
@@ -414,10 +487,10 @@ export function CoursePageEditor({
     }
     return 0;
   });
-  const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(
-    () => currentExplorerItem?.thumbnailUrl || null
+  const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(() =>
+    isNew ? null : currentExplorerItem?.thumbnailUrl || null
   );
-  const [hasBanner, setHasBanner] = useState(true);
+  const [hasBanner, setHasBanner] = useState(() => !isNew);
   const [thumbnailPopoverOpen, setThumbnailPopoverOpen] = useState(false);
   const [thumbnailTab, setThumbnailTab] = useState<
     "gallery" | "upload" | "unsplash"
@@ -626,7 +699,7 @@ export function CoursePageEditor({
                 ...s,
                 chapters: [
                   {
-                    id: `ch-${Date.now()}`,
+                    id: `ch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                     title: "Untitled Chapter Lesson",
                     readingTime: "15 mins",
                     points: "10 pts",
@@ -682,8 +755,9 @@ export function CoursePageEditor({
 
   const handleAddSection = () => {
     const nextNum = sections.length + 1;
-    const newSecId = `sec-${Date.now()}`;
-    const newChId = `ch-${Date.now()}`;
+    const randSuffix = Math.random().toString(36).slice(2, 6);
+    const newSecId = `sec-${Date.now()}-${randSuffix}`;
+    const newChId = `ch-${Date.now()}-${randSuffix}`;
     const newSection: EditorSection = {
       id: newSecId,
       title: `Section ${nextNum}`,
@@ -713,7 +787,7 @@ export function CoursePageEditor({
   const handleAddChapter = (sectionId: string) => {
     const sec = sections.find((s) => s.id === sectionId);
     const chapterNum = (sec?.chapters.length || 0) + 1;
-    const newChId = `ch-${Date.now()}`;
+    const newChId = `ch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newChapter: EditorChapter = {
       id: newChId,
       title: `Chapter ${chapterNum}`,
@@ -901,7 +975,11 @@ export function CoursePageEditor({
                 setDocTitle(e.target.value);
                 setLastSavedLabel("Belum disimpan");
               }}
-              placeholder="Ketik judul kursus / konten..."
+              placeholder={
+                isNew
+                  ? "Ketik judul kursus / konten baru..."
+                  : "Ketik judul kursus / konten..."
+              }
               aria-label="Content Title"
               title="Klik untuk mengedit judul kursus"
               className="w-full rounded-lg bg-[#F8F9FB] hover:bg-[#FFFFFF] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] px-2.5 pr-7 py-1 text-sm font-bold text-[#121215] focus:outline-none truncate transition-colors"
@@ -973,11 +1051,7 @@ export function CoursePageEditor({
                       for (const ch of sec.chapters) {
                         if (ch.videoUrl) {
                           window.localStorage.setItem(
-                            `ruang_sosmed_video_url_${ch.id}`,
-                            ch.videoUrl
-                          );
-                          window.localStorage.setItem(
-                            `ruang_sosmed_video_url_${key}`,
+                            `ruang_sosmed_video_url_${key}_${ch.id}`,
                             ch.videoUrl
                           );
                         }
@@ -1014,7 +1088,17 @@ export function CoursePageEditor({
             <button
               type="button"
               onClick={() => {
-                const cleanTitle = docTitle.trim() || "Untitled Course";
+                const sameFolderCount =
+                  explorerItems?.filter(
+                    (i) =>
+                      i.type !== "Folder" &&
+                      (!folderName ||
+                        (i.folderName || "").toLowerCase().trim() ===
+                          folderName.toLowerCase().trim())
+                  ).length || 0;
+                const cleanTitle =
+                  docTitle.trim() ||
+                  `${folderName || "Course Baru"} #${sameFolderCount + 1}`;
                 const mappedSections = editorSectionsToAccordion(sections);
                 const selectedPreset =
                   COLOR_AND_GRADIENT_PRESETS.find(
@@ -1033,15 +1117,20 @@ export function CoursePageEditor({
                       `ruang_sosmed_editor_sections_${key}`,
                       JSON.stringify(sections)
                     );
+                    window.localStorage.setItem(
+                      `ruang_sosmed_course_tier_${key}`,
+                      courseIsPro ? "pro" : "free"
+                    );
+                    if (draftSessionId) {
+                      window.localStorage.removeItem(
+                        `ruang_sosmed_editor_draft_${draftSessionId}`
+                      );
+                    }
                     for (const sec of mappedSections) {
                       for (const ch of sec.chapters) {
                         if (ch.videoUrl) {
                           window.localStorage.setItem(
-                            `ruang_sosmed_video_url_${ch.id}`,
-                            ch.videoUrl
-                          );
-                          window.localStorage.setItem(
-                            `ruang_sosmed_video_url_${key}`,
+                            `ruang_sosmed_video_url_${key}_${ch.id}`,
                             ch.videoUrl
                           );
                         }
@@ -2964,16 +3053,12 @@ export function CoursePageEditor({
                             if (typeof window !== "undefined") {
                               try {
                                 const key = docTitle.toLowerCase().trim();
-                                if (currentChapter.id) {
+                                if (key && currentChapter.id) {
                                   window.localStorage.setItem(
-                                    `ruang_sosmed_video_url_${currentChapter.id}`,
+                                    `ruang_sosmed_video_url_${key}_${currentChapter.id}`,
                                     val
                                   );
                                 }
-                                window.localStorage.setItem(
-                                  `ruang_sosmed_video_url_${key}`,
-                                  val
-                                );
                               } catch {}
                             }
                           }}

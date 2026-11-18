@@ -81,6 +81,8 @@ export type ActiveAuthoringMode =
       contentType: "Course" | "Page";
       title: string;
       folderName?: string;
+      isNew?: boolean;
+      draftSessionId?: string;
     }
   | { kind: "learning-path" }
   | { kind: "wiki"; title?: string }
@@ -950,18 +952,16 @@ function RuangSosmedStudioInner() {
       return;
     }
     if (defaultType === "Course" || defaultType === "Page") {
+      const draftSessionId = `draft-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 7)}`;
       setAuthoringMode({
         kind: "course-page",
         contentType: defaultType,
         folderName: targetFolder || undefined,
-        title:
-          defaultType === "Course"
-            ? targetFolder
-              ? `${targetFolder} — Intensive Class`
-              : "Mastering Instagram Carousel & Viral Hook Strategy"
-            : targetFolder
-            ? `${targetFolder} — Module Overview`
-            : "Content Pillars & Audience Persona",
+        title: "",
+        isNew: true,
+        draftSessionId,
       });
       return;
     }
@@ -994,6 +994,8 @@ function RuangSosmedStudioInner() {
         kind: "course-page",
         contentType: item.type,
         title: item.title,
+        isNew: false,
+        draftSessionId: item.id,
       });
       return;
     }
@@ -1305,10 +1307,16 @@ function RuangSosmedStudioInner() {
               />
             ) : authoringMode?.kind === "course-page" ? (
               <CoursePageEditor
+                key={authoringMode.draftSessionId || authoringMode.title || "course-editor"}
                 initialTitle={authoringMode.title}
                 contentType={authoringMode.contentType}
+                isNew={Boolean(authoringMode.isNew)}
+                draftSessionId={authoringMode.draftSessionId}
+                folderName={authoringMode.folderName}
                 initialSections={
-                  getCourseCurriculum(authoringMode.title) || undefined
+                  authoringMode.isNew
+                    ? undefined
+                    : getCourseCurriculum(authoringMode.title) || undefined
                 }
                 onBack={() => setAuthoringMode(null)}
                 onPublish={(title, type, sections, desc) => {

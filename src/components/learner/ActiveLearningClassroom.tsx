@@ -322,10 +322,23 @@ export function ActiveLearningClassroom({
       try {
         const key = courseTitle.toLowerCase().trim();
         if (currentChapter.id) {
-          const chUrl = window.localStorage.getItem(
-            `ruang_sosmed_video_url_${currentChapter.id}`
+          const scopedUrl = window.localStorage.getItem(
+            `ruang_sosmed_video_url_${key}_${currentChapter.id}`
           );
-          if (chUrl && chUrl.trim()) return chUrl.trim();
+          if (scopedUrl && scopedUrl.trim()) return scopedUrl.trim();
+
+          const LEGACY_SHARED_CHAPTER_IDS = new Set([
+            "ch-101",
+            "ch-102",
+            "ch-201",
+            "ch-301",
+          ]);
+          if (!LEGACY_SHARED_CHAPTER_IDS.has(currentChapter.id)) {
+            const chUrl = window.localStorage.getItem(
+              `ruang_sosmed_video_url_${currentChapter.id}`
+            );
+            if (chUrl && chUrl.trim()) return chUrl.trim();
+          }
         }
         const courseUrl = window.localStorage.getItem(
           `ruang_sosmed_video_url_${key}`

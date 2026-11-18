@@ -3505,10 +3505,14 @@ export function RuangSosmedProvider({
             : [...prev.learnerAssignedItems, newCatalogItem]
           : prev.learnerAssignedItems;
 
+        const courseKey = title.toLowerCase().trim();
         return {
           ...prev,
           courseSections:
-            sections !== undefined ? sections : prev.courseSections,
+            sections !== undefined &&
+            courseKey === "fundamental social media specialist"
+              ? sections
+              : prev.courseSections,
           courseCurriculums: updatedCurriculums,
           explorerItems: deduplicateExplorerItems(nextExplorer),
           learnerAssignedItems: nextCatalog,
@@ -6569,7 +6573,10 @@ export function RuangSosmedProvider({
 
         return {
           ...prev,
-          courseSections: sections,
+          courseSections:
+            key === "fundamental social media specialist"
+              ? sections
+              : prev.courseSections,
           courseCurriculums: {
             ...(prev.courseCurriculums || {}),
             [key]: sections,
