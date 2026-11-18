@@ -466,48 +466,79 @@ async function pushContentToSupabase(
       ? item.assignedLearners
       : preservedAssignedLearners;
 
-    const { error } = await supabase.from("contents").upsert(
-      {
-        id: dbId,
-        type: toDbContentType(item.type),
-        title: item.title,
-        description: item.description || "",
-        thumbnail_url: item.thumbnailUrl || null,
-        folder_name: item.folderName || null,
-        points_reward: 100,
-        status: "published",
-        urgency: item.urgency === "Urgent" ? "urgent" : "not_urgent",
-        category_tags:
-          item.type === "Folder"
-            ? ["Folder", item.bannerAccent || "blue"]
-            : [item.category || "Social Media Strategy", item.type],
-        settings_json: {
-          pass_mark: 80,
-          pass_unit: "percent",
-          max_attempts: 3,
-          reviews: preservedReviews,
-          curriculum: curriculum ?? [],
-          explorer_meta: {
-            category: item.category,
-            bannerGradient: item.bannerGradient,
-            bannerAccent: item.bannerAccent || (item.type === "Folder" ? "blue" : undefined),
-            bannerPattern: item.bannerPattern,
-            language: item.language,
-            cohort: item.cohort,
-            thumbnailUrl: item.thumbnailUrl,
-            folderName: item.folderName,
-            accessCode:
-              item.accessCode ||
-              (item.type === "Folder"
-                ? getDefaultFolderAccessCode(item.title)
-                : undefined),
-            assignedLearners: resolvedAssignedLearners,
-            assignedCount: resolvedAssignedLearners.length,
-          },
+    const upsertPayload: Record<string, any> = {
+      id: dbId,
+      type: toDbContentType(item.type),
+      title: item.title,
+      description: item.description || "",
+      thumbnail_url: item.thumbnailUrl || null,
+      folder_name: item.folderName || null,
+      points_reward: 100,
+      status: "published",
+      urgency: item.urgency === "Urgent" ? "urgent" : "not_urgent",
+      category_tags:
+        item.type === "Folder"
+          ? ["Folder", item.bannerAccent || "blue"]
+          : [item.category || "Social Media Strategy", item.type],
+      settings_json: {
+        pass_mark: 80,
+        pass_unit: "percent",
+        max_attempts: 3,
+        reviews: preservedReviews,
+        curriculum: curriculum ?? [],
+        explorer_meta: {
+          itemType: item.type,
+          isFolder: item.type === "Folder",
+          category: item.category,
+          bannerGradient: item.bannerGradient,
+          bannerAccent:
+            item.bannerAccent || (item.type === "Folder" ? "blue" : undefined),
+          bannerPattern: item.bannerPattern,
+          language: item.language,
+          cohort: item.cohort,
+          thumbnailUrl: item.thumbnailUrl,
+          folderName: item.folderName,
+          accessCode:
+            item.accessCode ||
+            (item.type === "Folder"
+              ? getDefaultFolderAccessCode(item.title)
+              : undefined),
+          assignedLearners: resolvedAssignedLearners,
+          assignedCount: resolvedAssignedLearners.length,
         },
       },
-      { onConflict: "id" }
-    );
+    };
+
+    let { error } = await supabase
+      .from("contents")
+      .upsert(upsertPayload, { onConflict: "id" });
+
+    // Fallback aman bila enum DB belum memiliki `'folder'` atau kolom `folder_name` belum dibuat
+    if (error && upsertPayload.type === "folder") {
+      const retryPayload: Record<string, any> = {
+        ...upsertPayload,
+        type: "page",
+      };
+      const retryRes = await supabase
+        .from("contents")
+        .upsert(retryPayload, { onConflict: "id" });
+      error = retryRes.error;
+      if (error && String(error.message || "").includes("folder_name")) {
+        delete retryPayload.folder_name;
+        const retryNoCol = await supabase
+          .from("contents")
+          .upsert(retryPayload, { onConflict: "id" });
+        error = retryNoCol.error;
+      }
+    } else if (error && String(error.message || "").includes("folder_name")) {
+      const retryPayload: Record<string, any> = { ...upsertPayload };
+      delete retryPayload.folder_name;
+      const retryNoCol = await supabase
+        .from("contents")
+        .upsert(retryPayload, { onConflict: "id" });
+      error = retryNoCol.error;
+    }
+
     if (error) {
       console.warn("[RuangSosmed] Gagal sync konten ke Supabase:", error.message);
       return null;
@@ -703,6 +734,50 @@ async function syncMaintenanceConfigToSupabase(config: MaintenanceConfig) {
       "[RuangSosmed] Failed to sync maintenanceConfig to Supabase:",
       err
     );
+  }
+}
+
+async function syncCohortProjectsToSupabase(
+  cohorts: CohortProjectItem[]
+): Promise<void> {
+  if (!isSupabaseConfigured || !Array.isArray(cohorts) || cohorts.length === 0) {
+    return;
+  }
+  try {
+    const { data: existing } = await supabase
+      .from("contents")
+      .select("id")
+      .eq("title", "__SYSTEM_COHORT_PROJECTS__")
+      .maybeSingle();
+
+    const payload = {
+      cohortProjects: cohorts,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (existing?.id) {
+      await supabase
+        .from("contents")
+        .update({
+          settings_json: payload,
+          status: "published",
+        })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("contents").insert({
+        id: newUuid(),
+        title: "__SYSTEM_COHORT_PROJECTS__",
+        type: "page",
+        status: "published",
+        description: "System storage for Workspace Cohort Projects",
+        urgency: "not_urgent",
+        estimated_minutes: 0,
+        points_reward: 0,
+        settings_json: payload,
+      });
+    }
+  } catch (err) {
+    console.warn("[RuangSosmed] Failed to sync cohortProjects to Supabase:", err);
   }
 }
 
@@ -1687,10 +1762,26 @@ export function RuangSosmedProvider({
           (firstCourseKey && mergedCurriculums[firstCourseKey]) ||
           (dedupedRawExplorer.length > 0 ? rawSections : []);
 
-        const rawCohorts =
-          parsed.cohortProjects && parsed.cohortProjects.length > 0
+        const rawCohorts = (() => {
+          try {
+            const cRaw = window.localStorage.getItem(
+              "ruang_sosmed_cohort_projects_v1"
+            );
+            if (cRaw) {
+              const cParsed = JSON.parse(cRaw);
+              if (Array.isArray(cParsed) && cParsed.length > 0) {
+                const map = new Map<string, CohortProjectItem>();
+                [...(parsed.cohortProjects || []), ...cParsed].forEach((c) => {
+                  if (c?.name) map.set(c.name.trim().toLowerCase(), c);
+                });
+                if (map.size > 0) return Array.from(map.values());
+              }
+            }
+          } catch {}
+          return parsed.cohortProjects && parsed.cohortProjects.length > 0
             ? parsed.cohortProjects
             : INITIAL_COHORT_PROJECTS;
+        })();
 
         const mergedCohorts = rawCohorts
           .map((c: CohortProjectItem) => {
@@ -2149,42 +2240,90 @@ export function RuangSosmedProvider({
         ]);
 
         const authUserId = authRes?.data?.user?.id;
+        const localRoleMode =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem("ruang_sosmed_role_mode_v1")
+            : null;
+        const hasLocalDevFlag =
+          typeof window !== "undefined" &&
+          (window.localStorage.getItem("ruang_sosmed_dev_session_v1") === "true" ||
+            window.location.search.includes("admin=1"));
+        let localSessionIsStaff = false;
+        if (typeof window !== "undefined") {
+          try {
+            const rawSessionUser = window.localStorage.getItem(
+              "ruang_sosmed_session_user_v1"
+            );
+            if (rawSessionUser) {
+              const parsedU = JSON.parse(rawSessionUser);
+              const uRole = String(parsedU?.role || "").toLowerCase();
+              const uName = String(parsedU?.name || "").toLowerCase();
+              const uUsername = String(parsedU?.username || "").toLowerCase();
+              const uEmail = String(parsedU?.email || "").toLowerCase();
+              if (
+                uRole === "admin" ||
+                uRole === "mentor" ||
+                uUsername === "arunika" ||
+                uName.includes("arunika") ||
+                uEmail.includes("dinur") ||
+                uEmail === "admin@ruangsosmed.id"
+              ) {
+                localSessionIsStaff = true;
+              }
+            }
+          } catch {}
+        }
+
         const isStaffSession = Boolean(
-          authUserId &&
+          (authUserId &&
             Array.isArray(profilesRes.data) &&
             profilesRes.data.some(
               (p: any) =>
                 p.id === authUserId &&
                 (p.role === "admin" || p.role === "mentor")
-            )
+            )) ||
+            ((hasLocalDevFlag || localSessionIsStaff) &&
+              localRoleMode !== "learner")
         );
 
-        // 1) Admin/Mentor: dorong konten lokal yang belum pernah tersimpan ke Supabase
+        const justPushedIds = new Set<string>();
+
+        // 1) Admin/Mentor/Dev: dorong folder & konten lokal yang belum tersimpan ke Supabase
         if (isStaffSession && !contentsRes.error) {
           const dbTitles = new Set(
             (contentsRes.data || []).map((r: any) =>
               String(r.title).trim().toLowerCase()
             )
           );
-          const pending = stateRef.current.explorerItems.filter(
-            (i) =>
-              i.type !== "Folder" &&
-              !isLegacyDummyItem(i) &&
-              !dbTitles.has(i.title.trim().toLowerCase())
-          );
+          const pending = stateRef.current.explorerItems
+            .filter(
+              (i) =>
+                !isLegacyDummyItem(i) &&
+                !dbTitles.has(i.title.trim().toLowerCase())
+            )
+            .sort((a, b) =>
+              a.type === "Folder" && b.type !== "Folder"
+                ? -1
+                : a.type !== "Folder" && b.type === "Folder"
+                ? 1
+                : 0
+            );
           for (const item of pending) {
             const key = item.title.trim().toLowerCase();
             const dbId = await pushContentToSupabase(
               item,
               stateRef.current.courseCurriculums?.[key] ?? null
             );
-            if (dbId && dbId !== item.id) {
-              setState((prev) => ({
-                ...prev,
-                explorerItems: prev.explorerItems.map((e) =>
-                  e.id === item.id ? { ...e, id: dbId } : e
-                ),
-              }));
+            if (dbId) {
+              justPushedIds.add(dbId);
+              if (dbId !== item.id) {
+                setState((prev) => ({
+                  ...prev,
+                  explorerItems: prev.explorerItems.map((e) =>
+                    e.id === item.id ? { ...e, id: dbId } : e
+                  ),
+                }));
+              }
             }
           }
         }
@@ -2538,6 +2677,17 @@ export function RuangSosmedProvider({
                 }
               : null;
 
+          const systemCohortProjectsRow = Array.isArray(contentsRes.data)
+            ? (contentsRes.data as any[]).find(
+                (r) => r?.title === "__SYSTEM_COHORT_PROJECTS__"
+              )
+            : null;
+          const remoteCohortProjects: CohortProjectItem[] | null = Array.isArray(
+            systemCohortProjectsRow?.settings_json?.cohortProjects
+          )
+            ? systemCohortProjectsRow.settings_json.cohortProjects
+            : null;
+
           if (!contentsRes.error && Array.isArray(contentsRes.data)) {
             const dbRows = (contentsRes.data as any[]).filter(
               (r) =>
@@ -2552,7 +2702,16 @@ export function RuangSosmedProvider({
             );
 
             const dbExplorer: ExplorerContentItem[] = dbRows.map((r) => {
-              const type = fromDbContentType(r.type);
+              const meta = r.settings_json?.explorer_meta || {};
+              const isFolderRow =
+                r.type === "folder" ||
+                meta.isFolder === true ||
+                meta.itemType === "Folder" ||
+                (Array.isArray(r.category_tags) &&
+                  r.category_tags.includes("Folder"));
+              const type: ExplorerItemType = isFolderRow
+                ? "Folder"
+                : fromDbContentType(r.type);
               const isFolder = type === "Folder";
               const cfg = isFolder
                 ? {
@@ -2562,7 +2721,6 @@ export function RuangSosmedProvider({
                     description: "Folder materi pembelajaran",
                   }
                 : CONTENT_TYPE_CONFIGS[type as ContentType];
-              const meta = r.settings_json?.explorer_meta || {};
               const local = prev.explorerItems.find(
                 (e) =>
                   e.id === r.id ||
@@ -2736,7 +2894,7 @@ export function RuangSosmedProvider({
               (i) =>
                 !dbIds.has(i.id) &&
                 !dbTitles.has(i.title.trim().toLowerCase()) &&
-                !isUuid(i.id)
+                (!isUuid(i.id) || justPushedIds.has(i.id))
             );
             nextExplorer = deduplicateExplorerItems([
               ...localOnly,
@@ -2744,6 +2902,81 @@ export function RuangSosmedProvider({
             ]);
           } else {
             nextExplorer = deduplicateExplorerItems(nextExplorer);
+          }
+
+          // Sinkronkan & gabungkan Cohort Projects dari __SYSTEM_COHORT_PROJECTS__, state lokal, dan cohort aktif di folder/materi
+          const cohortMap = new Map<string, CohortProjectItem>();
+          const registerCohort = (
+            candidate: Partial<CohortProjectItem> & { name?: string }
+          ) => {
+            const rawName = (candidate.name || "").trim();
+            if (!rawName) return;
+            const normalizedName =
+              rawName.toLowerCase() === "ruang sosmed core"
+                ? "Ruang Sosmed Class"
+                : rawName;
+            if (normalizedName.toLowerCase() === "meta ads bootcamp") return;
+            const cKey = normalizedName.toLowerCase();
+            const existing = cohortMap.get(cKey);
+            cohortMap.set(cKey, {
+              id:
+                candidate.id ||
+                existing?.id ||
+                `cohort-${cKey.replace(/[^a-z0-9]/g, "-")}`,
+              name: normalizedName,
+              color: candidate.color || existing?.color || "#4F39F6",
+              description:
+                candidate.description ||
+                existing?.description ||
+                "Custom Cohort / Track",
+            });
+          };
+
+          (remoteCohortProjects || []).forEach(registerCohort);
+          if (!remoteCohortProjects || remoteCohortProjects.length === 0 || isStaffSession) {
+            (prev.cohortProjects || []).forEach(registerCohort);
+          }
+          nextExplorer.forEach((it) => {
+            if (it.cohort && it.cohort.trim()) {
+              registerCohort({
+                name: it.cohort.trim(),
+                color: "#0EA5E9",
+                description: "Cohort / Program Pembelajaran",
+              });
+            }
+          });
+          if (cohortMap.size === 0) {
+            INITIAL_COHORT_PROJECTS.forEach(registerCohort);
+          }
+
+          const nextCohortProjects = Array.from(cohortMap.values());
+          const cohortProjectsChanged =
+            JSON.stringify(prev.cohortProjects || []) !==
+            JSON.stringify(nextCohortProjects);
+
+          if (cohortProjectsChanged && typeof window !== "undefined") {
+            try {
+              window.localStorage.setItem(
+                "ruang_sosmed_cohort_projects_v1",
+                JSON.stringify(nextCohortProjects)
+              );
+            } catch {}
+          }
+
+          if (isStaffSession && !contentsRes.error) {
+            const remoteCohortNames = new Set(
+              (remoteCohortProjects || []).map((c) =>
+                (c.name || "").trim().toLowerCase()
+              )
+            );
+            const missingCohortInRemote =
+              !remoteCohortProjects ||
+              nextCohortProjects.some(
+                (c) => !remoteCohortNames.has(c.name.trim().toLowerCase())
+              );
+            if (missingCohortInRemote) {
+              void syncCohortProjectsToSupabase(nextCohortProjects);
+            }
           }
 
           const nextCatalog = syncLearnerCatalogWithExplorer(
@@ -3195,6 +3428,7 @@ export function RuangSosmedProvider({
             !assigneesChanged &&
             !lbChanged &&
             !explorerChanged &&
+            !cohortProjectsChanged &&
             !catalogChanged &&
             !curriculumsChanged &&
             !collabsChanged &&
@@ -3220,6 +3454,7 @@ export function RuangSosmedProvider({
             courseCertificateConfigs: nextCourseCertConfigs,
             learnerProConfig: nextLearnerProConfig,
             maintenanceConfig: nextMaintenanceConfig,
+            cohortProjects: nextCohortProjects,
             learnerPoints: activeUserPoints,
             learnerNotifications: nextNotifications,
             learnerIsPro: activeUserPro,
@@ -6408,31 +6643,45 @@ export function RuangSosmedProvider({
   );
 
   // 9. Cohorts / Projects Management Handlers
+  const persistCohortProjects = useCallback(
+    (nextCohorts: CohortProjectItem[]) => {
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(
+            "ruang_sosmed_cohort_projects_v1",
+            JSON.stringify(nextCohorts)
+          );
+        }
+      } catch {}
+      void syncCohortProjectsToSupabase(nextCohorts);
+    },
+    []
+  );
+
   const addCohortProject = useCallback(
     (name: string, color = "#4F39F6", description?: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
-      setState((prev) => {
-        if (
-          prev.cohortProjects.some(
-            (c) => c.name.toLowerCase() === trimmed.toLowerCase()
-          )
-        ) {
-          return prev;
-        }
-        const newCohort: CohortProjectItem = {
-          id: `cohort-${Date.now()}`,
-          name: trimmed,
-          color,
-          description: description || "Custom Cohort / Track",
-        };
-        return {
-          ...prev,
-          cohortProjects: [...prev.cohortProjects, newCohort],
-        };
-      });
+      const current = stateRef.current.cohortProjects || [];
+      if (
+        current.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())
+      ) {
+        return;
+      }
+      const newCohort: CohortProjectItem = {
+        id: `cohort-${Date.now()}`,
+        name: trimmed,
+        color,
+        description: description || "Custom Cohort / Track",
+      };
+      const nextCohorts = [...current, newCohort];
+      setState((prev) => ({
+        ...prev,
+        cohortProjects: nextCohorts,
+      }));
+      persistCohortProjects(nextCohorts);
     },
-    []
+    [persistCohortProjects]
   );
 
   const updateCohortProject = useCallback(
@@ -6440,42 +6689,46 @@ export function RuangSosmedProvider({
       idOrName: string,
       updates: { name?: string; color?: string; description?: string }
     ) => {
-      setState((prev) => {
-        const nextCohorts = prev.cohortProjects.map((c) => {
-          if (c.id === idOrName || c.name === idOrName) {
-            return {
-              ...c,
-              name: updates.name?.trim() || c.name,
-              color: updates.color || c.color,
-              description:
-                updates.description !== undefined
-                  ? updates.description
-                  : c.description,
-            };
-          }
-          return c;
-        });
-        return {
-          ...prev,
-          cohortProjects: nextCohorts,
-        };
+      const current = stateRef.current.cohortProjects || [];
+      const nextCohorts = current.map((c) => {
+        if (c.id === idOrName || c.name === idOrName) {
+          return {
+            ...c,
+            name: updates.name?.trim() || c.name,
+            color: updates.color || c.color,
+            description:
+              updates.description !== undefined
+                ? updates.description
+                : c.description,
+          };
+        }
+        return c;
       });
+      setState((prev) => ({
+        ...prev,
+        cohortProjects: nextCohorts,
+      }));
+      persistCohortProjects(nextCohorts);
     },
-    []
+    [persistCohortProjects]
   );
 
-  const deleteCohortProject = useCallback((idOrName: string) => {
-    setState((prev) => {
-      const nextCohorts = prev.cohortProjects.filter(
+  const deleteCohortProject = useCallback(
+    (idOrName: string) => {
+      const current = stateRef.current.cohortProjects || [];
+      const filtered = current.filter(
         (c) => c.id !== idOrName && c.name !== idOrName
       );
-      return {
+      const nextCohorts =
+        filtered.length > 0 ? filtered : INITIAL_COHORT_PROJECTS;
+      setState((prev) => ({
         ...prev,
-        cohortProjects:
-          nextCohorts.length > 0 ? nextCohorts : INITIAL_COHORT_PROJECTS,
-      };
-    });
-  }, []);
+        cohortProjects: nextCohorts,
+      }));
+      persistCohortProjects(nextCohorts);
+    },
+    [persistCohortProjects]
+  );
 
   const getCourseCurriculum = useCallback(
     (courseTitle: string): CourseSectionAccordion[] | null => {
