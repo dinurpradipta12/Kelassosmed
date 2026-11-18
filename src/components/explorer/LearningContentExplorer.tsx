@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Upload,
   Plus,
@@ -3067,25 +3068,28 @@ export function LearningContentExplorer({
       />
 
       {/* Floating Add Course Button inside active folder */}
-      {currentFolder && (
-        <div className="fixed bottom-6 right-6 z-40 group">
-          <button
-            type="button"
-            onClick={() => onCreateNewContent("Course", currentFolder)}
-            aria-label={`Buat Course di ${currentFolder}`}
-            title={`Buat Course baru di folder ${currentFolder}`}
-            className="flex h-13 w-13 items-center justify-center rounded-full bg-[#4F39F6] hover:bg-[#3B28CC] text-white shadow-[0_8px_28px_rgba(79,57,246,0.38)] hover:shadow-[0_12px_32px_rgba(79,57,246,0.48)] hover:scale-105 active:scale-95 transition-all duration-150 cursor-pointer border border-white/20"
-          >
-            <Plus size={24} strokeWidth={2.75} />
-          </button>
-          <div
-            role="tooltip"
-            className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute right-full mr-3 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-xl bg-[#121215] px-3 py-1.5 text-xs font-semibold text-white shadow-lg border border-white/10"
-          >
-            + Buat Course di {currentFolder}
-          </div>
-        </div>
-      )}
+      {currentFolder &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed bottom-3.5 right-5 z-40 group">
+            <button
+              type="button"
+              onClick={() => onCreateNewContent("Course", currentFolder)}
+              aria-label={`Buat Course di ${currentFolder}`}
+              title={`Buat Course baru di folder ${currentFolder}`}
+              className="flex h-13 w-13 items-center justify-center rounded-full bg-[#4F39F6] hover:bg-[#3B28CC] text-white shadow-[0_8px_28px_rgba(79,57,246,0.38)] hover:shadow-[0_12px_32px_rgba(79,57,246,0.48)] hover:scale-105 active:scale-95 transition-all duration-150 cursor-pointer border border-white/20"
+            >
+              <Plus size={24} strokeWidth={2.75} />
+            </button>
+            <div
+              role="tooltip"
+              className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute right-full mr-3 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-xl bg-[#121215] px-3 py-1.5 text-xs font-semibold text-white shadow-lg border border-white/10"
+            >
+              + Buat Course di {currentFolder}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
