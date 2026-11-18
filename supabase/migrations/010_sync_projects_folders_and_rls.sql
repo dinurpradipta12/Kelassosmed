@@ -188,3 +188,51 @@ WHERE lower(email) IN (
   'dinur@ruangsosmed.id',
   'admin@ruangsosmed.id'
 );
+
+-- 7. Bersihkan draft potongan judul ketikan & seed lama yang tidak memiliki folder
+DELETE FROM public.contents
+WHERE title IN (
+  'Mini Bootcamp S',
+  'Mini Bootcamp Social Media Specialist B',
+  'Mini Bootcamp Social Media Specialist Ba',
+  'Mini Bootcamp Social Media Specialist Bat',
+  'Mini Bootcamp Social Media Specialist Batc',
+  'Mini Bootcamp Social Media Specialist Batch',
+  'Content Pillars & Audience Persona',
+  'Mastering Instagram Carousel & Viral Hook Strategy'
+);
+
+-- 8. Hapus duplikat baris sistem (`__SYSTEM_*__`) dan materi dengan judul yang sama (sisakan yang terbaru)
+WITH ranked AS (
+  SELECT
+    id,
+    ROW_NUMBER() OVER (
+      PARTITION BY lower(trim(title)), type
+      ORDER BY updated_at DESC, created_at DESC
+    ) AS rn
+  FROM public.contents
+)
+DELETE FROM public.contents
+WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
+
+-- 9. Pastikan seluruh materi Mini Bootcamp Social Media Specialist terhubung ke folder & project-nya
+UPDATE public.contents
+SET
+  folder_name = 'Mini Bootcamp Social Media Specialist',
+  cohort = 'Mini Bootcamp Social Media Specialist',
+  settings_json = jsonb_set(
+    jsonb_set(
+      COALESCE(settings_json, '{}'::jsonb),
+      '{explorer_meta,folderName}',
+      '"Mini Bootcamp Social Media Specialist"'::jsonb,
+      true
+    ),
+    '{explorer_meta,cohort}',
+    '"Mini Bootcamp Social Media Specialist"'::jsonb,
+    true
+  )
+WHERE title IN (
+  'Mini Bootcamp Social Media Specialist Batch 1',
+  'Mini Bootcamp Social Media Specialist Batch 2',
+  'Mini Bootcamp Social Media Specialist Batch 3'
+);

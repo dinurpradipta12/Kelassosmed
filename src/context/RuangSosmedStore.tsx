@@ -552,14 +552,23 @@ async function pushContentToSupabase(
   }
 }
 
+async function getLatestSystemContentRow(
+  title: string,
+  selectColumns = "id"
+): Promise<{ id?: string; settings_json?: any } | null> {
+  const { data } = await supabase
+    .from("contents")
+    .select(selectColumns)
+    .eq("title", title)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  return Array.isArray(data) && data.length > 0 ? (data[0] as any) : null;
+}
+
 async function syncRewardsToSupabase(catalog: RewardItem[]): Promise<void> {
   if (!isSupabaseConfigured) return;
   try {
-    const { data: existing } = await supabase
-      .from("contents")
-      .select("id")
-      .eq("title", "__SYSTEM_REWARDS_CATALOG__")
-      .maybeSingle();
+    const existing = await getLatestSystemContentRow("__SYSTEM_REWARDS_CATALOG__");
 
     if (existing?.id) {
       await supabase
@@ -593,11 +602,7 @@ async function syncCertificateConfigToSupabase(
 ): Promise<void> {
   if (!isSupabaseConfigured) return;
   try {
-    const { data: existing } = await supabase
-      .from("contents")
-      .select("id")
-      .eq("title", "__SYSTEM_CERTIFICATE_CONFIG__")
-      .maybeSingle();
+    const existing = await getLatestSystemContentRow("__SYSTEM_CERTIFICATE_CONFIG__");
 
     const payload = {
       certificateConfig: globalConfig,
@@ -659,11 +664,7 @@ async function syncLearnerProConfigToSupabase(
 
   try {
     // 2. Fallback sinkronisasi ke `__SYSTEM_LEARNER_PRO_CONFIG__` di `public.contents`
-    const { data: existing } = await supabase
-      .from("contents")
-      .select("id")
-      .eq("title", "__SYSTEM_LEARNER_PRO_CONFIG__")
-      .maybeSingle();
+    const existing = await getLatestSystemContentRow("__SYSTEM_LEARNER_PRO_CONFIG__");
 
     const payload = { learnerProConfig: config };
 
@@ -700,11 +701,7 @@ async function syncMaintenanceConfigToSupabase(config: MaintenanceConfig) {
   if (!isSupabaseConfigured) return;
 
   try {
-    const { data: existing } = await supabase
-      .from("contents")
-      .select("id")
-      .eq("title", "__SYSTEM_MAINTENANCE_CONFIG__")
-      .maybeSingle();
+    const existing = await getLatestSystemContentRow("__SYSTEM_MAINTENANCE_CONFIG__");
 
     const payload = { maintenanceConfig: config };
 
@@ -744,11 +741,7 @@ async function syncCohortProjectsToSupabase(
     return;
   }
   try {
-    const { data: existing } = await supabase
-      .from("contents")
-      .select("id")
-      .eq("title", "__SYSTEM_COHORT_PROJECTS__")
-      .maybeSingle();
+    const existing = await getLatestSystemContentRow("__SYSTEM_COHORT_PROJECTS__");
 
     const payload = {
       cohortProjects: cohorts,
@@ -823,11 +816,10 @@ async function syncUserAvatarsToSupabase(
 ): Promise<void> {
   if (!isSupabaseConfigured) return;
   try {
-    const { data: existing } = await supabase
-      .from("contents")
-      .select("id, settings_json")
-      .eq("title", "__SYSTEM_USER_AVATARS__")
-      .maybeSingle();
+    const existing = await getLatestSystemContentRow(
+      "__SYSTEM_USER_AVATARS__",
+      "id, settings_json"
+    );
 
     const remoteMap =
       existing?.settings_json?.userAvatars &&
@@ -2586,23 +2578,26 @@ export function RuangSosmedProvider({
             ...(prev.courseCurriculums || {}),
           };
 
+          const pickLatestSystemRow = (sysTitle: string) =>
+            Array.isArray(contentsRes.data)
+              ? (contentsRes.data as any[])
+                  .filter((r) => r?.title === sysTitle)
+                  .pop() || null
+              : null;
+
           // Ambil row __SYSTEM_REWARDS_CATALOG__ untuk sinkronisasi katalog hadiah lintas user
-          const systemRewardsRow = Array.isArray(contentsRes.data)
-            ? (contentsRes.data as any[]).find(
-                (r) => r?.title === "__SYSTEM_REWARDS_CATALOG__"
-              )
-            : null;
+          const systemRewardsRow = pickLatestSystemRow(
+            "__SYSTEM_REWARDS_CATALOG__"
+          );
           let remoteRewards: RewardItem[] | null = null;
           if (Array.isArray(systemRewardsRow?.settings_json?.rewards)) {
             remoteRewards = systemRewardsRow.settings_json.rewards;
           }
 
           // Ambil row __SYSTEM_CERTIFICATE_CONFIG__ untuk sinkronisasi desain sertifikat (global & per-kursus)
-          const systemCertRow = Array.isArray(contentsRes.data)
-            ? (contentsRes.data as any[]).find(
-                (r) => r?.title === "__SYSTEM_CERTIFICATE_CONFIG__"
-              )
-            : null;
+          const systemCertRow = pickLatestSystemRow(
+            "__SYSTEM_CERTIFICATE_CONFIG__"
+          );
           let remoteCertConfig: CertificateDesignConfig | null = null;
           let remoteCourseCertConfigs: Record<string, CertificateDesignConfig> | null =
             null;
@@ -2615,11 +2610,9 @@ export function RuangSosmedProvider({
           }
 
           // Ambil konfigurasi Learner PRO dari `public.learner_pro_settings` atau fallback `__SYSTEM_LEARNER_PRO_CONFIG__`
-          const systemUserAvatarsRow = Array.isArray(contentsRes.data)
-            ? (contentsRes.data as any[]).find(
-                (r) => r?.title === "__SYSTEM_USER_AVATARS__"
-              )
-            : null;
+          const systemUserAvatarsRow = pickLatestSystemRow(
+            "__SYSTEM_USER_AVATARS__"
+          );
           const remoteSystemAvatars: Record<string, string> =
             systemUserAvatarsRow?.settings_json?.userAvatars &&
             typeof systemUserAvatarsRow.settings_json.userAvatars === "object"
@@ -2629,11 +2622,9 @@ export function RuangSosmedProvider({
                 >)
               : {};
 
-          const systemLearnerProRow = Array.isArray(contentsRes.data)
-            ? (contentsRes.data as any[]).find(
-                (r) => r?.title === "__SYSTEM_LEARNER_PRO_CONFIG__"
-              )
-            : null;
+          const systemLearnerProRow = pickLatestSystemRow(
+            "__SYSTEM_LEARNER_PRO_CONFIG__"
+          );
           let remoteLearnerProConfig: LearnerProPlanConfig | null = null;
           if (
             !learnerProSettingsRes.error &&
@@ -2664,11 +2655,9 @@ export function RuangSosmedProvider({
             };
           }
 
-          const systemMaintenanceRow = Array.isArray(contentsRes.data)
-            ? (contentsRes.data as any[]).find(
-                (r) => r?.title === "__SYSTEM_MAINTENANCE_CONFIG__"
-              )
-            : null;
+          const systemMaintenanceRow = pickLatestSystemRow(
+            "__SYSTEM_MAINTENANCE_CONFIG__"
+          );
           const remoteMaintenanceConfig: MaintenanceConfig | null =
             systemMaintenanceRow?.settings_json?.maintenanceConfig
               ? {
@@ -2677,11 +2666,9 @@ export function RuangSosmedProvider({
                 }
               : null;
 
-          const systemCohortProjectsRow = Array.isArray(contentsRes.data)
-            ? (contentsRes.data as any[]).find(
-                (r) => r?.title === "__SYSTEM_COHORT_PROJECTS__"
-              )
-            : null;
+          const systemCohortProjectsRow = pickLatestSystemRow(
+            "__SYSTEM_COHORT_PROJECTS__"
+          );
           const remoteCohortProjects: CohortProjectItem[] | null = Array.isArray(
             systemCohortProjectsRow?.settings_json?.cohortProjects
           )

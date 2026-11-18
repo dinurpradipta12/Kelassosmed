@@ -6,24 +6,28 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ProfileRow, UserRole } from "@/lib/supabase/database.types";
 
+const DEFAULT_SUPABASE_URL = "https://nigxfryaobokkvfefond.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pZ3hmcnlhb2Jva2t2ZmVmb25kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNzI0MTMsImV4cCI6MjEwODY0ODQxM30.LWRL-PIPRgYUcY5l-emqI9TtG0HGQ2-T79PX-JMx-XU";
+
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.VITE_SUPABASE_URL ||
-  "https://your-project-ref.supabase.co";
+  DEFAULT_SUPABASE_URL;
 const SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY ||
-  "public-anon-key-placeholder";
+  DEFAULT_SUPABASE_ANON_KEY;
 
 /**
  * Indicates whether live Supabase credentials are configured in the environment.
  * Supports both Next.js (`NEXT_PUBLIC_SUPABASE_*`) and rs-learning-26 (`VITE_SUPABASE_*`).
  */
 export const isSupabaseConfigured: boolean = Boolean(
-  (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL) &&
-    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      process.env.VITE_SUPABASE_ANON_KEY) &&
-    !SUPABASE_URL.includes("your-project-ref")
+  SUPABASE_URL &&
+    SUPABASE_ANON_KEY &&
+    !SUPABASE_URL.includes("your-project-ref") &&
+    !SUPABASE_ANON_KEY.includes("placeholder")
 );
 
 export const supabase: SupabaseClient = createClient(

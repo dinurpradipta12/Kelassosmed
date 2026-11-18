@@ -191,11 +191,16 @@ async function syncProfileToSupabaseSystemRow(
       ? "__SYSTEM_USER_PROFILE_ADMIN__"
       : "__SYSTEM_USER_PROFILE_LEARNER__";
   try {
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from("contents")
       .select("id")
       .eq("title", sysTitle)
-      .maybeSingle();
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    const existing =
+      Array.isArray(existingRows) && existingRows.length > 0
+        ? existingRows[0]
+        : null;
 
     const payload = { userProfile: profileData };
     if (existing?.id) {
@@ -368,11 +373,13 @@ export function UserProfileScreen({
         : "__SYSTEM_USER_PROFILE_LEARNER__";
     (async () => {
       try {
-        const { data } = await supabase
+        const { data: rows } = await supabase
           .from("contents")
           .select("settings_json")
           .eq("title", sysTitle)
-          .maybeSingle();
+          .order("updated_at", { ascending: false })
+          .limit(1);
+        const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
         if (cancelled) return;
         const remoteProfile = data?.settings_json?.userProfile as
           | Partial<UserProfileData>
