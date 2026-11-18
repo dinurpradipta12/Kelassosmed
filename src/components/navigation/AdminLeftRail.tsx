@@ -75,6 +75,7 @@ interface AdminLeftRailProps {
   activeSubNav?: SecondaryNavLinkId;
   onSelectSubNav?: (subId: SecondaryNavLinkId) => void;
   showProjectHub?: boolean;
+  onOpenProjectHub?: () => void;
   currentUser?: AuthenticatedUser | null;
   onOpenAuth?: () => void;
 }
@@ -165,6 +166,7 @@ export function AdminLeftRail({
   activeSubNav: controlledSubNav,
   onSelectSubNav,
   showProjectHub = false,
+  onOpenProjectHub,
   currentUser,
   onOpenAuth,
 }: AdminLeftRailProps) {
@@ -695,8 +697,40 @@ export function AdminLeftRail({
 
             <div className="h-5 w-[1px] bg-[#EAECEF] mx-0.5 shrink-0" />
 
-            {/* 2. Compact View Filter Pills: Recents, Shared, Archived, Templates */}
+            {/* 2. Compact View Filter Pills: Projects, Recents, Shared, Archived, Templates */}
             <nav aria-label="Content Views" className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenProjectHub?.();
+                  setCohortMenuOpen(false);
+                  setFavoritesMenuOpen(false);
+                }}
+                title="Tampilkan Semua Project / Cohort"
+                className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+                  showProjectHub
+                    ? "bg-[#4F39F6]/10 text-[#4F39F6] font-semibold border border-[#4F39F6]/20"
+                    : "text-[#5E5E5E] hover:bg-[#F8F9FB] hover:text-[#121215] border border-transparent"
+                }`}
+              >
+                <Folder
+                  size={14}
+                  className={showProjectHub ? "text-[#4F39F6]" : "text-[#9CA3AF]"}
+                />
+                <span className="hidden sm:inline">Projects</span>
+                {(cohortProjects || []).length > 0 && (
+                  <span
+                    className={`rounded-md px-1.5 py-0.2 text-[10px] font-semibold ${
+                      showProjectHub
+                        ? "bg-white text-[#4F39F6] border border-[#4F39F6]/20"
+                        : "bg-[#F8F9FB] text-[#5E5E5E] border border-[#EAECEF]"
+                    }`}
+                  >
+                    {cohortProjects.length}
+                  </span>
+                )}
+              </button>
+
               {[
                 {
                   id: "recents" as const,

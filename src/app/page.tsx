@@ -1395,6 +1395,32 @@ function RuangSosmedStudioInner() {
             }}
             activeSubNav={activeSubNav}
             showProjectHub={showProjectHub && activeNav === "content"}
+            onOpenProjectHub={() => {
+              setActiveNav("content");
+              setActiveSubNav("recents");
+              setShowProjectHub(true);
+              setSelectedContentDetailId(null);
+              setAuthoringMode(null);
+              if (typeof window !== "undefined") {
+                try {
+                  window.localStorage.setItem(
+                    "ruang_sosmed_admin_active_nav_v1",
+                    "content"
+                  );
+                  window.localStorage.setItem(
+                    "ruang_sosmed_admin_active_sub_nav_v1",
+                    "recents"
+                  );
+                  window.localStorage.setItem(
+                    "ruang_sosmed_admin_show_project_hub_v1",
+                    "true"
+                  );
+                  window.localStorage.removeItem(
+                    "ruang_sosmed_admin_current_folder_v1"
+                  );
+                } catch {}
+              }
+            }}
             onSelectSubNav={(subId) => {
               setActiveNav("content");
               if (typeof window !== "undefined") {
