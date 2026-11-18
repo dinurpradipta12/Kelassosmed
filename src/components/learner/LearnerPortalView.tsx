@@ -310,10 +310,58 @@ export function LearnerPortalView({
   const [selectedFolderFilter, setSelectedFolderFilter] =
     useState<string>("All");
   const [selectedProjectFilter, setSelectedProjectFilter] =
-    useState<string>("All");
-  const [activeLearnerFolder, setActiveLearnerFolder] = useState<string | null>(
-    null
-  );
+    useState<string>(() => {
+      if (typeof window !== "undefined") {
+        try {
+          return (
+            window.localStorage.getItem(
+              "ruang_sosmed_learner_project_filter_v1"
+            ) || "All"
+          );
+        } catch {}
+      }
+      return "All";
+    });
+  const [activeLearnerFolder, setActiveLearnerFolder] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return (
+          window.localStorage.getItem(
+            "ruang_sosmed_learner_active_folder_v1"
+          ) || null
+        );
+      } catch {}
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          "ruang_sosmed_learner_project_filter_v1",
+          selectedProjectFilter
+        );
+      } catch {}
+    }
+  }, [selectedProjectFilter]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        if (activeLearnerFolder) {
+          window.localStorage.setItem(
+            "ruang_sosmed_learner_active_folder_v1",
+            activeLearnerFolder
+          );
+        } else {
+          window.localStorage.removeItem(
+            "ruang_sosmed_learner_active_folder_v1"
+          );
+        }
+      } catch {}
+    }
+  }, [activeLearnerFolder]);
   const [openingFolderName, setOpeningFolderName] = useState<string | null>(
     null
   );
@@ -1168,11 +1216,11 @@ export function LearnerPortalView({
           a.title.trim().toLowerCase() ===
           screenState.courseTitle.trim().toLowerCase()
       );
-      if (!stillAssigned && explorerItems.length > 0) {
+      if (!stillAssigned && assignedItems.length > 0) {
         setScreenState({ screen: "dashboard" });
       }
     }
-  }, [assignedItems, explorerItems.length, screenState]);
+  }, [assignedItems, screenState]);
 
   const handleSelectNavTab = (
     tab: LearnerNavTabId,

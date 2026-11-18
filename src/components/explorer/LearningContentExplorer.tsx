@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Upload,
   Plus,
@@ -604,7 +604,17 @@ export function LearningContentExplorer({
     resolveUserAvatar,
   } = useRuangSosmedStore();
 
-  const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+  const [currentFolder, setCurrentFolder] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return (
+          window.localStorage.getItem("ruang_sosmed_admin_current_folder_v1") ||
+          null
+        );
+      } catch {}
+    }
+    return null;
+  });
   const [openingFolderId, setOpeningFolderId] = useState<string | null>(null);
   const [createFolderModalOpen, setCreateFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -644,9 +654,34 @@ export function LearningContentExplorer({
     }
   };
 
-  // Reset folder navigation when changing cohort/subview
+  // Persist current folder across refreshes & remounts (e.g. after Publish/Edit)
   useEffect(() => {
-    setCurrentFolder(null);
+    if (typeof window !== "undefined") {
+      try {
+        if (currentFolder) {
+          window.localStorage.setItem(
+            "ruang_sosmed_admin_current_folder_v1",
+            currentFolder
+          );
+        } else {
+          window.localStorage.removeItem(
+            "ruang_sosmed_admin_current_folder_v1"
+          );
+        }
+      } catch {}
+    }
+  }, [currentFolder]);
+
+  // Reset folder navigation ONLY when cohort/subview actually changes after mount
+  const prevNavScopeRef = useRef({ activeProjectName, activeSubView });
+  useEffect(() => {
+    if (
+      prevNavScopeRef.current.activeProjectName !== activeProjectName ||
+      prevNavScopeRef.current.activeSubView !== activeSubView
+    ) {
+      prevNavScopeRef.current = { activeProjectName, activeSubView };
+      setCurrentFolder(null);
+    }
   }, [activeProjectName, activeSubView]);
 
   const availableFolders = React.useMemo(() => {

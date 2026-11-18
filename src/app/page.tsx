@@ -144,8 +144,28 @@ function RuangSosmedStudioInner() {
       return "recents";
     });
   const [secondarySidebarOpen, setSecondarySidebarOpen] = useState(true);
-  const [activeProject, setActiveProject] = useState("Ruang Sosmed Class");
-  const [showProjectHub, setShowProjectHub] = useState(true);
+  const [activeProject, setActiveProject] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = window.localStorage.getItem(
+          "ruang_sosmed_admin_active_project_v1"
+        );
+        if (saved) return saved;
+      } catch {}
+    }
+    return "Ruang Sosmed Class";
+  });
+  const [showProjectHub, setShowProjectHub] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = window.localStorage.getItem(
+          "ruang_sosmed_admin_show_project_hub_v1"
+        );
+        if (saved === "false") return false;
+      } catch {}
+    }
+    return true;
+  });
 
   // Phase 3 & Phase 4 Authoring & Grading Studio state (Persisted across refreshes)
   const [authoringMode, setAuthoringMode] =
@@ -175,6 +195,28 @@ function RuangSosmedStudioInner() {
   });
 
   // Persist Admin Navigation & Studio states across refreshes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          "ruang_sosmed_admin_active_project_v1",
+          activeProject
+        );
+      } catch {}
+    }
+  }, [activeProject]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          "ruang_sosmed_admin_show_project_hub_v1",
+          String(showProjectHub)
+        );
+      } catch {}
+    }
+  }, [showProjectHub]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
@@ -979,7 +1021,17 @@ function RuangSosmedStudioInner() {
     }
   };
 
-  const [activeFolderForCreation, setActiveFolderForCreation] = useState<string | null>(null);
+  const [activeFolderForCreation, setActiveFolderForCreation] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return (
+          window.localStorage.getItem("ruang_sosmed_admin_current_folder_v1") ||
+          null
+        );
+      } catch {}
+    }
+    return null;
+  });
 
   // Trigger dedicated Phase 3 & Phase 4 builders when Course, Page, Quiz, Learning Path, or Wiki is selected
   const handleTriggerContentCreation = (
@@ -987,6 +1039,15 @@ function RuangSosmedStudioInner() {
     targetFolder?: string
   ) => {
     setActiveFolderForCreation(targetFolder || null);
+    if (targetFolder && typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          "ruang_sosmed_admin_current_folder_v1",
+          targetFolder
+        );
+        setShowProjectHub(false);
+      } catch {}
+    }
     if (defaultType === "Folder") {
       return;
     }
@@ -1050,10 +1111,22 @@ function RuangSosmedStudioInner() {
       setAuthoringMode({ kind: "wiki", title: item.title });
       return;
     }
+    if (item.folderName && typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          "ruang_sosmed_admin_current_folder_v1",
+          item.folderName
+        );
+      } catch {}
+    }
+    if (item.folderName) {
+      setShowProjectHub(false);
+    }
     if (item.type === "Course" || item.type === "Page") {
       setAuthoringMode({
         kind: "course-page",
         contentType: item.type,
+        folderName: item.folderName,
         title: item.title,
         isNew: false,
         draftSessionId: item.id,
@@ -1379,16 +1452,54 @@ function RuangSosmedStudioInner() {
                     ? undefined
                     : getCourseCurriculum(authoringMode.title) || undefined
                 }
-                onBack={() => setAuthoringMode(null)}
+                onBack={() => {
+                  const resolvedFolder =
+                    authoringMode.folderName ||
+                    activeFolderForCreation ||
+                    explorerItems.find(
+                      (i) =>
+                        i.title.trim().toLowerCase() ===
+                        (authoringMode.title || "").trim().toLowerCase()
+                    )?.folderName;
+                  if (resolvedFolder && typeof window !== "undefined") {
+                    try {
+                      window.localStorage.setItem(
+                        "ruang_sosmed_admin_current_folder_v1",
+                        resolvedFolder
+                      );
+                    } catch {}
+                  }
+                  setSelectedContentDetailId(null);
+                  setShowProjectHub(false);
+                  setAuthoringMode(null);
+                }}
                 onPublish={(title, type, sections, desc) => {
+                  const resolvedFolder =
+                    authoringMode.folderName ||
+                    activeFolderForCreation ||
+                    explorerItems.find(
+                      (i) =>
+                        i.title.trim().toLowerCase() ===
+                        (authoringMode.title || title || "").trim().toLowerCase()
+                    )?.folderName;
+                  if (resolvedFolder && typeof window !== "undefined") {
+                    try {
+                      window.localStorage.setItem(
+                        "ruang_sosmed_admin_current_folder_v1",
+                        resolvedFolder
+                      );
+                    } catch {}
+                  }
                   handleCreatedContent(
                     type,
                     title,
                     desc,
                     "Not Urgent",
                     sections,
-                    authoringMode.folderName
+                    resolvedFolder
                   );
+                  setSelectedContentDetailId(null);
+                  setShowProjectHub(false);
                   setAuthoringMode(null);
                   setActiveNav("content");
                   if (typeof window !== "undefined") {
@@ -1456,7 +1567,16 @@ function RuangSosmedStudioInner() {
                     setActiveSubNav("recents");
                     setShowProjectHub(false);
                   }}
-                  onBackToProjects={() => setShowProjectHub(true)}
+                  onBackToProjects={() => {
+                    if (typeof window !== "undefined") {
+                      try {
+                        window.localStorage.removeItem(
+                          "ruang_sosmed_admin_current_folder_v1"
+                        );
+                      } catch {}
+                    }
+                    setShowProjectHub(true);
+                  }}
                 />
               )
             ) : activeNav === "landing-builder" ? (
