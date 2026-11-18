@@ -74,6 +74,7 @@ interface AdminLeftRailProps {
   onSelectProject?: (projectName: string) => void;
   activeSubNav?: SecondaryNavLinkId;
   onSelectSubNav?: (subId: SecondaryNavLinkId) => void;
+  showProjectHub?: boolean;
   currentUser?: AuthenticatedUser | null;
   onOpenAuth?: () => void;
 }
@@ -163,6 +164,7 @@ export function AdminLeftRail({
   onSelectProject,
   activeSubNav: controlledSubNav,
   onSelectSubNav,
+  showProjectHub = false,
   currentUser,
   onOpenAuth,
 }: AdminLeftRailProps) {
@@ -722,14 +724,13 @@ export function AdminLeftRail({
                 },
               ].map((link) => {
                 const Icon = link.icon;
-                const active = activeSubNav === link.id;
+                const active = !showProjectHub && activeSubNav === link.id;
                 return (
                   <button
                     key={link.id}
                     type="button"
                     onClick={() => {
                       setActiveSubNav(link.id);
-                      onSelectNav("content");
                       setCohortMenuOpen(false);
                       setFavoritesMenuOpen(false);
                     }}

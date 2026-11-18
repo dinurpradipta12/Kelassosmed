@@ -900,9 +900,6 @@ export function LearningContentExplorer({
           // Di halaman Recents (root), hanya tampilkan Project Folder saja agar bersih (kecuali sedang mencari)
           if (activeSubView === "recents" && !searchQuery.trim()) {
             if (item.type !== "Folder") return false;
-          } else {
-            // Di tab lain (Shared/Archived/Templates) atau saat mencari, sembunyikan item yang sudah ada di dalam folder
-            if (item.folderName && item.type !== "Folder") return false;
           }
         } else if (selectedTab === "Folder") {
           if (item.type !== "Folder") return false;
@@ -954,7 +951,7 @@ export function LearningContentExplorer({
     viewMode === "grid" &&
     (selectedTab === "All" || selectedTab === "Folder");
 
-  if (showProjectPicker && !currentFolder) {
+  if (showProjectPicker && !currentFolder && activeSubView === "recents") {
     const primaryProjectName = (
       cohortProjects[0]?.name || "Ruang Sosmed Class"
     )
@@ -1855,9 +1852,18 @@ export function LearningContentExplorer({
               ? "Simpan modul panduan, format SOP, atau template kurikulum agar instruktur lain dapat menduplikasinya dengan mudah."
               : `Cohort "${activeProjectName}" belum memiliki konten ${selectedTab !== "All" ? selectedTab : "aktif"}. Klik tombol di bawah untuk membuat kelas atau modul baru.`}
           </p>
-          {activeSubView === "recents" && (
+          {(activeSubView === "recents" || activeSubView === "templates") && (
             <div className="pt-1 flex justify-center gap-2">
-              {currentFolder ? (
+              {activeSubView === "templates" ? (
+                <button
+                  type="button"
+                  onClick={() => onCreateNewContent("Wiki")}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white transition-colors cursor-pointer shadow-xs"
+                >
+                  <Plus size={14} />
+                  <span>+ Buat Template / SOP Baru</span>
+                </button>
+              ) : currentFolder ? (
                 <button
                   type="button"
                   onClick={() => onCreateNewContent("Course", currentFolder)}
