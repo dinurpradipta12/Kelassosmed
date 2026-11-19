@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import { supabase } from "@/lib/supabase/client";
 import { Mail, Shield, User, Send, CheckCircle2, Trash2, Users, UserPlus } from "lucide-react";
 
 interface InviteCollaboratorModalProps {
@@ -62,9 +63,18 @@ export function InviteCollaboratorModal({
     });
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+
       const res = await fetch("/api/invite", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           email: trimmedEmail,
           fullName: fullName.trim() || undefined,

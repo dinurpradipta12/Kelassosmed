@@ -30,17 +30,24 @@ export const isSupabaseConfigured: boolean = Boolean(
     !SUPABASE_ANON_KEY.includes("placeholder")
 );
 
-export const supabase: SupabaseClient = createClient(
-  SUPABASE_URL,
-  SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  }
-);
+const globalForSupabase = globalThis as unknown as {
+  __ruangSosmedSupabase?: SupabaseClient;
+  __ruangSosmedSupabasePublic?: SupabaseClient;
+};
+
+export const supabase: SupabaseClient =
+  globalForSupabase.__ruangSosmedSupabase ??
+  (globalForSupabase.__ruangSosmedSupabase = createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    }
+  ));
 
 /**
  * Admin Supabase client (persists authenticated admin session).
@@ -50,17 +57,20 @@ export const supabaseAdmin: SupabaseClient = supabase;
 /**
  * Public Supabase client (no session persistence, strictly respects public RLS).
  */
-export const supabasePublic: SupabaseClient = createClient(
-  SUPABASE_URL,
-  SUPABASE_ANON_KEY,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  }
-);
+export const supabasePublic: SupabaseClient =
+  globalForSupabase.__ruangSosmedSupabasePublic ??
+  (globalForSupabase.__ruangSosmedSupabasePublic = createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: "sb-ruang-sosmed-public-anon",
+      },
+    }
+  ));
 
 // -----------------------------------------------------------------------------
 // Storage Bucket Constants (Matches 001_ruang_sosmed_schema.sql & 002_rs_learning_26_integration.sql)

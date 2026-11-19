@@ -253,8 +253,18 @@ export function GlobalSearchModal({
 interface UpgradePlanModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirmUpgrade: () => void;
+  onConfirmUpgrade: (details?: {
+    packageId?: string;
+    packageName: string;
+    priceLabel: string;
+    periodLabel: string;
+    buyerName?: string;
+    buyerEmail?: string;
+    paymentMethod?: "qris" | "bank";
+    proofUrl?: string;
+  }) => Promise<void> | void;
   isProActive?: boolean;
+  canTestFreeToggle?: boolean;
   onSwitchToFree?: () => void;
   initialStep?: "overview" | "payment";
   defaultBuyerName?: string;
@@ -268,6 +278,7 @@ export function UpgradePlanModal({
   onClose,
   onConfirmUpgrade,
   isProActive = false,
+  canTestFreeToggle = false,
   onSwitchToFree,
   initialStep = "overview",
   defaultBuyerName = "",
@@ -292,6 +303,8 @@ export function UpgradePlanModal({
   const [buyerContact, setBuyerContact] = useState(defaultBuyerEmail);
   const [proofPreview, setProofPreview] = useState("");
   const [copiedAcc, setCopiedAcc] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmittingUpgrade, setIsSubmittingUpgrade] = useState(false);
 
   const selectedPkg: LearnerProPackageItem =
     packages.find((p) => p.id === selectedPackageId) || defaultPkg;
@@ -555,9 +568,18 @@ export function UpgradePlanModal({
 
               <span className="inline-flex items-center gap-1 text-[10px] text-[#5E5E5E]">
                 <ShieldCheck size={12} className="text-[#10B981]" />
-                Pembayaran Aman
+                Verifikasi Pembayaran oleh Admin
               </span>
             </div>
+
+            {formError && (
+              <p className="text-[11px] font-semibold text-[#DC2626]">
+                {formError}
+              </p>
+            )}
+            <p className="text-[11px] text-[#5E5E5E]">
+              Setelah konfirmasi dikirim, Admin akan memverifikasi pembayaran Anda sebelum mengaktifkan akses Learner PRO.
+            </p>
           </div>
 
           {/* Payment Actions */}
@@ -573,14 +595,41 @@ export function UpgradePlanModal({
 
             <button
               type="button"
-              onClick={() => {
-                onConfirmUpgrade();
-                onClose();
+              disabled={isSubmittingUpgrade || !buyerName.trim() || !buyerContact.trim()}
+              onClick={async () => {
+                if (!buyerName.trim() || !buyerContact.trim()) {
+                  setFormError(
+                    "Nama lengkap dan Email / No. WhatsApp wajib diisi untuk verifikasi."
+                  );
+                  return;
+                }
+                setFormError(null);
+                setIsSubmittingUpgrade(true);
+                try {
+                  await onConfirmUpgrade({
+                    packageId: selectedPkg.id,
+                    packageName: selectedPkg.name,
+                    priceLabel: selectedPkg.priceLabel,
+                    periodLabel:
+                      selectedPkg.periodLabel || cfg.bannerPeriodLabel || "/ bulan",
+                    buyerName: buyerName.trim(),
+                    buyerEmail: buyerContact.trim(),
+                    paymentMethod,
+                    proofUrl: proofPreview || undefined,
+                  });
+                  onClose();
+                } finally {
+                  setIsSubmittingUpgrade(false);
+                }
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] disabled:opacity-50 px-4 py-2 text-xs font-bold text-white shadow-xs cursor-pointer"
             >
               <CheckCircle2 size={13} />
-              <span>Selesaikan &amp; Konfirmasi Pembayaran</span>
+              <span>
+                {isSubmittingUpgrade
+                  ? "Mengirim Konfirmasi..."
+                  : "Kirim Konfirmasi Pembayaran"}
+              </span>
             </button>
           </div>
         </div>
@@ -680,7 +729,7 @@ export function UpgradePlanModal({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-            {isProActive && onSwitchToFree ? (
+            {isProActive && canTestFreeToggle && onSwitchToFree ? (
               <button
                 type="button"
                 onClick={() => {

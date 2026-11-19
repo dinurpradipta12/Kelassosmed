@@ -34,7 +34,7 @@ export function AuthModal({
   onShowToast,
   initialTab = "login",
 }: AuthModalProps) {
-  const { maintenanceConfig } = useRuangSosmedStore();
+  const { maintenanceConfig, pushAdminNotification } = useRuangSosmedStore();
   const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
 
   // Sync tab whenever modal opens or initialTab prop changes
@@ -71,68 +71,6 @@ export function AuthModal({
 
   if (!open) return null;
 
-  const verifyAdminResetPassword = async (
-    identifierClean: string,
-    emailClean: string,
-    rawPassword: string
-  ): Promise<{ matched: boolean; matchedKey?: string } | null> => {
-    const candidateKeys = Array.from(
-      new Set(
-        [
-          identifierClean,
-          emailClean,
-          emailClean.includes("@") ? emailClean.split("@")[0] : "",
-        ].filter(Boolean)
-      )
-    );
-
-    // 1. Check localStorage first
-    if (typeof window !== "undefined") {
-      try {
-        const raw = window.localStorage.getItem(
-          "ruang_sosmed_admin_reset_passwords_v1"
-        );
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") {
-            for (const k of candidateKeys) {
-              const rec = parsed[k];
-              if (rec?.password && rec.password === rawPassword) {
-                return { matched: true, matchedKey: k };
-              }
-            }
-          }
-        }
-      } catch {}
-    }
-
-    // 2. Check Supabase __SYSTEM_USER_PASSWORDS__
-    if (isSupabaseConfigured) {
-      try {
-        const { data: rows } = await supabase
-          .from("contents")
-          .select("settings_json")
-          .eq("title", "__SYSTEM_USER_PASSWORDS__")
-          .order("updated_at", { ascending: false })
-          .limit(1);
-
-        const row =
-          Array.isArray(rows) && rows.length > 0 ? (rows[0] as any) : null;
-        const remoteMap = row?.settings_json?.passwords;
-        if (remoteMap && typeof remoteMap === "object") {
-          for (const k of candidateKeys) {
-            const rec = remoteMap[k];
-            if (rec?.password && rec.password === rawPassword) {
-              return { matched: true, matchedKey: k };
-            }
-          }
-        }
-      } catch {}
-    }
-
-    return null;
-  };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -140,111 +78,18 @@ export function AuthModal({
     setLoading(true);
 
     const cleanId = identifier.trim().toLowerCase();
-    const cleanPw = password.trim();
     let emailToUse = identifier.trim();
-    // If user typed username "arunika", map to contact.dinurpradipta@gmail.com
     if (!emailToUse.includes("@")) {
       if (cleanId === "arunika") {
         emailToUse = "contact.dinurpradipta@gmail.com";
       } else {
-        // Check if there is an email associated with this username
         emailToUse = `${emailToUse}@ruangsosmed.id`;
       }
     }
 
-    const isArunikaCredentials =
-      (cleanId === "arunika" ||
-        cleanId === "contact.dinurpradipta@gmail.com" ||
-        cleanId === "arunika@ruangsosmed.id" ||
-        cleanId === "admin@ruangsosmed.id") &&
-      cleanPw === "Ar4925";
-
-    const isDeveloperSuperAdmin =
-      cleanId.includes("arunika") ||
-      emailToUse.toLowerCase().includes("dinur") ||
-      emailToUse.toLowerCase().includes("arunika") ||
-      emailToUse.toLowerCase() === "admin@ruangsosmed.id";
-
-    if (maintenanceConfig?.enabled && !isDeveloperSuperAdmin) {
-      setErrorMessage(
-        "Website sedang dalam tahap pengembangan (Under Construction). Hanya Super Admin / Developer yang dapat masuk saat ini."
-      );
-      setLoading(false);
-      return;
-    }
-
-    if (isArunikaCredentials) {
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem("ruang_sosmed_dev_session_v1", "true");
-          window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
-        } catch {}
-      }
-      if (isSupabaseConfigured) {
-        void (async () => {
-          try {
-            let authRes = await supabase.auth.signInWithPassword({
-              email:
-                cleanId.includes("@") && cleanId !== "arunika"
-                  ? cleanId
-                  : "contact.dinurpradipta@gmail.com",
-              password: cleanPw,
-            });
-            if (authRes.error) {
-              authRes = await supabase.auth.signInWithPassword({
-                email: "arunika@ruangsosmed.id",
-                password: cleanPw,
-              });
-            }
-            const signedUser = authRes.data?.user;
-            if (signedUser) {
-              await supabase
-                .from("profiles")
-                .update({ role: "admin" })
-                .or(`id.eq.${signedUser.id},email.ilike.${signedUser.email || ""}`);
-              await supabase
-                .from("user_profiles")
-                .upsert(
-                  {
-                    username: "arunika",
-                    name: "Dinur Pradipta",
-                    email: signedUser.email || "contact.dinurpradipta@gmail.com",
-                    role: "admin",
-                    job_title: "Developer & Lead Mentor",
-                  },
-                  { onConflict: "username" }
-                );
-            }
-          } catch {}
-        })();
-      }
-      onAuthSuccess({
-        name: "Dinur Pradipta",
-        email: "contact.dinurpradipta@gmail.com",
-        role: "admin",
-        username: "arunika",
-        avatarUrl: "/avatars/Frame 23.png",
-      });
-      onShowToast(
-        "Selamat datang kembali, Dinur Pradipta (Developer Mode Aktif)!"
-      );
-      onClose();
-      setLoading(false);
-      return;
-    }
-
     try {
-
       if (!isSupabaseConfigured) {
-        // Fallback demo login when offline
-        onAuthSuccess({
-          name: identifier.split("@")[0],
-          email: emailToUse,
-          role: isDeveloperSuperAdmin ? "admin" : "learner",
-        });
-        onShowToast(`Login berhasil sebagai ${identifier}!`);
-        onClose();
-        return;
+        throw new Error("Layanan autentikasi belum terkonfigurasi.");
       }
 
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -252,72 +97,52 @@ export function AuthModal({
         password: password,
       });
 
-      if (error) {
-        throw error;
+      if (error || !data.user) {
+        throw error || new Error("Email atau kata sandi salah.");
       }
 
       const user = data.user;
-      const userMeta = user?.user_metadata || {};
-      const isFounderOrDev =
-        cleanId.includes("arunika") ||
-        emailToUse.toLowerCase().includes("dinur") ||
-        emailToUse.toLowerCase().includes("arunika") ||
-        emailToUse.toLowerCase() === "admin@ruangsosmed.id" ||
-        (userMeta.username || "").toLowerCase() === "arunika" ||
-        userMeta.role === "admin";
+      const userMeta = user.user_metadata || {};
 
-      let userRole: "admin" | "learner" = isFounderOrDev ? "admin" : "learner";
-      if (!isFounderOrDev) {
-        try {
-          const { data: prof } = await supabase
-            .from("profiles")
-            .select("role")
-            .or(`id.eq.${user.id},email.ilike.${emailToUse}`)
-            .maybeSingle();
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role, full_name, avatar_url, job_title")
+        .eq("id", user.id)
+        .maybeSingle();
 
-          if (prof?.role) {
-            const dbRole = prof.role.toLowerCase();
-            userRole =
-              dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
-          }
-        } catch {
-          userRole = "learner";
-        }
-      } else {
-        await supabase
-          .from("profiles")
-          .update({ role: "admin" })
-          .or(`id.eq.${user.id},email.ilike.${emailToUse}`)
-          .then(() => {});
+      const dbRole = String(prof?.role || "learner").toLowerCase();
+      const userRole: "admin" | "learner" =
+        dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
+
+      if (maintenanceConfig?.enabled && userRole !== "admin") {
+        await supabase.auth.signOut().catch(() => {});
+        setErrorMessage(
+          "Website sedang dalam tahap pemeliharaan. Hanya Admin terverifikasi yang dapat masuk saat ini."
+        );
+        return;
       }
 
-      const rawDisplayName =
+      const displayName =
+        prof?.full_name ||
         userMeta.full_name ||
         userMeta.username ||
         emailToUse.split("@")[0] ||
         "Pengguna";
-      const displayName =
-        isDeveloperSuperAdmin &&
-        (!rawDisplayName ||
-          rawDisplayName.toLowerCase() === "arunika" ||
-          rawDisplayName === "Arunika Developer")
-          ? "Dinur Pradipta"
-          : rawDisplayName;
 
-      // Ensure user profile is synced in user_profiles table
       const uname =
         (userMeta.username || emailToUse.split("@")[0] || "learner")
           .toLowerCase()
           .replace(/[^a-z0-9._-]/g, "");
+
       await supabase
         .from("user_profiles")
         .upsert(
           {
+            user_id: user.id,
             username: uname,
             name: displayName,
-            email: user?.email || emailToUse,
-            role: userRole,
-            job_title: userMeta.job_title || "Social Media Specialist",
+            email: user.email || emailToUse,
+            job_title: prof?.job_title || userMeta.job_title || "Social Media Specialist",
           },
           { onConflict: "username" }
         )
@@ -337,123 +162,23 @@ export function AuthModal({
 
       onAuthSuccess({
         name: displayName,
-        email: user?.email || emailToUse,
+        email: user.email || emailToUse,
         role: userRole,
-        username: userMeta.username || (emailToUse.includes("dinur") ? "arunika" : undefined),
-        avatarUrl: userRole === "admin" ? "/avatars/Frame 23.png" : undefined,
+        username: userMeta.username || uname,
+        avatarUrl: prof?.avatar_url || undefined,
       });
 
       onShowToast(
         `Berhasil login sebagai ${displayName} (${
-          userRole === "admin" ? "Admin Developer" : "Learner"
+          userRole === "admin" ? "Admin Studio" : "Learner"
         })!`
       );
       onClose();
     } catch (err: any) {
-      console.error("Login error:", err);
-
-      // Fallback pemulihan otomatis untuk kredensial developer jika Supabase GoTrue mengalami schema mismatch
-      if (
-        (identifier.trim().toLowerCase() === "arunika" ||
-          emailToUse === "contact.dinurpradipta@gmail.com") &&
-        password === "Ar4925"
-      ) {
-        onAuthSuccess({
-          name: "Dinur Pradipta",
-          email: "contact.dinurpradipta@gmail.com",
-          role: "admin",
-          username: "arunika",
-        });
-        onShowToast("Selamat datang kembali, Dinur Pradipta (Developer Mode Aktif)!");
-        onClose();
-        return;
-      }
-
-      // Cek apakah Admin sudah mereset password akun ini via Admin Directory
-      const adminResetMatch = await verifyAdminResetPassword(
-        cleanId,
-        emailToUse.toLowerCase(),
-        cleanPw
-      );
-      if (adminResetMatch?.matched) {
-        let resolvedName = identifier.includes("@")
-          ? identifier.split("@")[0]
-          : identifier.trim();
-        let resolvedEmail = emailToUse;
-        let resolvedRole: "admin" | "learner" = isDeveloperSuperAdmin
-          ? "admin"
-          : "learner";
-        let resolvedUsername: string | undefined = !identifier.includes("@")
-          ? cleanId
-          : undefined;
-        let resolvedAvatar: string | undefined = undefined;
-
-        if (isSupabaseConfigured) {
-          try {
-            const [profRes, uProfRes] = await Promise.all([
-              supabase
-                .from("profiles")
-                .select("*")
-                .or(`email.ilike.${emailToUse},full_name.ilike.${identifier.trim()}`)
-                .limit(1),
-              supabase
-                .from("user_profiles")
-                .select("*")
-                .or(`email.ilike.${emailToUse},username.ilike.${cleanId},name.ilike.${identifier.trim()}`)
-                .limit(1),
-            ]);
-            const pRow =
-              Array.isArray(profRes.data) && profRes.data.length > 0
-                ? (profRes.data[0] as any)
-                : null;
-            const upRow =
-              Array.isArray(uProfRes.data) && uProfRes.data.length > 0
-                ? (uProfRes.data[0] as any)
-                : null;
-            if (pRow || upRow) {
-              resolvedName =
-                pRow?.full_name || upRow?.name || resolvedName;
-              resolvedEmail =
-                pRow?.email || upRow?.email || resolvedEmail;
-              resolvedUsername =
-                upRow?.username || resolvedUsername;
-              resolvedAvatar =
-                pRow?.avatar_url || upRow?.avatar_url || resolvedAvatar;
-              const dbRole = String(
-                pRow?.role || upRow?.role || "learner"
-              ).toLowerCase();
-              if (dbRole === "admin" || dbRole === "mentor") {
-                resolvedRole = "admin";
-              }
-            }
-          } catch {}
-        }
-
-        if (resolvedRole === "admin" && typeof window !== "undefined") {
-          try {
-            window.localStorage.setItem("ruang_sosmed_dev_session_v1", "true");
-            window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
-          } catch {}
-        }
-
-        onAuthSuccess({
-          name: resolvedName,
-          email: resolvedEmail,
-          role: resolvedRole,
-          username: resolvedUsername,
-          avatarUrl: resolvedAvatar,
-        });
-        onShowToast(
-          `Berhasil login sebagai ${resolvedName} dengan password yang telah direset Admin!`
-        );
-        onClose();
-        return;
-      }
-
       const msg = err?.message || "";
       if (msg.includes("Invalid login credentials")) {
         setErrorMessage(
-          "Email, username, atau kata sandi tidak cocok. Pastikan akun sudah dibuat di database."
+          "Email, username, atau kata sandi tidak sesuai. Hubungi Admin jika Anda lupa password."
         );
       } else if (msg.includes("Email not confirmed")) {
         setErrorMessage(
@@ -510,17 +235,7 @@ export function AuthModal({
       }
 
       if (!isSupabaseConfigured) {
-        setSuccessMessage(
-          "Pendaftaran berhasil! (Mode Demo offline aktif)."
-        );
-        onAuthSuccess({
-          name: fullName || emailToUse.split("@")[0],
-          email: emailToUse,
-          role: "learner",
-        });
-        onShowToast(`Akun ${fullName || emailToUse} berhasil terdaftar!`);
-        setTimeout(() => onClose(), 1500);
-        return;
+        throw new Error("Layanan pendaftaran belum terkonfigurasi.");
       }
 
       const { data, error } = await supabase.auth.signUp({
@@ -529,9 +244,7 @@ export function AuthModal({
         options: {
           data: {
             full_name: fullName.trim() || emailToUse.split("@")[0],
-            role: "learner",
             job_title: "Social Media Specialist",
-            subscription_tier: "free",
             folder_access_code: cleanFolderCode || undefined,
           },
         },
@@ -541,35 +254,33 @@ export function AuthModal({
         throw error;
       }
 
-      // Immediately sync the newly registered learner into public.user_profiles so Admin Directory can read it right away
       const displayName = fullName.trim() || emailToUse.split("@")[0];
-      const uname = emailToUse
-        .split("@")[0]
-        .toLowerCase()
-        .replace(/[^a-z0-9._-]/g, "");
-      await supabase
-        .from("user_profiles")
-        .upsert(
-          {
-            username: uname || `learner_${Date.now()}`,
-            name: displayName,
-            email: emailToUse,
-            role: "learner",
-            job_title: "Social Media Specialist",
-          },
-          { onConflict: "username" }
-        )
-        .then(() => {});
+      if (data.session && data.user) {
+        const uname = emailToUse
+          .split("@")[0]
+          .toLowerCase()
+          .replace(/[^a-z0-9._-]/g, "");
+        await supabase
+          .from("user_profiles")
+          .upsert(
+            {
+              user_id: data.user.id,
+              username: uname || `learner_${Date.now()}`,
+              name: displayName,
+              email: emailToUse,
+              job_title: "Social Media Specialist",
+            },
+            { onConflict: "username" }
+          )
+          .then(() => {});
+      }
 
       if (data.user && !data.session) {
-        // Confirmation email was sent
         setSuccessMessage(
           `Tautan verifikasi telah dikirim ke ${emailToUse}. Silakan periksa inbox/spam Anda untuk mengonfirmasi akun.`
         );
         onShowToast(`Email konfirmasi dikirim ke ${emailToUse}`);
       } else {
-        // Instant login if email confirmation is disabled
-        const displayName = fullName.trim() || emailToUse.split("@")[0];
         onAuthSuccess({
           name: displayName,
           email: emailToUse,
@@ -579,7 +290,6 @@ export function AuthModal({
         onClose();
       }
     } catch (err: any) {
-      console.error("Sign up error:", err);
       setErrorMessage(
         err?.message || "Terjadi kesalahan saat mendaftar. Silakan coba lagi."
       );

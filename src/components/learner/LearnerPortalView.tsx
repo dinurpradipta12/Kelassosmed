@@ -378,7 +378,7 @@ export function LearnerPortalView({
         const saved = Number(
           window.localStorage.getItem("ruang_sosmed_learner_folder_scale_v1")
         );
-        if (!Number.isNaN(saved) && saved >= 52 && saved <= 140) {
+        if (!Number.isNaN(saved) && saved >= 52 && saved <= 112) {
           return saved;
         }
       } catch {}
@@ -1426,6 +1426,227 @@ export function LearnerPortalView({
       ? Math.round((doneChapters / flatChapters.length) * 100)
       : 0;
 
+  const renderCourseCoverMedia = (
+    item: LearnerAssignedItem,
+    containerClassName: string,
+    children?: React.ReactNode
+  ) => {
+    const effectiveThumb =
+      item.thumbnailUrl ||
+      (typeof window !== "undefined"
+        ? window.localStorage.getItem(`ruang_sosmed_thumb_${item.id}`) ||
+          window.localStorage.getItem(
+            `ruang_sosmed_thumb_${item.title.trim().toLowerCase()}`
+          )
+        : null) ||
+      undefined;
+
+    const isImg =
+      Boolean(effectiveThumb) &&
+      (effectiveThumb!.startsWith("/") ||
+        effectiveThumb!.startsWith("http") ||
+        effectiveThumb!.startsWith("data:") ||
+        effectiveThumb!.includes(".png") ||
+        effectiveThumb!.includes(".jpg") ||
+        effectiveThumb!.includes(".webp"));
+
+    return (
+      <div
+        className={containerClassName}
+        style={
+          !effectiveThumb
+            ? {
+                background:
+                  item.bannerGradient ||
+                  "linear-gradient(135deg, #EEF2FF 0%, #FFFFFF 100%)",
+              }
+            : !isImg
+            ? { background: effectiveThumb }
+            : undefined
+        }
+      >
+        {isImg ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={effectiveThumb}
+            alt={item.title}
+            loading="eager"
+            decoding="async"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <svg
+            viewBox="0 0 320 128"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="absolute inset-0 h-full w-full object-cover opacity-90"
+            aria-hidden="true"
+          >
+            <circle
+              cx="275"
+              cy="24"
+              r="46"
+              fill={item.bannerAccent || "#4F39F6"}
+              fillOpacity="0.12"
+            />
+            <circle
+              cx="240"
+              cy="98"
+              r="34"
+              fill={item.bannerAccent || "#4F39F6"}
+              fillOpacity="0.08"
+            />
+            <rect
+              x="96"
+              y="22"
+              width="128"
+              height="84"
+              rx="10"
+              fill="#FFFFFF"
+              fillOpacity="0.92"
+              stroke={item.bannerAccent || "#4F39F6"}
+              strokeOpacity="0.28"
+              strokeWidth="1.5"
+            />
+            <rect
+              x="110"
+              y="36"
+              width="48"
+              height="8"
+              rx="4"
+              fill={item.bannerAccent || "#4F39F6"}
+              fillOpacity="0.75"
+            />
+            <rect
+              x="110"
+              y="52"
+              width="96"
+              height="6"
+              rx="3"
+              fill="#CBD5E1"
+            />
+            <rect
+              x="110"
+              y="64"
+              width="76"
+              height="6"
+              rx="3"
+              fill="#E2E8F0"
+            />
+            <rect
+              x="110"
+              y="76"
+              width="36"
+              height="14"
+              rx="4"
+              fill={item.bannerAccent || "#4F39F6"}
+              fillOpacity="0.18"
+            />
+          </svg>
+        )}
+        {children}
+      </div>
+    );
+  };
+
+  const renderProUpgradeCard = () => (
+    <div className="w-full overflow-hidden rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_6px_24px_rgba(16,15,17,0.06)]">
+      {/* Top Amber Gradient Header + Clean Full-Width Price Box */}
+      <div
+        className="p-4 relative space-y-3 pro-amber-gradient-header"
+        style={{
+          background:
+            "linear-gradient(135deg, #FEF3C7 0%, #FDE68A 48%, #F59E0B 100%)",
+        }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-0.5 text-[10px] font-bold text-[#92400E] shadow-2xs">
+            <Zap size={11} className="text-[#D97706]" fill="currentColor" />
+            <span>{activeProCfg.bannerBadge}</span>
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setProPushOpen(false)}
+            aria-label="Tutup penawaran Learner PRO"
+            aria-expanded={showProPushPanel}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/85 hover:bg-white text-[#121215] transition-colors cursor-pointer shrink-0 shadow-2xs"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <h2 className="text-[15px] font-extrabold text-[#121215] leading-snug">
+          {activeProCfg.bannerHeading}
+        </h2>
+
+        {/* Single-Baseline Price Card (Zero Button Inside) */}
+        <div className="rounded-xl bg-white/95 px-3.5 py-2.5 border border-[#F59E0B]/30 shadow-2xs flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#92400E]">
+              Learner Pass
+            </p>
+            <div className="flex items-baseline gap-1 mt-0.5 whitespace-nowrap">
+              <span className="text-lg font-black tracking-tight text-[#121215] tabular-nums">
+                {activeProCfg.priceLabel}
+              </span>
+              <span className="text-[11px] font-semibold text-[#78350F]">
+                {activeProCfg.bannerPeriodLabel}
+              </span>
+            </div>
+          </div>
+
+          <span className="shrink-0 rounded-full bg-[#FEF3C7] border border-[#F59E0B]/35 px-2.5 py-1 text-[10px] font-bold text-[#92400E]">
+            Akses Penuh
+          </span>
+        </div>
+      </div>
+
+      {/* Clean Checklist + Single Primary CTA Footer */}
+      <div className="p-4 bg-[#FFFFFF] space-y-3.5">
+        <div className="space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
+            {(activeProCfg.features || []).length} Benefit Eksklusif:
+          </p>
+          <ul className="divide-y divide-[#F1F5F9]">
+            {(activeProCfg.features || []).map((feature, idx) => (
+              <li
+                key={`${idx}-${feature}`}
+                className="flex items-start gap-2 py-2 first:pt-0.5 last:pb-0.5 text-xs font-medium text-[#1E293B]"
+              >
+                <CheckCircle2
+                  size={14}
+                  className="shrink-0 mt-0.5 text-[#10B981]"
+                />
+                <span className="leading-snug">{feature}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Single Primary CTA */}
+        <div className="pt-2 border-t border-[#EAECEF] space-y-2">
+          <button
+            type="button"
+            onClick={() =>
+              onStartUpgradePayment
+                ? onStartUpgradePayment()
+                : onOpenUpgradeModal?.()
+            }
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] py-2.5 px-4 text-xs font-bold text-white shadow-[0_2px_8px_rgba(79,57,246,0.28)] transition-all cursor-pointer"
+          >
+            <Zap size={13} className="text-[#FDE68A]" fill="currentColor" />
+            <span>{activeProCfg.bannerCtaLabel || "Upgrade ke Learner PRO"}</span>
+          </button>
+
+          <p className="text-center text-[10px] font-medium text-[#64748B]">
+            Aktivasi instan • Buka semua modul &amp; sertifikat HD
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#F8F9FB] text-[#121215]">
       {/* A. Learner Top Horizontal Navbar */}
@@ -1557,7 +1778,7 @@ export function LearnerPortalView({
         />
       ) : (
         /* SCREEN 1: LEARNER DASHBOARD, MY LEARNING, CATALOG, WIKI & FAVORITES */
-        <div className="w-full px-4 sm:px-6 py-6 flex flex-col lg:flex-row items-start overflow-x-hidden">
+        <div className="w-full px-4 sm:px-6 py-6 pb-20 flex flex-col lg:flex-row items-start overflow-x-clip">
           <main
             key={`learner-tab-${activeNavTab}`}
             className="flex-1 min-w-0 w-full space-y-6 transition-all duration-380 ease-in-out page-transition-enter"
@@ -2086,27 +2307,69 @@ export function LearnerPortalView({
                   </div>
                 )}
 
-              {/* Dedicated My Learning View: Left (Class List + Progress) | Right (Profile & Brief Achievements) */}
+              {/* Dedicated My Learning View: Balanced 2-Column Layout (Left: Overview + Horizontal Folders + Visual Courses | Right: Profile + 2x2 Achievements + Integrated PRO Card) */}
               {activeNavTab === "my-learning" && (() => {
                 const totalClasses = assignedItems.length;
-                const completedClasses = assignedItems.filter((i) => i.progressPercent >= 100).length;
+                const completedClasses = assignedItems.filter(
+                  (i) => i.progressPercent >= 100
+                ).length;
                 const inProgressClasses = assignedItems.filter(
                   (i) => i.progressPercent > 0 && i.progressPercent < 100
                 ).length;
                 const avgProgress =
                   totalClasses > 0
                     ? Math.round(
-                        assignedItems.reduce((sum, i) => sum + (i.progressPercent || 0), 0) /
-                          totalClasses
+                        assignedItems.reduce(
+                          (sum, i) => sum + (i.progressPercent || 0),
+                          0
+                        ) / totalClasses
                       )
                     : 0;
+
+                const myLearningScopeItems = assignedItems.filter((item) => {
+                  if (
+                    activeFolderObj &&
+                    (item.folderName || "").trim().toLowerCase() !==
+                      activeFolderObj.name.trim().toLowerCase()
+                  ) {
+                    return false;
+                  }
+                  if (
+                    searchQuery.trim() &&
+                    !item.title
+                      .toLowerCase()
+                      .includes(searchQuery.toLowerCase()) &&
+                    !item.type
+                      .toLowerCase()
+                      .includes(searchQuery.toLowerCase())
+                  ) {
+                    return false;
+                  }
+                  return true;
+                });
+
+                const statusCounts = {
+                  "All Status": myLearningScopeItems.length,
+                  "Not Started": myLearningScopeItems.filter(
+                    (i) => i.progressPercent === 0
+                  ).length,
+                  "In Progress": myLearningScopeItems.filter(
+                    (i) => i.progressPercent > 0 && i.progressPercent < 100
+                  ).length,
+                  Completed: myLearningScopeItems.filter(
+                    (i) => i.progressPercent >= 100
+                  ).length,
+                };
 
                 const achievementsList = [
                   {
                     id: "first-step",
                     title: "First Step",
                     desc: "Mulai belajar atau selesaikan 1 chapter",
-                    unlocked: doneChapters > 0 || inProgressClasses > 0 || completedClasses > 0,
+                    unlocked:
+                      doneChapters > 0 ||
+                      inProgressClasses > 0 ||
+                      completedClasses > 0,
                     icon: Flame,
                     color: "text-[#F97316] bg-[#FFF7ED] border-[#FED7AA]",
                   },
@@ -2147,86 +2410,217 @@ export function LearnerPortalView({
 
                 return (
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                    {/* LEFT COLUMN: Class List & Running Progress */}
-                    <div className="lg:col-span-8 space-y-4">
-                      {/* Page Header */}
-                      <div className="rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex flex-wrap items-center justify-between gap-4">
-                        {activeFolderObj ? (
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveLearnerFolder(null);
-                                  setFolderSearchQuery("");
-                                }}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/70 border border-[#EAECEF] px-2.5 py-1 text-xs font-semibold text-[#475569] hover:text-[#121215] transition-colors cursor-pointer"
-                              >
-                                <ArrowLeft size={13} />
-                                <span>Semua Folder</span>
-                              </button>
-                              <span className="text-xs text-[#CBD5E1]">/</span>
-                              <div className="inline-flex items-center gap-1.5 min-w-0">
-                                <LearnerMacFolderIcon
-                                  color={activeFolderObj.color}
-                                  className="w-5 h-4 shrink-0"
-                                />
-                                <h1 className="text-base sm:text-lg font-bold tracking-tight text-[#121215] truncate">
-                                  {activeFolderObj.name}
-                                </h1>
+                    {/* LEFT COLUMN: Unified Header + Folders + Course Cards */}
+                    <div className="lg:col-span-8 space-y-5 min-w-0">
+                      {/* Card 1: Unified Header & Progress Overview */}
+                      <section className="rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4">
+                        <div className="flex flex-wrap items-start sm:items-center justify-between gap-3">
+                          {activeFolderObj ? (
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveLearnerFolder(null);
+                                    setFolderSearchQuery("");
+                                  }}
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/70 border border-[#EAECEF] px-2.5 py-1 text-xs font-semibold text-[#475569] hover:text-[#121215] transition-colors cursor-pointer"
+                                >
+                                  <ArrowLeft size={13} />
+                                  <span>Semua Folder</span>
+                                </button>
+                                <span className="text-xs text-[#CBD5E1]">/</span>
+                                <div className="inline-flex items-center gap-1.5 min-w-0">
+                                  <LearnerMacFolderIcon
+                                    color={activeFolderObj.color}
+                                    className="w-5 h-4 shrink-0"
+                                  />
+                                  <h1 className="text-base sm:text-lg font-bold tracking-tight text-[#121215] truncate">
+                                    {activeFolderObj.name}
+                                  </h1>
+                                </div>
                               </div>
+                              {activeFolderObj.description && (
+                                <p className="text-xs text-[#5E5E5E] line-clamp-1">
+                                  {activeFolderObj.description}
+                                </p>
+                              )}
                             </div>
-                            {activeFolderObj.description && (
-                              <p className="text-xs text-[#5E5E5E] line-clamp-1">
-                                {activeFolderObj.description}
+                          ) : (
+                            <div>
+                              <h1 className="text-xl font-bold tracking-tight text-[#121215]">
+                                My Learning
+                              </h1>
+                              <p className="text-xs text-[#5E5E5E] mt-0.5">
+                                Daftar kelas yang sedang Anda ikuti beserta progress belajar yang sedang berjalan.
                               </p>
-                            )}
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setJoinCodeModalOpen(true)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-[#EEF2FF] hover:bg-[#E0E7FF] border border-[#4F39F6]/20 px-3 py-1.5 text-xs font-bold text-[#4F39F6] transition-colors cursor-pointer"
+                            >
+                              <KeyRound size={12} />
+                              <span>Masuk Kode Folder</span>
+                            </button>
+                            <span className="rounded-lg bg-[#4F39F6]/10 border border-[#4F39F6]/20 px-3 py-1.5 text-xs font-bold text-[#4F39F6] tabular-nums">
+                              {myLearningItems.length} Kelas
+                            </span>
                           </div>
-                        ) : (
-                          <div>
-                            <h1 className="text-xl font-bold tracking-tight text-[#121215]">
-                              My Learning
-                            </h1>
-                            <p className="text-xs text-[#5E5E5E] mt-0.5">
-                              Daftar kelas yang sedang Anda ikuti beserta progress belajar yang sedang berjalan.
+                        </div>
+
+                        {/* Overview Metric Strip */}
+                        <div className="border-t border-[#EAECEF] pt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="rounded-xl bg-[#F8F9FB] px-3.5 py-2.5 border border-[#EAECEF]/80">
+                            <p className="text-[11px] font-medium text-[#64748B]">
+                              Total Kelas
+                            </p>
+                            <p className="text-base font-extrabold text-[#121215] tabular-nums mt-0.5">
+                              {totalClasses} Kelas
                             </p>
                           </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-2">
-                          {activeFolderObj && renderLearnerFinderControls()}
-                          <span className="rounded-lg bg-[#4F39F6]/10 border border-[#4F39F6]/20 px-3 py-1.5 text-xs font-bold text-[#4F39F6]">
-                            {myLearningItems.length} Kelas
-                          </span>
+                          <div className="rounded-xl bg-[#F8F9FB] px-3.5 py-2.5 border border-[#EAECEF]/80">
+                            <p className="text-[11px] font-medium text-[#64748B]">
+                              Sedang Berjalan
+                            </p>
+                            <p className="text-base font-extrabold text-[#4F39F6] tabular-nums mt-0.5">
+                              {inProgressClasses} Kelas
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-[#F8F9FB] px-3.5 py-2.5 border border-[#EAECEF]/80">
+                            <p className="text-[11px] font-medium text-[#64748B]">
+                              Selesai
+                            </p>
+                            <p className="text-base font-extrabold text-[#10B981] tabular-nums mt-0.5">
+                              {completedClasses} Kelas
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-[#F8F9FB] px-3.5 py-2.5 border border-[#EAECEF]/80 flex flex-col justify-between">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-medium text-[#64748B]">
+                                Progress
+                              </span>
+                              <span className="text-sm font-extrabold text-[#4F39F6] tabular-nums">
+                                {avgProgress}%
+                              </span>
+                            </div>
+                            <div className="mt-1.5 h-1.5 w-full rounded-full bg-white border border-[#EAECEF] overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-[#4F39F6] transition-all duration-300"
+                                style={{ width: `${avgProgress}%` }}
+                              />
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      </section>
 
-                      {/* Compact Finder Folder Series Bar in My Learning */}
+                      {/* Card 2: Proportional Horizontal Folder Series Grid */}
                       {!activeFolderObj &&
                         !searchQuery.trim() &&
                         learnerFolders.length > 0 && (
-                          <div className="rounded-xl bg-[#FFFFFF] p-4 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.03)] space-y-2.5">
+                          <section
+                            aria-label="Folder Series"
+                            className="rounded-2xl bg-[#FFFFFF] p-4 sm:p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.03)] space-y-3.5"
+                          >
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#475569]">
+                              <span className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-[#121215]">
                                 <FolderOpen
-                                  size={14}
+                                  size={15}
                                   className="text-[#4F39F6]"
                                 />
                                 <span>
                                   Folder Series ({learnerFolders.length})
                                 </span>
                               </span>
-                              {renderLearnerFinderControls()}
+                              <span className="text-[11px] font-medium text-[#64748B]">
+                                Pilih folder untuk fokus pada seri kelasnya
+                              </span>
                             </div>
-                            <div className="flex flex-wrap items-start gap-3">
-                              {learnerFolders.map((folder) =>
-                                renderLearnerFolderTile(folder, true)
-                              )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                              {learnerFolders.map((folder) => {
+                                const isOpening =
+                                  openingFolderName === folder.name;
+                                return (
+                                  <button
+                                    key={folder.name}
+                                    type="button"
+                                    onClick={() =>
+                                      handleOpenLearnerFolder(folder.name)
+                                    }
+                                    title={
+                                      folder.description ||
+                                      `Buka folder ${folder.name} (${folder.projectName})`
+                                    }
+                                    className={`group flex items-center gap-3.5 rounded-xl bg-[#F8F9FB]/70 hover:bg-[#FFFFFF] border border-[#EAECEF] hover:border-[#4F39F6]/45 p-3.5 text-left transition-all cursor-pointer shadow-2xs hover:shadow-[0_6px_18px_rgba(79,57,246,0.07)] ${
+                                      isOpening ? "scale-[0.98] opacity-50" : ""
+                                    }`}
+                                  >
+                                    <div className="relative flex h-14 w-16 shrink-0 items-center justify-center rounded-xl bg-white border border-[#EAECEF] group-hover:bg-[#EEF2FF]/60 group-hover:border-[#4F39F6]/30 transition-colors">
+                                      <LearnerMacFolderIcon
+                                        color={folder.color}
+                                        className="w-11 h-9 drop-shadow-[0_2px_6px_rgba(0,0,0,0.08)] transition-transform duration-200 group-hover:scale-105"
+                                      />
+                                      <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-[#4F39F6] text-white text-[10px] font-bold shadow-xs ring-2 ring-white tabular-nums">
+                                        {folder.courses.length}
+                                      </span>
+                                    </div>
+
+                                    <div className="min-w-0 flex-1 space-y-1.5">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <h3 className="text-xs sm:text-sm font-bold text-[#121215] group-hover:text-[#4F39F6] line-clamp-1 leading-snug">
+                                          {folder.name}
+                                        </h3>
+                                        <ArrowRight
+                                          size={14}
+                                          className="shrink-0 mt-0.5 text-[#9CA3AF] group-hover:text-[#4F39F6] group-hover:translate-x-0.5 transition-all"
+                                        />
+                                      </div>
+
+                                      <span className="inline-flex items-center gap-1.5 max-w-full rounded-full bg-white border border-[#E2E8F0] px-2 py-0.5 text-[10px] font-semibold text-[#475569]">
+                                        <span
+                                          className="h-1.5 w-1.5 rounded-full shrink-0"
+                                          style={{
+                                            backgroundColor:
+                                              folder.projectColor,
+                                          }}
+                                        />
+                                        <span className="truncate">
+                                          {folder.projectName}
+                                        </span>
+                                      </span>
+
+                                      <div className="flex items-center gap-2 pt-0.5">
+                                        <div className="flex-1 h-1.5 rounded-full bg-[#EAECEF] overflow-hidden">
+                                          <div
+                                            className="h-full rounded-full transition-all duration-300"
+                                            style={{
+                                              width: `${folder.avgPct}%`,
+                                              backgroundColor:
+                                                folder.avgPct >= 100
+                                                  ? "#10B981"
+                                                  : "#4F39F6",
+                                            }}
+                                          />
+                                        </div>
+                                        <span className="text-[10px] font-semibold text-[#64748B] tabular-nums shrink-0">
+                                          {folder.avgPct}% selesai •{" "}
+                                          {folder.courses.length} kelas
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
                             </div>
-                          </div>
+                          </section>
                         )}
 
-                      {/* Filter Bar: Status Pills + List/Grid Toggle */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#FFFFFF] p-3.5 border border-[#EAECEF]">
+                      {/* Filter Bar: Status Pills with Counts + List/Grid Toggle */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#FFFFFF] px-4 py-3 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.03)]">
                         <div className="flex flex-wrap items-center gap-1.5">
                           {(
                             [
@@ -2235,31 +2629,48 @@ export function LearnerPortalView({
                               "In Progress",
                               "Completed",
                             ] as const
-                          ).map((st) => (
-                            <button
-                              key={st}
-                              type="button"
-                              onClick={() => setMyLearningStatusFilter(st)}
-                              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                                myLearningStatusFilter === st
-                                  ? "bg-[#121215] text-white"
-                                  : "bg-[#F8F9FB] text-[#5E5E5E] hover:text-[#121215]"
-                              }`}
-                            >
-                              {st}
-                            </button>
-                          ))}
+                          ).map((st) => {
+                            const active = myLearningStatusFilter === st;
+                            return (
+                              <button
+                                key={st}
+                                type="button"
+                                onClick={() => setMyLearningStatusFilter(st)}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                                  active
+                                    ? "bg-[#121215] text-white"
+                                    : "bg-[#F8F9FB] text-[#5E5E5E] hover:text-[#121215]"
+                                }`}
+                              >
+                                <span>{st}</span>
+                                <span
+                                  className={`rounded-md px-1.5 py-0.5 text-[10px] tabular-nums ${
+                                    active
+                                      ? "bg-white/15 text-white"
+                                      : "bg-white text-[#64748B] border border-[#EAECEF]"
+                                  }`}
+                                >
+                                  {statusCounts[st]}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
 
-                        <div className="flex items-center gap-1.5">
+                        <div
+                          role="group"
+                          aria-label="Mode tampilan daftar kelas"
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#F8F9FB] p-1 border border-[#EAECEF]"
+                        >
                           <button
                             type="button"
                             onClick={() => setMyLearningViewMode("list")}
+                            aria-pressed={myLearningViewMode === "list"}
                             title="Tampilan List"
-                            className={`p-1.5 rounded-lg border cursor-pointer ${
+                            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                               myLearningViewMode === "list"
-                                ? "bg-[#4F39F6] text-white border-[#4F39F6]"
-                                : "bg-[#F8F9FB] text-[#5E5E5E] border-[#EAECEF]"
+                                ? "bg-[#4F39F6] text-white shadow-2xs"
+                                : "text-[#5E5E5E] hover:text-[#121215]"
                             }`}
                           >
                             <ListIcon size={14} />
@@ -2267,11 +2678,12 @@ export function LearnerPortalView({
                           <button
                             type="button"
                             onClick={() => setMyLearningViewMode("grid")}
+                            aria-pressed={myLearningViewMode === "grid"}
                             title="Tampilan Grid"
-                            className={`p-1.5 rounded-lg border cursor-pointer ${
+                            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                               myLearningViewMode === "grid"
-                                ? "bg-[#4F39F6] text-white border-[#4F39F6]"
-                                : "bg-[#F8F9FB] text-[#5E5E5E] border-[#EAECEF]"
+                                ? "bg-[#4F39F6] text-white shadow-2xs"
+                                : "text-[#5E5E5E] hover:text-[#121215]"
                             }`}
                           >
                             <LayoutGrid size={14} />
@@ -2281,7 +2693,7 @@ export function LearnerPortalView({
 
                       {/* Class List / Grid */}
                       {myLearningItems.length === 0 ? (
-                        <div className="rounded-xl bg-[#FFFFFF] p-10 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] text-center space-y-3">
+                        <div className="rounded-2xl bg-[#FFFFFF] p-10 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] text-center space-y-3">
                           <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#F8F9FB] border border-[#EAECEF] text-[#9CA3AF]">
                             <Library size={20} />
                           </div>
@@ -2312,9 +2724,10 @@ export function LearnerPortalView({
                           </button>
                         </div>
                       ) : myLearningViewMode === "list" ? (
-                        <div className="space-y-3">
+                        <div className="space-y-3.5">
                           {myLearningItems.map((item) => {
-                            const lockedByPro = isProItem(item) && !learnerIsPro;
+                            const lockedByPro =
+                              isProItem(item) && !learnerIsPro;
                             const pct = lockedByPro ? 0 : item.progressPercent;
                             const statusLabel =
                               pct >= 100
@@ -2332,16 +2745,31 @@ export function LearnerPortalView({
                             return (
                               <article
                                 key={`ml-list-${item.id}`}
-                                className="rounded-xl bg-[#FFFFFF] border border-[#EAECEF] p-4 shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:border-[#4F39F6]/40 transition-all"
+                                onClick={() => handleOpenAssignedCard(item)}
+                                className="group rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-4 shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:border-[#4F39F6]/45 hover:shadow-[0_6px_18px_rgba(79,57,246,0.06)] transition-all cursor-pointer"
                               >
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                                  {/* Left 16:10 Cover Thumbnail */}
+                                  {renderCourseCoverMedia(
+                                    item,
+                                    "relative w-full sm:w-44 h-36 sm:h-28 shrink-0 rounded-xl overflow-hidden border border-[#EAECEF] bg-[#F8F9FB]",
+                                    item.urgencyBadge ? (
+                                      <div className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-md bg-[#121215]/75 backdrop-blur-xs px-2 py-0.5 text-[10px] font-semibold text-white shadow-xs">
+                                        <Clock size={10} />
+                                        <span>{item.urgencyBadge}</span>
+                                      </div>
+                                    ) : null
+                                  )}
+
                                   <div className="min-w-0 flex-1 space-y-2">
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-1.5">
                                       <ContentBadge type={item.type} size="sm" />
                                       {item.folderName && (
                                         <span className="inline-flex items-center gap-1 rounded-md bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-semibold text-[#4F39F6]">
                                           <Folder size={10} />
-                                          <span>{item.folderName}</span>
+                                          <span className="truncate max-w-[180px]">
+                                            {item.folderName}
+                                          </span>
                                         </span>
                                       )}
                                       <span
@@ -2349,12 +2777,6 @@ export function LearnerPortalView({
                                       >
                                         {statusLabel}
                                       </span>
-                                      {item.urgencyBadge && (
-                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#5E5E5E]">
-                                          <Clock size={11} className="text-[#9CA3AF]" />
-                                          {item.urgencyBadge}
-                                        </span>
-                                      )}
                                       {lockedByPro && (
                                         <span className="inline-flex items-center gap-1 rounded-md bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-bold text-[#B45309]">
                                           <Lock size={10} /> PRO
@@ -2363,23 +2785,25 @@ export function LearnerPortalView({
                                     </div>
 
                                     <div>
-                                      <h3 className="text-sm font-bold text-[#121215] truncate">
+                                      <h3 className="text-sm font-bold text-[#121215] group-hover:text-[#4F39F6] transition-colors truncate">
                                         {item.title}
                                       </h3>
-                                      <p className="text-xs text-[#5E5E5E] line-clamp-1 mt-0.5">
+                                      <p className="text-xs text-[#5E5E5E] line-clamp-2 mt-0.5 leading-relaxed">
                                         {item.description}
                                       </p>
                                     </div>
 
                                     {/* Progress Bar */}
-                                    <div className="pt-1 space-y-1 max-w-xl">
+                                    <div className="pt-1 space-y-1">
                                       <div className="flex items-center justify-between text-[11px]">
                                         <span className="font-semibold text-[#5E5E5E]">
                                           {item.duration} • +{item.pointsReward} pts
                                         </span>
                                         <span
                                           className={`font-bold tabular-nums ${
-                                            pct >= 100 ? "text-[#10B981]" : "text-[#4F39F6]"
+                                            pct >= 100
+                                              ? "text-[#10B981]"
+                                              : "text-[#4F39F6]"
                                           }`}
                                         >
                                           {pct}% Completed
@@ -2390,18 +2814,24 @@ export function LearnerPortalView({
                                           className="h-full rounded-full transition-all duration-300"
                                           style={{
                                             width: `${pct}%`,
-                                            backgroundColor: pct >= 100 ? "#10B981" : "#4F39F6",
+                                            backgroundColor:
+                                              pct >= 100
+                                                ? "#10B981"
+                                                : "#4F39F6",
                                           }}
                                         />
                                       </div>
                                     </div>
                                   </div>
 
-                                  <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
+                                  <div className="flex sm:flex-col items-center sm:items-end justify-end shrink-0">
                                     <button
                                       type="button"
-                                      onClick={() => handleOpenAssignedCard(item)}
-                                      className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenAssignedCard(item);
+                                      }}
+                                      className={`w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer ${
                                         pct >= 100
                                           ? "bg-[#F8F9FB] text-[#121215] border border-[#EAECEF] hover:bg-[#EAECEF]/60"
                                           : "bg-[#4F39F6] text-white hover:bg-[#3B28CC] shadow-xs"
@@ -2427,49 +2857,74 @@ export function LearnerPortalView({
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {myLearningItems.map((item) => {
-                            const lockedByPro = isProItem(item) && !learnerIsPro;
+                            const lockedByPro =
+                              isProItem(item) && !learnerIsPro;
                             const pct = lockedByPro ? 0 : item.progressPercent;
                             return (
                               <article
                                 key={`ml-grid-${item.id}`}
                                 onClick={() => handleOpenAssignedCard(item)}
-                                className="rounded-xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:border-[#4F39F6]/40 overflow-hidden flex flex-col justify-between cursor-pointer transition-all"
+                                className="group rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:border-[#4F39F6]/45 hover:shadow-[0_6px_18px_rgba(79,57,246,0.07)] overflow-hidden flex flex-col justify-between cursor-pointer transition-all"
                               >
-                                <div className="p-4 space-y-3">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                                      <ContentBadge type={item.type} size="sm" />
-                                      {item.folderName && (
-                                        <span className="inline-flex items-center gap-1 rounded-md bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-semibold text-[#4F39F6] truncate max-w-[140px]">
-                                          <Folder size={10} className="shrink-0" />
-                                          <span className="truncate">{item.folderName}</span>
-                                        </span>
-                                      )}
+                                <div>
+                                  {renderCourseCoverMedia(
+                                    item,
+                                    "relative h-36 w-full overflow-hidden border-b border-[#EAECEF] bg-[#F8F9FB]",
+                                    item.urgencyBadge ? (
+                                      <div className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 rounded-md bg-[#121215]/75 backdrop-blur-xs px-2 py-0.5 text-[10px] font-semibold text-white shadow-xs">
+                                        <Clock size={10} />
+                                        <span>{item.urgencyBadge}</span>
+                                      </div>
+                                    ) : null
+                                  )}
+
+                                  <div className="p-4 space-y-2.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                        <ContentBadge
+                                          type={item.type}
+                                          size="sm"
+                                        />
+                                        {item.folderName && (
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-semibold text-[#4F39F6] truncate max-w-[150px]">
+                                            <Folder
+                                              size={10}
+                                              className="shrink-0"
+                                            />
+                                            <span className="truncate">
+                                              {item.folderName}
+                                            </span>
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span
+                                        className={`text-xs font-bold tabular-nums shrink-0 ${
+                                          pct >= 100
+                                            ? "text-[#10B981]"
+                                            : "text-[#4F39F6]"
+                                        }`}
+                                      >
+                                        {pct}% Done
+                                      </span>
                                     </div>
-                                    <span
-                                      className={`text-xs font-bold tabular-nums shrink-0 ${
-                                        pct >= 100 ? "text-[#10B981]" : "text-[#4F39F6]"
-                                      }`}
-                                    >
-                                      {pct}% Done
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <h3 className="text-sm font-bold text-[#121215] line-clamp-1">
-                                      {item.title}
-                                    </h3>
-                                    <p className="text-xs text-[#5E5E5E] line-clamp-2 mt-1">
-                                      {item.description}
-                                    </p>
-                                  </div>
-                                  <div className="h-2 w-full rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
-                                    <div
-                                      className="h-full rounded-full transition-all duration-300"
-                                      style={{
-                                        width: `${pct}%`,
-                                        backgroundColor: pct >= 100 ? "#10B981" : "#4F39F6",
-                                      }}
-                                    />
+                                    <div>
+                                      <h3 className="text-sm font-bold text-[#121215] group-hover:text-[#4F39F6] transition-colors line-clamp-1">
+                                        {item.title}
+                                      </h3>
+                                      <p className="text-xs text-[#5E5E5E] line-clamp-2 mt-1">
+                                        {item.description}
+                                      </p>
+                                    </div>
+                                    <div className="h-2 w-full rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
+                                      <div
+                                        className="h-full rounded-full transition-all duration-300"
+                                        style={{
+                                          width: `${pct}%`,
+                                          backgroundColor:
+                                            pct >= 100 ? "#10B981" : "#4F39F6",
+                                        }}
+                                      />
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="px-4 py-2.5 bg-[#F8F9FB] border-t border-[#EAECEF] flex items-center justify-between text-[11px]">
@@ -2477,7 +2932,11 @@ export function LearnerPortalView({
                                     {item.duration} • +{item.pointsReward} pts
                                   </span>
                                   <span className="font-bold text-[#4F39F6] shrink-0 ml-2">
-                                    {pct >= 100 ? "Ulas →" : pct > 0 ? "Lanjutkan →" : "Mulai →"}
+                                    {pct >= 100
+                                      ? "Ulas →"
+                                      : pct > 0
+                                      ? "Lanjutkan →"
+                                      : "Mulai →"}
                                   </span>
                                 </div>
                               </article>
@@ -2487,12 +2946,12 @@ export function LearnerPortalView({
                       )}
                     </div>
 
-                    {/* RIGHT SIDEBAR: Profile Card & Brief Learning Achievements */}
-                    <aside className="lg:col-span-4 space-y-4 lg:sticky lg:top-20">
+                    {/* RIGHT SIDEBAR: Unified Profile, Compact 2x2 Achievements & Integrated PRO Pass */}
+                    <aside className="lg:col-span-4 space-y-4 lg:sticky lg:top-[88px] min-w-0">
                       {/* Card 1: Learner Profile */}
                       <section
                         aria-label="Learner Profile Summary"
-                        className="rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4"
+                        className="rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4"
                       >
                         <div className="flex items-center gap-3.5">
                           <div className="relative h-12 w-12 rounded-full overflow-hidden bg-[#4F39F6] text-white flex items-center justify-center font-bold text-sm shrink-0">
@@ -2508,11 +2967,9 @@ export function LearnerPortalView({
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <h2 className="text-sm font-bold text-[#121215] truncate">
-                                {activeLearnerDisplayName}
-                              </h2>
-                            </div>
+                            <h2 className="text-sm font-bold text-[#121215] truncate">
+                              {activeLearnerDisplayName}
+                            </h2>
                             <p className="text-xs text-[#5E5E5E] truncate">
                               {currentUser?.email || "Social Media Specialist"}
                             </p>
@@ -2532,39 +2989,73 @@ export function LearnerPortalView({
 
                         {/* 3-Column Quick Stats */}
                         <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[#EAECEF]">
-                          <div className="rounded-lg bg-[#F8F9FB] p-2.5 text-center border border-[#EAECEF]/70">
+                          <div className="rounded-xl bg-[#F8F9FB] p-2.5 text-center border border-[#EAECEF]/70">
                             <p className="text-sm font-extrabold text-[#121215] tabular-nums">
                               {totalPoints.toLocaleString()}
                             </p>
-                            <p className="text-[10px] font-medium text-[#5E5E5E]">Poin ★</p>
+                            <p className="text-[10px] font-medium text-[#5E5E5E]">
+                              Poin ★
+                            </p>
                           </div>
-                          <div className="rounded-lg bg-[#F8F9FB] p-2.5 text-center border border-[#EAECEF]/70">
+                          <div className="rounded-xl bg-[#F8F9FB] p-2.5 text-center border border-[#EAECEF]/70">
                             <p className="text-sm font-extrabold text-[#4F39F6] tabular-nums">
                               {inProgressClasses}
                             </p>
-                            <p className="text-[10px] font-medium text-[#5E5E5E]">Berjalan</p>
+                            <p className="text-[10px] font-medium text-[#5E5E5E]">
+                              Berjalan
+                            </p>
                           </div>
-                          <div className="rounded-lg bg-[#F8F9FB] p-2.5 text-center border border-[#EAECEF]/70">
+                          <div className="rounded-xl bg-[#F8F9FB] p-2.5 text-center border border-[#EAECEF]/70">
                             <p className="text-sm font-extrabold text-[#10B981] tabular-nums">
                               {completedClasses}
                             </p>
-                            <p className="text-[10px] font-medium text-[#5E5E5E]">Selesai</p>
+                            <p className="text-[10px] font-medium text-[#5E5E5E]">
+                              Selesai
+                            </p>
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleSelectNavTab("profile", "profile")}
-                          className="w-full rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/60 border border-[#EAECEF] py-2 text-xs font-semibold text-[#121215] transition-colors cursor-pointer"
-                        >
-                          Lihat Profil Lengkap
-                        </button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSelectNavTab("profile", "profile")
+                            }
+                            className="rounded-xl bg-[#F8F9FB] hover:bg-[#EAECEF]/60 border border-[#EAECEF] py-2 px-2.5 text-xs font-semibold text-[#121215] transition-colors cursor-pointer truncate"
+                          >
+                            Profil Lengkap
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCertModalOpen(true)}
+                            className={`inline-flex items-center justify-center gap-1 rounded-xl px-2.5 py-2 text-xs font-bold transition-colors cursor-pointer ${
+                              learnerIsPro
+                                ? "bg-[#10B981] hover:bg-[#059669] text-white"
+                                : "bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4F39F6] border border-[#4F39F6]/25"
+                            }`}
+                          >
+                            {learnerIsPro ? (
+                              <Award size={12} className="text-white shrink-0" />
+                            ) : (
+                              <Lock
+                                size={11}
+                                className="text-[#4F39F6] shrink-0"
+                              />
+                            )}
+                            <span>Sertifikat</span>
+                            {!learnerIsPro && (
+                              <span className="inline-flex items-center rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-1 py-0.2 text-[9px] font-bold text-[#B45309]">
+                                PRO
+                              </span>
+                            )}
+                          </button>
+                        </div>
                       </section>
 
-                      {/* Card 2: Brief Learning Achievements */}
+                      {/* Card 2: Compact 2x2 Learning Achievements */}
                       <section
                         aria-label="Learning Achievements Summary"
-                        className="rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4"
+                        className="rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-3.5"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -2575,14 +3066,14 @@ export function LearnerPortalView({
                               Achievement Belajar
                             </h3>
                           </div>
-                          <span className="text-[11px] font-bold text-[#4F39F6] tabular-nums">
+                          <span className="rounded-md bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-bold text-[#4F39F6] tabular-nums">
                             {achievementsList.filter((a) => a.unlocked).length}/
                             {achievementsList.length}
                           </span>
                         </div>
 
                         {/* Overall Progress Summary */}
-                        <div className="rounded-lg bg-[#F8F9FB] p-3 border border-[#EAECEF] space-y-1.5">
+                        <div className="rounded-xl bg-[#F8F9FB] p-3 border border-[#EAECEF] space-y-1.5">
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-semibold text-[#5E5E5E]">
                               Rata-rata Progress Kelas
@@ -2605,48 +3096,56 @@ export function LearnerPortalView({
                           </p>
                         </div>
 
-                        {/* Milestone Badges */}
-                        <ul className="space-y-2">
+                        {/* Compact 2x2 Milestone Grid */}
+                        <div className="grid grid-cols-2 gap-2.5">
                           {achievementsList.map((ach) => {
                             const AchIcon = ach.icon;
                             return (
-                              <li
+                              <div
                                 key={ach.id}
-                                className={`flex items-center gap-3 rounded-lg border p-2.5 transition-all ${
+                                className={`flex flex-col justify-between gap-2 rounded-xl border p-2.5 transition-all ${
                                   ach.unlocked
-                                    ? "bg-white border-[#EAECEF]"
-                                    : "bg-[#F8F9FB]/60 border-dashed border-[#EAECEF] opacity-65"
+                                    ? "bg-white border-[#EAECEF] shadow-2xs"
+                                    : "bg-[#F8F9FB]/70 border-dashed border-[#EAECEF] opacity-75"
                                 }`}
                               >
-                                <span
-                                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-                                    ach.unlocked
-                                      ? ach.color
-                                      : "bg-[#F8F9FB] text-[#9CA3AF] border-[#EAECEF]"
-                                  }`}
-                                >
-                                  <AchIcon size={15} />
-                                </span>
-                                <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <span
+                                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${
+                                      ach.unlocked
+                                        ? ach.color
+                                        : "bg-[#F8F9FB] text-[#9CA3AF] border-[#EAECEF]"
+                                    }`}
+                                  >
+                                    <AchIcon size={14} />
+                                  </span>
+                                  {ach.unlocked ? (
+                                    <span className="rounded-md bg-[#ECFDF5] px-1.5 py-0.5 text-[9px] font-bold text-[#059669]">
+                                      Diraih
+                                    </span>
+                                  ) : (
+                                    <Lock
+                                      size={11}
+                                      className="text-[#9CA3AF] shrink-0"
+                                    />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
                                   <p className="text-xs font-bold text-[#121215] truncate">
                                     {ach.title}
                                   </p>
-                                  <p className="text-[10px] text-[#5E5E5E] truncate">
+                                  <p className="text-[10px] text-[#5E5E5E] line-clamp-2 leading-tight mt-0.5">
                                     {ach.desc}
                                   </p>
                                 </div>
-                                {ach.unlocked ? (
-                                  <span className="rounded-md bg-[#ECFDF5] px-1.5 py-0.5 text-[10px] font-bold text-[#059669]">
-                                    Diraih
-                                  </span>
-                                ) : (
-                                  <Lock size={12} className="text-[#9CA3AF] shrink-0" />
-                                )}
-                              </li>
+                              </div>
                             );
                           })}
-                        </ul>
+                        </div>
                       </section>
+
+                      {/* Card 3: Integrated Learner PRO Pass Card */}
+                      {!learnerIsPro && showProPushPanel && renderProUpgradeCard()}
                     </aside>
                   </div>
                 );
@@ -3153,26 +3652,6 @@ export function LearnerPortalView({
                   <div className={`grid ${activeGridColsClass} gap-4`}>
                     {visibleCourseCards.map((item) => {
                     const lockedByPro = isProItem(item) && !learnerIsPro;
-                    const effectiveThumb =
-                      item.thumbnailUrl ||
-                      (typeof window !== "undefined"
-                        ? window.localStorage.getItem(
-                            `ruang_sosmed_thumb_${item.id}`
-                          ) ||
-                          window.localStorage.getItem(
-                            `ruang_sosmed_thumb_${item.title.trim().toLowerCase()}`
-                          )
-                        : null) ||
-                      undefined;
-
-                    const isImg =
-                      Boolean(effectiveThumb) &&
-                      (effectiveThumb!.startsWith("/") ||
-                        effectiveThumb!.startsWith("http") ||
-                        effectiveThumb!.startsWith("data:") ||
-                        effectiveThumb!.includes(".png") ||
-                        effectiveThumb!.includes(".jpg") ||
-                        effectiveThumb!.includes(".webp"));
 
                     return (
                       <article
@@ -3182,139 +3661,49 @@ export function LearnerPortalView({
                       >
                         <div>
                           {/* Top Cover Banner (Compact & Balanced Proportion) */}
-                          <div
-                            className="relative h-36 sm:h-40 w-full overflow-hidden border-b border-[#EAECEF] bg-[#F8F9FB]"
-                            style={
-                              !effectiveThumb
-                                ? {
-                                    background:
-                                      item.bannerGradient ||
-                                      "linear-gradient(135deg, #EEF2FF 0%, #FFFFFF 100%)",
+                          {renderCourseCoverMedia(
+                            item,
+                            "relative h-36 sm:h-40 w-full overflow-hidden border-b border-[#EAECEF] bg-[#F8F9FB]",
+                            <>
+                              {/* Top-Left Urgency Badge on Banner */}
+                              <div className="absolute top-3 left-3 inline-flex items-center gap-1 rounded-md bg-[#121215]/75 backdrop-blur-xs px-2 py-0.5 text-[10px] font-semibold text-white shadow-xs">
+                                <Clock size={10} />
+                                <span>{item.urgencyBadge}</span>
+                              </div>
+
+                              {/* Top-Right Favorite Heart on Banner */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!learnerIsPro) {
+                                    onShowToast(
+                                      "🔒 Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
+                                    );
+                                    onOpenUpgradeModal?.();
+                                    return;
                                   }
-                                : !isImg
-                                ? { background: effectiveThumb }
-                                : undefined
-                            }
-                          >
-                            {isImg ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={effectiveThumb}
-                                alt={item.title}
-                                loading="eager"
-                                decoding="async"
-                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              />
-                            ) : (
-                              /* Clean geometric SVG illustration if no image */
-                              <svg
-                                viewBox="0 0 320 128"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="absolute inset-0 h-full w-full object-cover opacity-90"
-                                aria-hidden="true"
+                                  toggleLearnerItemFavorite(item.id);
+                                }}
+                                aria-label={`Favorite ${item.title}`}
+                                className="absolute top-3 right-3 p-1.5 rounded-full bg-white/85 backdrop-blur-xs hover:bg-white text-[#9CA3AF] hover:text-[#EC4899] shadow-sm transition-all cursor-pointer z-10"
                               >
-                                <circle
-                                  cx="275"
-                                  cy="24"
-                                  r="46"
-                                  fill={item.bannerAccent || "#4F39F6"}
-                                  fillOpacity="0.12"
+                                <Heart
+                                  size={14}
+                                  className={
+                                    item.isFavorite && learnerIsPro
+                                      ? "text-[#EC4899]"
+                                      : ""
+                                  }
+                                  fill={
+                                    item.isFavorite && learnerIsPro
+                                      ? "#EC4899"
+                                      : "transparent"
+                                  }
                                 />
-                                <circle
-                                  cx="240"
-                                  cy="98"
-                                  r="34"
-                                  fill={item.bannerAccent || "#4F39F6"}
-                                  fillOpacity="0.08"
-                                />
-                                <rect
-                                  x="96"
-                                  y="22"
-                                  width="128"
-                                  height="84"
-                                  rx="10"
-                                  fill="#FFFFFF"
-                                  fillOpacity="0.92"
-                                  stroke={item.bannerAccent || "#4F39F6"}
-                                  strokeOpacity="0.28"
-                                  strokeWidth="1.5"
-                                />
-                                <rect
-                                  x="110"
-                                  y="36"
-                                  width="48"
-                                  height="8"
-                                  rx="4"
-                                  fill={item.bannerAccent || "#4F39F6"}
-                                  fillOpacity="0.75"
-                                />
-                                <rect
-                                  x="110"
-                                  y="52"
-                                  width="96"
-                                  height="6"
-                                  rx="3"
-                                  fill="#CBD5E1"
-                                />
-                                <rect
-                                  x="110"
-                                  y="64"
-                                  width="76"
-                                  height="6"
-                                  rx="3"
-                                  fill="#E2E8F0"
-                                />
-                                <rect
-                                  x="110"
-                                  y="76"
-                                  width="36"
-                                  height="14"
-                                  rx="4"
-                                  fill={item.bannerAccent || "#4F39F6"}
-                                  fillOpacity="0.18"
-                                />
-                              </svg>
-                            )}
-
-                            {/* Top-Left Urgency Badge on Banner */}
-                            <div className="absolute top-3 left-3 inline-flex items-center gap-1 rounded-md bg-[#121215]/75 backdrop-blur-xs px-2 py-0.5 text-[10px] font-semibold text-white shadow-xs">
-                              <Clock size={10} />
-                              <span>{item.urgencyBadge}</span>
-                            </div>
-
-                            {/* Top-Right Favorite Heart on Banner */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!learnerIsPro) {
-                                  onShowToast(
-                                    "🔒 Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
-                                  );
-                                  onOpenUpgradeModal?.();
-                                  return;
-                                }
-                                toggleLearnerItemFavorite(item.id);
-                              }}
-                              aria-label={`Favorite ${item.title}`}
-                              className="absolute top-3 right-3 p-1.5 rounded-full bg-white/85 backdrop-blur-xs hover:bg-white text-[#9CA3AF] hover:text-[#EC4899] shadow-sm transition-all cursor-pointer z-10"
-                            >
-                              <Heart
-                                size={14}
-                                className={
-                                  item.isFavorite && learnerIsPro
-                                    ? "text-[#EC4899]"
-                                    : ""
-                                }
-                                fill={
-                                  item.isFavorite && learnerIsPro
-                                    ? "#EC4899"
-                                    : "transparent"
-                                }
-                              />
-                            </button>
-                          </div>
+                              </button>
+                            </>
+                          )}
 
                           {/* Card Content Body */}
                           <div className="p-3.5 space-y-1.5">
@@ -3601,7 +3990,7 @@ export function LearnerPortalView({
           </main>
 
           {/* Right-Side Push Popup for Learner PRO Upgrade (Slides Right-to-Left Ease-In & Pushes Main Content, Slides Left-to-Right Ease-Out on Close / Tidak Tertarik, Re-appears every 5 mins while !learnerIsPro) */}
-          {!learnerIsPro && (
+          {!learnerIsPro && activeNavTab !== "my-learning" && (
             <aside
               aria-label="Ruang Sosmed 2.0 Learner PRO Subscription"
               aria-hidden={!showProPushPanel}
@@ -3614,114 +4003,12 @@ export function LearnerPortalView({
                   setProPanelHiddenAttr(true);
                 }
               }}
-              className={`pro-push-panel shrink-0 self-start sticky top-24 mt-6 lg:mt-0 ${
+              className={`pro-push-panel shrink-0 self-start lg:sticky lg:top-[88px] mt-6 lg:mt-0 ${
                 showProPushPanel ? "is-open" : ""
               }`}
             >
-              <div className="w-full lg:w-[310px] overflow-hidden rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_8px_28px_rgba(16,15,17,0.08)]">
-                {/* Top Amber Gradient Header + Clean Full-Width Price Box */}
-                <div
-                  className="p-4 relative space-y-3 pro-amber-gradient-header"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, #FEF3C7 0%, #FDE68A 48%, #F59E0B 100%)",
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-0.5 text-[10px] font-bold text-[#92400E] shadow-2xs">
-                      <Zap
-                        size={11}
-                        className="text-[#D97706]"
-                        fill="currentColor"
-                      />
-                      <span>{activeProCfg.bannerBadge}</span>
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() => setProPushOpen(false)}
-                      aria-label="Tutup penawaran Learner PRO"
-                      aria-expanded={showProPushPanel}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/85 hover:bg-white text-[#121215] transition-colors cursor-pointer shrink-0 shadow-2xs"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-
-                  <h2 className="text-[15px] font-extrabold text-[#121215] leading-snug">
-                    {activeProCfg.bannerHeading}
-                  </h2>
-
-                  {/* Single-Baseline Price Card (Zero Button Inside) */}
-                  <div className="rounded-xl bg-white/95 px-3.5 py-2.5 border border-[#F59E0B]/30 shadow-2xs flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#92400E]">
-                        Learner Pass
-                      </p>
-                      <div className="flex items-baseline gap-1 mt-0.5 whitespace-nowrap">
-                        <span className="text-lg font-black tracking-tight text-[#121215] tabular-nums">
-                          {activeProCfg.priceLabel}
-                        </span>
-                        <span className="text-[11px] font-semibold text-[#78350F]">
-                          {activeProCfg.bannerPeriodLabel}
-                        </span>
-                      </div>
-                    </div>
-
-                    <span className="shrink-0 rounded-full bg-[#FEF3C7] border border-[#F59E0B]/35 px-2.5 py-1 text-[10px] font-bold text-[#92400E]">
-                      Akses Penuh
-                    </span>
-                  </div>
-                </div>
-
-                {/* Clean Checklist + Single Primary CTA Footer */}
-                <div className="p-4 bg-[#FFFFFF] space-y-3.5">
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
-                      {(activeProCfg.features || []).length} Benefit Eksklusif:
-                    </p>
-                    <ul className="divide-y divide-[#F1F5F9]">
-                      {(activeProCfg.features || []).map((feature, idx) => (
-                        <li
-                          key={`${idx}-${feature}`}
-                          className="flex items-start gap-2 py-2 first:pt-0.5 last:pb-0.5 text-xs font-medium text-[#1E293B]"
-                        >
-                          <CheckCircle2
-                            size={14}
-                            className="shrink-0 mt-0.5 text-[#10B981]"
-                          />
-                          <span className="leading-snug">{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Single Primary CTA */}
-                  <div className="pt-2 border-t border-[#EAECEF] space-y-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onStartUpgradePayment
-                          ? onStartUpgradePayment()
-                          : onOpenUpgradeModal?.()
-                      }
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] py-2.5 px-4 text-xs font-bold text-white shadow-[0_2px_8px_rgba(79,57,246,0.28)] transition-all cursor-pointer"
-                    >
-                      <Zap
-                        size={13}
-                        className="text-[#FDE68A]"
-                        fill="currentColor"
-                      />
-                      <span>
-                        {activeProCfg.bannerCtaLabel || "Upgrade ke Learner PRO"}
-                      </span>
-                    </button>
-
-                    <p className="text-center text-[10px] font-medium text-[#64748B]">
-                      Aktivasi instan • Buka semua modul &amp; sertifikat HD
-                    </p>
-                  </div>
-                </div>
+              <div className="w-full lg:w-[320px]">
+                {renderProUpgradeCard()}
               </div>
             </aside>
           )}

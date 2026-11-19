@@ -44,73 +44,11 @@ export function GlobalRoleSwitcher({
   onOpenAuth,
   onLogout,
 }: GlobalRoleSwitcherProps) {
-  const { workspaceCollaborators, resolveUserAvatar } = useRuangSosmedStore();
-  const [roleRevision, setRoleRevision] = React.useState(0);
+  const { resolveUserAvatar } = useRuangSosmedStore();
 
-  // Force component re-render when role overrides are updated across tabs or in Learners Directory
-  React.useEffect(() => {
-    const handleUpdate = () => {
-      setRoleRevision((r) => r + 1);
-    };
-    window.addEventListener("ruang_sosmed_profile_updated", handleUpdate);
-    window.addEventListener("ruang_sosmed_role_mode_changed", handleUpdate);
-    window.addEventListener("storage", handleUpdate);
-    return () => {
-      window.removeEventListener("ruang_sosmed_profile_updated", handleUpdate);
-      window.removeEventListener("ruang_sosmed_role_mode_changed", handleUpdate);
-      window.removeEventListener("storage", handleUpdate);
-    };
-  }, []);
-
-  const userEmail = (currentUser?.email || "").toLowerCase().trim();
-  const userName = (currentUser?.name || "").toLowerCase().trim();
-  const userUsername = (currentUser?.username || "").toLowerCase().trim();
-
-  // 1. Founder / Owner Dinur -> ALWAYS Admin
-  const isFounderAdmin =
-    userEmail.includes("dinur") ||
-    userEmail === "admin@ruangsosmed.id" ||
-    (userName.includes("dinur") && !userName.includes("allisha"));
-
-  // 2. Check explicit role override from localStorage
-  let overrideRole: string | null = null;
-  if (typeof window !== "undefined") {
-    try {
-      if (userEmail) overrideRole = window.localStorage.getItem(`ruang_sosmed_role_override_${userEmail}`);
-      if (!overrideRole && userName) overrideRole = window.localStorage.getItem(`ruang_sosmed_role_override_${userName}`);
-      if (!overrideRole && userUsername) overrideRole = window.localStorage.getItem(`ruang_sosmed_role_override_${userUsername}`);
-
-      if (!overrideRole && (userEmail.includes("afterlance") || userName.includes("allisha") || userUsername.includes("allisha"))) {
-        overrideRole =
-          window.localStorage.getItem("ruang_sosmed_role_override_afterlance@gmail.com") ||
-          window.localStorage.getItem("ruang_sosmed_role_override_allisha fathya") ||
-          window.localStorage.getItem("ruang_sosmed_role_override_allisha");
-      }
-    } catch {}
-  }
-
-  // 3. Check workspace collaborator list (requiring explicit matching identifier)
-  const matchedCollab = (workspaceCollaborators || []).find((c) => {
-    const cEmail = (c.email || "").toLowerCase().trim();
-    const cName = (c.name || "").toLowerCase().trim();
-    if (userEmail && cEmail === userEmail) return true;
-    if (userName && cName === userName) return true;
-    if (userEmail && (cEmail.includes(userEmail) || userEmail.includes(cEmail))) return true;
-    if (userName && (cName.includes(userName) || userName.includes(cName))) return true;
-    return false;
-  });
-
-  // 4. Resolve effective role: override takes highest precedence, then collaborator role, then currentUser.role
-  let effectiveRole = "learner";
-  if (isFounderAdmin) {
-    effectiveRole = "admin";
-  } else if (overrideRole) {
-    effectiveRole = overrideRole.toLowerCase();
-  } else if (matchedCollab) {
-    effectiveRole = matchedCollab.role.toLowerCase();
-  } else if (currentUser?.role) {
-    effectiveRole = currentUser.role.toLowerCase();
-  }
+  // STRICT: Derive effective role ONLY from the server-verified authenticated user profile.
+  // Never trust client-side localStorage role overrides or name/email string heuristics.
+  const effectiveRole = (currentUser?.role || "learner").toLowerCase().trim();
 
   // STRICT: Only genuine Admins or Mentors can see or access Admin Studio. Learners NEVER see Admin Studio.
   const isAdmin = effectiveRole === "admin" || effectiveRole === "mentor";

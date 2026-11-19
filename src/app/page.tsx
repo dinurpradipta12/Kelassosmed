@@ -53,6 +53,7 @@ import { AdminRewardsManager } from "@/components/admin/AdminRewardsManager";
 import {
   AdminSettingsScreen,
 } from "@/components/admin/AdminHistoryAndSettings";
+import { AdminFloatingNotificationButton } from "@/components/admin/AdminFloatingNotificationButton";
 import { UserProfileScreen } from "@/components/profile/UserProfileScreen";
 import {
   type ContentType,
@@ -96,6 +97,7 @@ function RuangSosmedStudioInner() {
     ungradedQuizzes: quizzes,
     learnerIsPro,
     setLearnerProStatus,
+    submitProUpgradeRequest,
     registerLearnerProfile,
     publishContentToStudioAndCatalog,
     duplicateExplorerItem,
@@ -105,21 +107,10 @@ function RuangSosmedStudioInner() {
     resetGlobalStoreToDefaults,
     clearAllStoreData,
     getCourseCurriculum,
-    workspaceCollaborators,
     maintenanceConfig,
   } = useRuangSosmedStore();
 
-  const [roleMode, setRoleMode] = useState<AppRoleMode>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = window.localStorage.getItem(
-          "ruang_sosmed_role_mode_v1"
-        ) as AppRoleMode | null;
-        if (saved === "admin" || saved === "learner") return saved;
-      } catch {}
-    }
-    return "learner";
-  });
+  const [roleMode, setRoleMode] = useState<AppRoleMode>("learner");
   const [activeNav, setActiveNav] = useState<AdminNavId>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -281,84 +272,29 @@ function RuangSosmedStudioInner() {
   const [authModalTab, setAuthModalTab] = useState<"login" | "register">("login");
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [guestBypassStudio, setGuestBypassStudio] = useState(false);
 
   const handleOpenAuth = (tab: "login" | "register" = "login") => {
     setAuthModalTab(tab);
     setAuthModalOpen(true);
   };
 
-  const userEmail = (currentUser?.email || "").toLowerCase().trim();
-  const userName = (currentUser?.name || "").toLowerCase().trim();
-  const userUsername = (currentUser?.username || "").toLowerCase().trim();
+  // STRICT: Admin status derives ONLY from verified DB role (`public.profiles.role`)
+  const isCurrentUserAdmin = currentUser?.role === "admin";
 
-  // 1. Founder / Owner Dinur / Arunika -> ALWAYS Admin
-  const isFounderAdmin =
-    userEmail.includes("dinur") ||
-    userEmail.includes("arunika") ||
-    userEmail === "admin@ruangsosmed.id" ||
-    userUsername === "arunika" ||
-    userName.includes("arunika") ||
-    (userName.includes("dinur") && !userName.includes("allisha"));
-
-  // 2. Check explicit role override from localStorage
-  let localOverrideRole: string | null = null;
-  if (typeof window !== "undefined") {
-    try {
-      if (userEmail) localOverrideRole = window.localStorage.getItem(`ruang_sosmed_role_override_${userEmail}`);
-      if (!localOverrideRole && userName) localOverrideRole = window.localStorage.getItem(`ruang_sosmed_role_override_${userName}`);
-      if (!localOverrideRole && userUsername) localOverrideRole = window.localStorage.getItem(`ruang_sosmed_role_override_${userUsername}`);
-
-      if (!localOverrideRole && (userEmail.includes("afterlance") || userName.includes("allisha") || userUsername.includes("allisha"))) {
-        localOverrideRole =
-          window.localStorage.getItem("ruang_sosmed_role_override_afterlance@gmail.com") ||
-          window.localStorage.getItem("ruang_sosmed_role_override_allisha fathya") ||
-          window.localStorage.getItem("ruang_sosmed_role_override_allisha");
-      }
-    } catch {}
-  }
-
-  const matchedCollaborator = (workspaceCollaborators || []).find((c) => {
-    const cEmail = (c.email || "").toLowerCase().trim();
-    const cName = (c.name || "").toLowerCase().trim();
-    if (userEmail && cEmail === userEmail) return true;
-    if (userName && cName === userName) return true;
-    if (userEmail && (cEmail.includes(userEmail) || userEmail.includes(cEmail))) return true;
-    if (userName && (cName.includes(userName) || userName.includes(cName))) return true;
-    return false;
-  });
-
-  let effectiveUserRole = "learner";
-  if (isFounderAdmin) {
-    effectiveUserRole = "admin";
-  } else if (localOverrideRole) {
-    effectiveUserRole = localOverrideRole.toLowerCase();
-  } else if (matchedCollaborator) {
-    effectiveUserRole = matchedCollaborator.role.toLowerCase();
-  } else if (currentUser?.role) {
-    effectiveUserRole = currentUser.role.toLowerCase();
-  }
-
-  const isCurrentUserAdmin = effectiveUserRole === "admin" || effectiveUserRole === "mentor";
-
-  // Auto-redirect if user is in admin studio but their role was revoked/changed to learner
+  // Auto-redirect if user is in admin studio without verified admin role
   useEffect(() => {
-    if (roleMode === "admin" && !isCurrentUserAdmin && !guestBypassStudio && currentUser) {
+    if (roleMode === "admin" && !isCurrentUserAdmin && currentUser) {
       setRoleMode("learner");
       try {
         window.localStorage.setItem("ruang_sosmed_role_mode_v1", "learner");
       } catch {}
     }
-  }, [roleMode, isCurrentUserAdmin, guestBypassStudio, currentUser]);
+  }, [roleMode, isCurrentUserAdmin, currentUser]);
 
   const handleRoleModeChange = (newMode: AppRoleMode) => {
-    if (newMode === "admin") {
-      const allowed = isCurrentUserAdmin || guestBypassStudio;
-
-      if (!allowed) {
-        triggerToast("Akun Anda berstatus Learner dan tidak memiliki hak akses Admin Studio.");
-        return;
-      }
+    if (newMode === "admin" && !isCurrentUserAdmin) {
+      triggerToast("Akun Anda berstatus Learner dan tidak memiliki hak akses Admin Studio.");
+      return;
     }
 
     setRoleMode(newMode);
@@ -367,32 +303,6 @@ function RuangSosmedStudioInner() {
         window.localStorage.setItem("ruang_sosmed_role_mode_v1", newMode);
       } catch {}
     }
-  };
-
-  const handleSwitchToAdminFromLearner = () => {
-    const upgradedUser: AuthenticatedUser = currentUser
-      ? { ...currentUser, role: "admin" }
-      : {
-          name: "Allisha Fathya",
-          email: "afterlance@gmail.com",
-          role: "admin",
-          username: "allisha",
-        };
-
-    setCurrentUser(upgradedUser);
-    try {
-      window.localStorage.setItem(
-        "ruang_sosmed_session_user_v1",
-        JSON.stringify(upgradedUser)
-      );
-      window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
-      window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
-    } catch {}
-
-    setRoleMode("admin");
-    triggerToast(
-      `🚀 Beralih ke Admin Studio. Selamat datang, ${upgradedUser.name}!`
-    );
   };
 
   // Landing Page & Public View state (v5 3 curriculums: Fundamental -> Intermediate -> Masterclass)
@@ -484,9 +394,8 @@ function RuangSosmedStudioInner() {
   // Non-intrusive toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Hydrate cached user session & landing config synchronously on client mount to prevent any landing page flash/glitch on refresh
+  // Verify live Supabase session & role before hydrating user/PRO state
   useEffect(() => {
-    let restoredFromCache = false;
     try {
       const cachedLanding = window.localStorage.getItem(
         "ruang_sosmed_landing_config_v5"
@@ -497,121 +406,11 @@ function RuangSosmedStudioInner() {
           setLandingConfig(parsedLanding);
         }
       }
-
-      const cachedUserRaw = window.localStorage.getItem(
-        "ruang_sosmed_session_user_v1"
-      );
-      const cachedRoleMode = window.localStorage.getItem(
-        "ruang_sosmed_role_mode_v1"
-      ) as AppRoleMode | null;
-      const hasDevFlag =
-        window.localStorage.getItem("ruang_sosmed_dev_session_v1") === "true";
-
-      if (cachedUserRaw) {
-        const parsedUser = JSON.parse(cachedUserRaw) as AuthenticatedUser;
-        if (parsedUser && parsedUser.email) {
-          const pEmail = (parsedUser.email || "").toLowerCase();
-          const pName = (parsedUser.name || "").toLowerCase();
-          const pUsername = (parsedUser.username || "").toLowerCase();
-          const isFounderCached =
-            hasDevFlag ||
-            pEmail.includes("dinur") ||
-            pEmail.includes("arunika") ||
-            pEmail === "admin@ruangsosmed.id" ||
-            pUsername === "arunika" ||
-            pName.includes("arunika");
-          if (isFounderCached) {
-            let changedFounder = false;
-            if (parsedUser.role !== "admin") {
-              parsedUser.role = "admin";
-              changedFounder = true;
-            }
-            if (
-              !parsedUser.name ||
-              parsedUser.name === "Arunika Developer" ||
-              parsedUser.name.trim().toLowerCase() === "arunika"
-            ) {
-              parsedUser.name = "Dinur Pradipta";
-              changedFounder = true;
-            }
-            if (changedFounder) {
-              try {
-                window.localStorage.setItem(
-                  "ruang_sosmed_session_user_v1",
-                  JSON.stringify(parsedUser)
-                );
-                window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
-              } catch {}
-            }
-          }
-
-          if (pEmail.includes("afterlance") || pName.includes("allisha") || pUsername.includes("allisha")) {
-            const explicitAdmin =
-              window.localStorage.getItem(`ruang_sosmed_role_override_${pEmail}`) === "Admin" ||
-              window.localStorage.getItem("ruang_sosmed_role_override_allisha") === "Admin" ||
-              window.localStorage.getItem("ruang_sosmed_role_override_allisha fathya") === "Admin";
-            if (!explicitAdmin) {
-              parsedUser.role = "learner";
-              try {
-                window.localStorage.setItem("ruang_sosmed_session_user_v1", JSON.stringify(parsedUser));
-                window.localStorage.setItem("ruang_sosmed_role_mode_v1", "learner");
-              } catch {}
-            }
-          }
-
-          // Merge edited profile (fullName & avatarUrl) if present in localStorage
-          try {
-            const profKey =
-              parsedUser.role === "admin"
-                ? "ruang_sosmed_profile_admin_v2"
-                : "ruang_sosmed_profile_learner_v2";
-            const profRaw = window.localStorage.getItem(profKey);
-            if (profRaw) {
-              const profData = JSON.parse(profRaw);
-              if (
-                profData?.fullName &&
-                profData.fullName !== "Arunika Developer" &&
-                profData.fullName.trim().toLowerCase() !== "arunika"
-              ) {
-                parsedUser.name = profData.fullName;
-                parsedUser.username =
-                  profData.fullName
-                    .split(" ")[0]
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]/g, "") || parsedUser.username;
-              }
-              if (typeof profData?.avatarUrl === "string" && profData.avatarUrl) {
-                parsedUser.avatarUrl = profData.avatarUrl;
-              } else if (isFounderCached && !parsedUser.avatarUrl) {
-                parsedUser.avatarUrl = "/avatars/Frame 23.png";
-              }
-              window.localStorage.setItem(
-                "ruang_sosmed_session_user_v1",
-                JSON.stringify(parsedUser)
-              );
-            } else if (isFounderCached && !parsedUser.avatarUrl) {
-              parsedUser.avatarUrl = "/avatars/Frame 23.png";
-            }
-          } catch {}
-
-          restoredFromCache = true;
-          setCurrentUser(parsedUser);
-          if (parsedUser.role === "admin") {
-            setLearnerProStatus(true);
-          }
-          setRoleMode(
-            parsedUser.role === "admin"
-              ? cachedRoleMode || "admin"
-              : parsedUser.role
-          );
-          setAuthReady(true);
-        }
-      }
     } catch {}
 
     const resolveUserWithDbRole = async (
       sessionUser: any
-    ): Promise<AuthenticatedUser> => {
+    ): Promise<{ user: AuthenticatedUser; isPro: boolean }> => {
       const meta = sessionUser.user_metadata || {};
       const email = sessionUser.email || "";
 
@@ -619,118 +418,59 @@ function RuangSosmedStudioInner() {
       let dbFullName: string | null = null;
       let dbUsername: string | null = null;
       let dbAvatarUrl: string | null = null;
+      let dbSubTier = "free";
       try {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role, full_name, username, avatar_url")
-          .or(`id.eq.${sessionUser.id},email.ilike.${email}`)
-          .maybeSingle();
+        const [{ data: prof }, userProfRes] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("role, full_name, avatar_url, subscription_tier")
+            .eq("id", sessionUser.id)
+            .maybeSingle(),
+          email
+            ? supabase
+                .from("user_profiles")
+                .select("username")
+                .or(`user_id.eq.${sessionUser.id},email.ilike.${email}`)
+                .limit(1)
+            : Promise.resolve({ data: null }),
+        ]);
 
-        if (prof?.role) {
-          dbRole = prof.role.toLowerCase();
-        }
+        const userProf =
+          Array.isArray(userProfRes?.data) && userProfRes.data.length > 0
+            ? userProfRes.data[0]
+            : null;
+
+        if (prof?.role) dbRole = String(prof.role).toLowerCase();
         if (prof?.full_name) dbFullName = prof.full_name;
-        if (prof?.username) dbUsername = prof.username;
         if (prof?.avatar_url) dbAvatarUrl = prof.avatar_url;
+        if (prof?.subscription_tier) {
+          dbSubTier = String(prof.subscription_tier).toLowerCase();
+        }
+        if (userProf?.username) dbUsername = userProf.username;
       } catch {}
 
-      let cachedName: string | undefined;
-      let cachedAvatar: string | undefined;
-      let cachedUsername: string | undefined;
-      if (typeof window !== "undefined") {
-        try {
-          const cachedSession = window.localStorage.getItem("ruang_sosmed_session_user_v1");
-          if (cachedSession) {
-            const parsed = JSON.parse(cachedSession);
-            if (parsed?.email?.toLowerCase() === email.toLowerCase()) {
-              if (parsed.name) cachedName = parsed.name;
-              if (parsed.avatarUrl) cachedAvatar = parsed.avatarUrl;
-              if (parsed.username && parsed.username !== "arunika") {
-                cachedUsername = parsed.username;
-              }
-            }
-          }
-        } catch {}
-      }
-
-      const hasDevFlagSession =
-        typeof window !== "undefined" &&
-        window.localStorage.getItem("ruang_sosmed_dev_session_v1") === "true";
-
-      const isUserAdmin =
-        hasDevFlagSession ||
-        dbRole === "admin" ||
-        dbRole === "mentor" ||
-        meta.role === "admin" ||
-        (meta.username || "").toLowerCase() === "arunika" ||
-        (meta.full_name || "").toLowerCase().includes("arunika") ||
-        (dbUsername || "").toLowerCase() === "arunika" ||
-        (dbFullName || "").toLowerCase().includes("arunika") ||
-        email.toLowerCase().includes("dinur") ||
-        email.toLowerCase().includes("arunika") ||
-        email.toLowerCase() === "admin@ruangsosmed.id";
-
+      const isUserAdmin = dbRole === "admin" || dbRole === "mentor";
       const role: "admin" | "learner" = isUserAdmin ? "admin" : "learner";
+      const isPro = isUserAdmin || dbSubTier === "pro";
 
-      let editedProfileName: string | undefined;
-      let editedProfileAvatar: string | undefined;
-      if (typeof window !== "undefined") {
-        try {
-          const profKey = isUserAdmin
-            ? "ruang_sosmed_profile_admin_v2"
-            : "ruang_sosmed_profile_learner_v2";
-          const profRaw = window.localStorage.getItem(profKey);
-          if (profRaw) {
-            const profData = JSON.parse(profRaw);
-            if (
-              profData?.fullName &&
-              profData.fullName !== "Arunika Developer" &&
-              profData.fullName.trim().toLowerCase() !== "arunika"
-            ) {
-              editedProfileName = profData.fullName;
-            }
-            if (typeof profData?.avatarUrl === "string" && profData.avatarUrl) {
-              editedProfileAvatar = profData.avatarUrl;
-            }
-          }
-        } catch {}
-      }
-
-      const rawResolvedName =
-        editedProfileName ||
+      const resolvedName =
         dbFullName ||
-        (cachedName &&
-        cachedName !== "Arunika Developer" &&
-        cachedName.trim().toLowerCase() !== "arunika"
-          ? cachedName
-          : undefined) ||
         meta.full_name ||
         email.split("@")[0] ||
         "User";
-      const resolvedName =
-        rawResolvedName === "Arunika Developer" ||
-        (isUserAdmin && rawResolvedName.trim().toLowerCase() === "arunika")
-          ? "Dinur Pradipta"
-          : rawResolvedName;
       const derivedHandle =
         resolvedName.split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g, "") || undefined;
-      const username = isUserAdmin && (email.toLowerCase().includes("arunika") || email.toLowerCase().includes("dinur") || (meta.username || "").toLowerCase() === "arunika")
-        ? "arunika"
-        : derivedHandle ||
-          cachedUsername ||
-          dbUsername ||
-          (meta.username && meta.username !== "arunika" ? meta.username : undefined);
+      const username = dbUsername || meta.username || derivedHandle;
 
       return {
-        name: resolvedName,
-        email,
-        role,
-        username,
-        avatarUrl:
-          editedProfileAvatar ||
-          cachedAvatar ||
-          dbAvatarUrl ||
-          (isUserAdmin ? "/avatars/Frame 23.png" : undefined),
+        user: {
+          name: resolvedName,
+          email,
+          role,
+          username,
+          avatarUrl: dbAvatarUrl || undefined,
+        },
+        isPro,
       };
     };
 
@@ -738,24 +478,32 @@ function RuangSosmedStudioInner() {
       .getSession()
       .then(async ({ data: { session } }) => {
         if (session?.user) {
-          const authedUser = await resolveUserWithDbRole(session.user);
+          const { user: authedUser, isPro } = await resolveUserWithDbRole(
+            session.user
+          );
           setCurrentUser(authedUser);
-          if (authedUser.role === "admin") {
-            setLearnerProStatus(true);
-          }
+          setLearnerProStatus(isPro, authedUser);
           try {
             window.localStorage.setItem(
               "ruang_sosmed_session_user_v1",
               JSON.stringify(authedUser)
             );
+            const savedMode = window.localStorage.getItem("ruang_sosmed_role_mode_v1");
+            if (authedUser.role === "admin") {
+              setRoleMode(savedMode === "learner" ? "learner" : "admin");
+            } else {
+              setRoleMode("learner");
+              window.localStorage.setItem("ruang_sosmed_role_mode_v1", "learner");
+            }
           } catch {}
-          if (
-            !restoredFromCache ||
-            (authedUser.role === "admin" &&
-              !window.localStorage.getItem("ruang_sosmed_role_mode_v1"))
-          ) {
-            setRoleMode(authedUser.role);
-          }
+        } else {
+          setCurrentUser(null);
+          setLearnerProStatus(false);
+          setRoleMode("learner");
+          try {
+            window.localStorage.removeItem("ruang_sosmed_session_user_v1");
+            window.localStorage.removeItem("ruang_sosmed_role_mode_v1");
+          } catch {}
         }
       })
       .finally(() => {
@@ -766,16 +514,13 @@ function RuangSosmedStudioInner() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        const authedUser = await resolveUserWithDbRole(session.user);
+        const { user: authedUser, isPro } = await resolveUserWithDbRole(
+          session.user
+        );
         setCurrentUser(authedUser);
-        if (authedUser.role === "admin") {
-          setLearnerProStatus(true);
-          try {
-            if (!window.localStorage.getItem("ruang_sosmed_role_mode_v1")) {
-              setRoleMode("admin");
-              window.localStorage.setItem("ruang_sosmed_role_mode_v1", "admin");
-            }
-          } catch {}
+        setLearnerProStatus(isPro, authedUser);
+        if (authedUser.role !== "admin") {
+          setRoleMode("learner");
         }
         try {
           window.localStorage.setItem(
@@ -785,10 +530,11 @@ function RuangSosmedStudioInner() {
         } catch {}
       } else if (event === "SIGNED_OUT") {
         setCurrentUser(null);
+        setLearnerProStatus(false);
+        setRoleMode("learner");
         try {
           window.localStorage.removeItem("ruang_sosmed_session_user_v1");
           window.localStorage.removeItem("ruang_sosmed_role_mode_v1");
-          window.localStorage.removeItem("ruang_sosmed_dev_session_v1");
         } catch {}
       }
     });
@@ -802,10 +548,11 @@ function RuangSosmedStudioInner() {
     try {
       window.localStorage.removeItem("ruang_sosmed_session_user_v1");
       window.localStorage.removeItem("ruang_sosmed_role_mode_v1");
-      window.localStorage.removeItem("ruang_sosmed_dev_session_v1");
     } catch {}
     await signOutUser();
     setCurrentUser(null);
+    setLearnerProStatus(false);
+    setRoleMode("learner");
     triggerToast("Berhasil keluar dari sesi akun.");
   };
 
@@ -845,7 +592,7 @@ function RuangSosmedStudioInner() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Keep currentUser state in sync when user updates profile in UserProfileScreen
+  // Keep safe display fields in sync when user updates profile in UserProfileScreen (never override role from localStorage)
   useEffect(() => {
     const handleProfileUpdate = () => {
       try {
@@ -853,7 +600,16 @@ function RuangSosmedStudioInner() {
         if (raw) {
           const u = JSON.parse(raw);
           if (u?.name) {
-            setCurrentUser(u);
+            setCurrentUser((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    name: u.name,
+                    avatarUrl: u.avatarUrl ?? prev.avatarUrl,
+                    username: u.username ?? prev.username,
+                  }
+                : prev
+            );
           }
         }
       } catch {}
@@ -866,19 +622,23 @@ function RuangSosmedStudioInner() {
     };
   }, []);
 
-  // Live cross-browser sync: Periodically poll Supabase `profiles` to detect role updates made in other browsers
+  // Live cross-browser sync: Periodically poll verified Supabase session user's `profiles` row
   useEffect(() => {
     if (!currentUser?.email) return;
     const interval = setInterval(async () => {
       try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const uid = sessionData?.session?.user?.id;
+        if (!uid) return;
+
         const { data: prof } = await supabase
           .from("profiles")
           .select("role")
-          .ilike("email", currentUser.email)
+          .eq("id", uid)
           .maybeSingle();
 
         if (prof?.role) {
-          const dbRole = prof.role.toLowerCase();
+          const dbRole = String(prof.role).toLowerCase();
           const nextRole: "admin" | "learner" =
             dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
 
@@ -898,10 +658,6 @@ function RuangSosmedStudioInner() {
                 "ruang_sosmed_role_mode_v1",
                 nextRole
               );
-              window.localStorage.setItem(
-                `ruang_sosmed_role_override_${currentUser.email.toLowerCase()}`,
-                nextRole === "admin" ? "Admin" : "Learner"
-              );
             } catch {}
             window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
             window.dispatchEvent(new Event("ruang_sosmed_role_mode_changed"));
@@ -918,7 +674,7 @@ function RuangSosmedStudioInner() {
     return () => clearInterval(interval);
   }, [currentUser]);
 
-  // Listen to cross-tab / live broadcast events (e.g. Collaborator Invitation & Role overrides)
+  // Listen to cross-tab / live broadcast notifications
   useEffect(() => {
     if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
     try {
@@ -928,38 +684,6 @@ function RuangSosmedStudioInner() {
           triggerToast(
             `🔔 Undangan Baru: Anda diundang sebagai ${event.data.role} pada cohort "${event.data.cohort}"!`
           );
-        } else if (event.data?.type === "ROLE_OVERRIDE_BROADCAST") {
-          const { targetEmail, targetName, nextRole } = event.data;
-          const curEmail = (currentUser?.email || "").toLowerCase().trim();
-          const curName = (currentUser?.name || "").toLowerCase().trim();
-          const tEmail = (targetEmail || "").toLowerCase().trim();
-          const tName = (targetName || "").toLowerCase().trim();
-
-          const isMatch =
-            (tEmail && (tEmail === curEmail || curEmail.includes(tEmail) || tEmail.includes(curEmail))) ||
-            (tName && (tName === curName || curName.includes(tName) || tName.includes(curName))) ||
-            ((curName.includes("allisha") || curEmail.includes("afterlance")) &&
-              (tName.includes("allisha") || tEmail.includes("afterlance")));
-
-          if (isMatch && currentUser) {
-            const newRole = nextRole === "Learner" ? "learner" : "admin";
-            const updated: AuthenticatedUser = {
-              ...currentUser,
-              role: newRole,
-            };
-            setCurrentUser(updated);
-            try {
-              window.localStorage.setItem("ruang_sosmed_session_user_v1", JSON.stringify(updated));
-              window.localStorage.setItem("ruang_sosmed_role_mode_v1", newRole);
-            } catch {}
-            window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
-            window.dispatchEvent(new Event("ruang_sosmed_role_mode_changed"));
-            triggerToast(
-              newRole === "admin"
-                ? "🎉 Hak akses Admin Studio telah aktif!"
-                : "ℹ️ Status akun beralih ke Siswa Learner."
-            );
-          }
         }
       };
       return () => {
@@ -1257,10 +981,10 @@ function RuangSosmedStudioInner() {
     return <div className="min-h-screen bg-[#F8F9FB]" />;
   }
 
-  // 2. Public Visitor & Under Construction Gate (When not logged in, or when Under Construction blocks non-SuperAdmin)
+  // 2. Public Visitor & Under Construction Gate (When not logged in, or when Under Construction blocks non-Admin)
   if (
-    (!currentUser && !guestBypassStudio) ||
-    (maintenanceConfig?.enabled && !isFounderAdmin && !guestBypassStudio)
+    !currentUser ||
+    (maintenanceConfig?.enabled && !isCurrentUserAdmin)
   ) {
     return (
       <>
@@ -1274,7 +998,6 @@ function RuangSosmedStudioInner() {
             blocks={landingConfig.blocks}
             config={landingConfig}
             onOpenAuth={(tab) => handleOpenAuth(tab || "login")}
-            onEnterDevMode={() => setGuestBypassStudio(true)}
           />
         )}
 
@@ -1283,36 +1006,23 @@ function RuangSosmedStudioInner() {
           initialTab={authModalTab}
           onClose={() => setAuthModalOpen(false)}
           onAuthSuccess={(user) => {
-            const uEmail = (user.email || "").toLowerCase();
-            const uName = (user.name || "").toLowerCase();
-            const uUsername = (user.username || "").toLowerCase();
-            const resolvedUser =
-              uEmail.includes("dinur") ||
-              uEmail === "admin@ruangsosmed.id" ||
-              uUsername === "arunika" ||
-              uName.includes("arunika")
-                ? { ...user, role: "admin" as const }
-                : user;
-            setCurrentUser(resolvedUser);
-            setRoleMode(resolvedUser.role);
+            setCurrentUser(user);
+            setRoleMode(user.role);
             registerLearnerProfile({
-              name: resolvedUser.name,
-              email: resolvedUser.email,
-              role: resolvedUser.role,
+              name: user.name,
+              email: user.email,
+              role: user.role,
             });
             try {
               window.localStorage.setItem(
                 "ruang_sosmed_session_user_v1",
-                JSON.stringify(resolvedUser)
+                JSON.stringify(user)
               );
               window.localStorage.setItem(
                 "ruang_sosmed_role_mode_v1",
-                resolvedUser.role
+                user.role
               );
             } catch {}
-            if (resolvedUser.role === "admin") {
-              setLearnerProStatus(true);
-            }
           }}
           onShowToast={triggerToast}
         />
@@ -1356,6 +1066,12 @@ function RuangSosmedStudioInner() {
         />
       )}
 
+      {isCurrentUserAdmin && roleMode === "admin" && (
+        <AdminFloatingNotificationButton
+          onNavigateLearners={() => handleSelectNav("learners")}
+        />
+      )}
+
       {roleMode === "learner" ? (
         <LearnerPortalView
           currentUser={currentUser}
@@ -1368,7 +1084,6 @@ function RuangSosmedStudioInner() {
             setUpgradeModalOpen(true);
           }}
           onShowToast={triggerToast}
-          onSwitchToAdmin={handleSwitchToAdminFromLearner}
           onLogout={handleLogout}
         />
       ) : (
@@ -1782,19 +1497,35 @@ function RuangSosmedStudioInner() {
         open={upgradeModalOpen}
         onClose={() => setUpgradeModalOpen(false)}
         isProActive={learnerIsPro}
+        canTestFreeToggle={isCurrentUserAdmin}
         initialStep={upgradeModalStep}
         defaultBuyerName={currentUser?.name || ""}
         defaultBuyerEmail={currentUser?.email || ""}
-        onConfirmUpgrade={() => {
-          setLearnerProStatus(true, currentUser);
+        onConfirmUpgrade={async (details) => {
+          const res = await submitProUpgradeRequest({
+            packageId: details?.packageId || "pro-monthly",
+            packageName: details?.packageName || "Learner PRO Bulanan",
+            priceLabel: details?.priceLabel
+              ? `${details.priceLabel} ${details.periodLabel || ""}`.trim()
+              : "Rp 149.000 / bulan",
+            buyerName: details?.buyerName || currentUser?.name || "Learner",
+            buyerContact: details?.buyerEmail || currentUser?.email || "",
+            paymentMethod: details?.paymentMethod || "qris",
+            proofUrl: details?.proofUrl,
+          });
+          if (!res.ok) {
+            triggerToast(res.error || "Gagal mengirim konfirmasi pembayaran.");
+            return;
+          }
           triggerToast(
-            "⚡ Konfirmasi pembayaran diterima! Status Learner PRO Anda kini aktif."
+            "⏳ Konfirmasi pembayaran terkirim! Admin akan memverifikasi pembayaran sebelum mengaktifkan Learner PRO."
           );
         }}
         onSwitchToFree={() => {
+          if (!isCurrentUserAdmin) return;
           setLearnerProStatus(false, currentUser);
           triggerToast(
-            "Status dikembalikan ke Free Learner Tier (fitur PRO kembali terkunci)."
+            "Mode preview dikembalikan ke Free Learner Tier."
           );
         }}
       />
@@ -1819,31 +1550,18 @@ function RuangSosmedStudioInner() {
         initialTab={authModalTab}
         onClose={() => setAuthModalOpen(false)}
         onAuthSuccess={(user) => {
-          const uEmail = (user.email || "").toLowerCase();
-          const uName = (user.name || "").toLowerCase();
-          const uUsername = (user.username || "").toLowerCase();
-          const resolvedUser =
-            uEmail.includes("dinur") ||
-            uEmail === "admin@ruangsosmed.id" ||
-            uUsername === "arunika" ||
-            uName.includes("arunika")
-              ? { ...user, role: "admin" as const }
-              : user;
-          setCurrentUser(resolvedUser);
-          setRoleMode(resolvedUser.role);
+          setCurrentUser(user);
+          setRoleMode(user.role);
           try {
             window.localStorage.setItem(
               "ruang_sosmed_session_user_v1",
-              JSON.stringify(resolvedUser)
+              JSON.stringify(user)
             );
             window.localStorage.setItem(
               "ruang_sosmed_role_mode_v1",
-              resolvedUser.role
+              user.role
             );
           } catch {}
-          if (resolvedUser.role === "admin") {
-            setLearnerProStatus(true);
-          }
         }}
         onShowToast={triggerToast}
       />

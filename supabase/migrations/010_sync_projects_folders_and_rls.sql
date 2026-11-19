@@ -334,3 +334,29 @@ $$;
 
 REVOKE ALL ON FUNCTION public.admin_reset_user_password(text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_reset_user_password(text, text) TO anon, authenticated;
+
+-- 13. Seed baris sistem `__SYSTEM_ADMIN_NOTIFICATIONS__` untuk notifikasi floating Admin
+INSERT INTO public.contents (
+  id,
+  title,
+  type,
+  status,
+  description,
+  urgency,
+  estimated_minutes,
+  points_reward,
+  settings_json
+)
+SELECT
+  gen_random_uuid(),
+  '__SYSTEM_ADMIN_NOTIFICATIONS__',
+  'page',
+  'published',
+  'System storage for Admin activity notifications',
+  'not_urgent',
+  0,
+  0,
+  jsonb_build_object('notifications', '[]'::jsonb, 'updatedAt', now())
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.contents WHERE title = '__SYSTEM_ADMIN_NOTIFICATIONS__'
+);

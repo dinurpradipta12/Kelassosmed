@@ -22,14 +22,12 @@ interface PublicLandingViewProps {
   blocks?: LandingBlock[];
   config?: LandingPageData;
   onOpenAuth: (initialTab?: "login" | "register") => void;
-  onEnterDevMode?: () => void;
 }
 
 export function PublicLandingView({
   blocks,
   config,
   onOpenAuth,
-  onEnterDevMode,
 }: PublicLandingViewProps) {
   const [checkoutItem, setCheckoutItem] = useState<
     CheckoutItem | PricingTierItem | null
@@ -240,16 +238,7 @@ export function PublicLandingView({
                 >
                   <span>Masuk Akun</span>
                 </button>
-                {onEnterDevMode && (
-                  <button
-                    type="button"
-                    onClick={onEnterDevMode}
-                    className="text-[11px] opacity-30 hover:opacity-70 transition-opacity cursor-pointer"
-                    title="Developer Studio Preview"
-                  >
-                    Studio
-                  </button>
-                )}
+                {/* Subtle link removed for security hardening */}
               </div>
             </div>
 

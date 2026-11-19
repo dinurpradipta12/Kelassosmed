@@ -506,8 +506,8 @@ export function ActiveLearningClassroom({
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col lg:flex-row bg-slate-50">
       {/* LEFT / MAIN LEARNING AREA */}
-      <div className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6">
-        <div className="max-w-4xl mx-auto space-y-5">
+      <div className="flex-1 min-w-0 px-4 sm:px-6 py-6">
+        <div className="w-full space-y-5">
           {/* 1. Clean Top Header Bar */}
           <header className="space-y-2 pb-4 border-b border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-3">

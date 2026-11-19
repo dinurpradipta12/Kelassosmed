@@ -206,7 +206,7 @@ export function LearnerQuizRunner({
   const results = evaluateResults();
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
+    <div className="w-full px-4 sm:px-6 py-6">
       {!submitted ? (
         /* ACTIVE QUIZ RUNNER WORKSPACE */
         <div className="rounded-xl bg-[#FFFFFF] p-6 sm:p-8 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-6">

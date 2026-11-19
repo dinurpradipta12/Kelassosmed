@@ -85,12 +85,4 @@ export interface LearnerNotification {
   unread: boolean;
 }
 
-export const INITIAL_LEARNER_NOTIFICATIONS: LearnerNotification[] = [
-  {
-    id: "notif-invite-allisha-active",
-    title: "🤝 Undangan Kolaborasi: Admin di Ruang Sosmed Class",
-    body: 'Halo Allisha Fathya! Anda telah diundang bergabung sebagai Admin pada cohort "Ruang Sosmed Class". Pesan: "tes coba gabung"',
-    time: "Baru saja",
-    unread: true,
-  },
-];
+export const INITIAL_LEARNER_NOTIFICATIONS: LearnerNotification[] = [];

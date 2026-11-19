@@ -247,7 +247,7 @@ export function LearnerCourseOverview({
   let runningChapterNumber = 0;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div className="w-full px-4 sm:px-6 py-6 space-y-6">
       {/* 1. Compact & Clean Course Header */}
       <section
         aria-label="Course Header"

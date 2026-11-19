@@ -120,27 +120,10 @@ export function AdminLearnersDirectory({
   const [adjustPointsReason, setAdjustPointsReason] = useState<string>("Bonus Keaktifan");
   const [isAdjustingPoints, setIsAdjustingPoints] = useState(false);
 
-  // Local state for role overrides & newly invited students
-  const [roleOverrides, setRoleOverrides] = useState<
+  // Optimistic in-memory role state (synced to Supabase via admin_update_user_role RPC)
+  const [optimisticRoles, setOptimisticRoles] = useState<
     Record<string, "Learner" | "Mentor" | "Admin">
-  >(() => {
-    const initial: Record<string, "Learner" | "Mentor" | "Admin"> = {};
-    if (typeof window !== "undefined") {
-      try {
-        for (let i = 0; i < window.localStorage.length; i++) {
-          const k = window.localStorage.key(i);
-          if (k && k.startsWith("ruang_sosmed_role_override_")) {
-            const rawRole = window.localStorage.getItem(k);
-            if (rawRole === "Learner" || rawRole === "Mentor" || rawRole === "Admin") {
-              const targetKey = k.replace("ruang_sosmed_role_override_", "").trim().toLowerCase();
-              initial[targetKey] = rawRole;
-            }
-          }
-        }
-      } catch {}
-    }
-    return initial;
-  });
+  >({});
   const [invitedMembers, setInvitedMembers] = useState<DirectoryMember[]>(
     INITIAL_DIRECTORY_EXTRA
   );
@@ -152,24 +135,29 @@ export function AdminLearnersDirectory({
     >
   >({});
 
-  const [adminResetPasswordsMap, setAdminResetPasswordsMap] = useState<
-    Record<string, { password: string; updatedAt: string; updatedBy?: string }>
-  >(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const raw = window.localStorage.getItem(
-          "ruang_sosmed_admin_reset_passwords_v1"
-        );
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") return parsed;
-        }
-      } catch {}
-    }
-    return {};
-  });
+  // Ephemeral copy-once state for just-reset passwords (never persisted to DB or localStorage)
+  const [ephemeralResetInfo, setEphemeralResetInfo] = useState<{
+    email: string;
+    password: string;
+    updatedAt: string;
+    updatedBy?: string;
+  } | null>(null);
 
-  // Fetch registered learners directly from Supabase (`profiles`, `user_profiles`, & `__SYSTEM_USER_PASSWORDS__`)
+  const [pendingProRequests, setPendingProRequests] = useState<
+    Array<{
+      id: string;
+      user_email: string;
+      user_name: string;
+      package_name: string;
+      price_label: string;
+      payment_method: string;
+      buyer_contact: string;
+      proof_url?: string | null;
+      created_at: string;
+    }>
+  >([]);
+
+  // Fetch registered learners & pending PRO upgrade requests (Staff-only via hardened RLS)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
@@ -180,7 +168,7 @@ export function AdminLearnersDirectory({
           userProfilesRes,
           enrollmentsRes,
           submissionsRes,
-          passwordsRes,
+          proReqRes,
         ] = await Promise.all([
           supabase
             .from("profiles")
@@ -197,12 +185,15 @@ export function AdminLearnersDirectory({
             .from("submissions")
             .select("learner_id, score_percent"),
           supabase
-            .from("contents")
-            .select("settings_json")
-            .eq("title", "__SYSTEM_USER_PASSWORDS__")
-            .order("updated_at", { ascending: false })
-            .limit(1),
+            .from("pro_upgrade_requests")
+            .select("id, user_email, user_name, package_name, price_label, payment_method, buyer_contact, proof_url, created_at")
+            .eq("status", "pending")
+            .order("created_at", { ascending: false }),
         ]);
+
+        if (Array.isArray(proReqRes.data)) {
+          setPendingProRequests(proReqRes.data as typeof pendingProRequests);
+        }
 
         const nextEnrollMap: Record<
           string,
@@ -223,28 +214,6 @@ export function AdminLearnersDirectory({
           });
         }
         setUserEnrollmentsMap(nextEnrollMap);
-
-        const pwRow =
-          Array.isArray(passwordsRes.data) && passwordsRes.data.length > 0
-            ? (passwordsRes.data[0] as any)
-            : null;
-        if (
-          pwRow?.settings_json?.passwords &&
-          typeof pwRow.settings_json.passwords === "object"
-        ) {
-          setAdminResetPasswordsMap((prev) => {
-            const mergedPw = { ...prev, ...pwRow.settings_json.passwords };
-            try {
-              if (typeof window !== "undefined") {
-                window.localStorage.setItem(
-                  "ruang_sosmed_admin_reset_passwords_v1",
-                  JSON.stringify(mergedPw)
-                );
-              }
-            } catch {}
-            return mergedPw;
-          });
-        }
 
         const merged: DirectoryMember[] = [];
         const totalChCount = courseSections.flatMap((s) => s.chapters).length;
@@ -444,6 +413,11 @@ export function AdminLearnersDirectory({
   const [isSendingResetEmail, setIsSendingResetEmail] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
 
+  useEffect(() => {
+    setEphemeralResetInfo(null);
+    setResetPasswordInput("");
+  }, [inspectedMember?.id]);
+
   // List of materials assigned to the currently inspected member
   const memberAssignedItems = useMemo(() => {
     if (!inspectedMember) return [];
@@ -528,22 +502,15 @@ export function AdminLearnersDirectory({
   };
 
   const getMemberPasswordRecord = (member: DirectoryMember | null) => {
-    if (!member) return null;
+    if (!member || !ephemeralResetInfo) return null;
     const emailKey = (member.email || "").toLowerCase().trim();
-    const usernameKey = emailKey.includes("@") ? emailKey.split("@")[0] : "";
-    const nameKey = (member.name || "").toLowerCase().trim();
-    return (
-      adminResetPasswordsMap[emailKey] ||
-      adminResetPasswordsMap[usernameKey] ||
-      adminResetPasswordsMap[nameKey] ||
-      null
-    );
+    return ephemeralResetInfo.email === emailKey ? ephemeralResetInfo : null;
   };
 
   const handleGenerateResetPassword = () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
     let suffix = "";
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       suffix += chars[Math.floor(Math.random() * chars.length)];
     }
     setResetPasswordInput(`RS-${suffix}`);
@@ -566,104 +533,46 @@ export function AdminLearnersDirectory({
     e.preventDefault();
     if (!inspectedMember) return;
     const nextPassword = resetPasswordInput.trim();
-    if (nextPassword.length < 4) {
-      onShowToast("Password minimal harus 4 karakter.");
+    if (nextPassword.length < 6) {
+      onShowToast("Password minimal harus 6 karakter.");
       return;
     }
 
     setIsSavingPassword(true);
     try {
+      if (!isSupabaseConfigured) {
+        throw new Error("Koneksi database diperlukan untuk reset password.");
+      }
+
+      const { data: rpcOk, error: rpcErr } = await supabase.rpc(
+        "admin_reset_user_password",
+        {
+          p_identifier: inspectedMember.email || inspectedMember.name,
+          p_new_password: nextPassword,
+        }
+      );
+
+      if (rpcErr || !rpcOk) {
+        throw new Error(
+          rpcErr?.message ||
+            "Pastikan akun sudah terdaftar di Supabase Auth dan Anda login sebagai Admin."
+        );
+      }
+
       const emailKey = (inspectedMember.email || "").toLowerCase().trim();
-      const usernameKey = emailKey.includes("@") ? emailKey.split("@")[0] : "";
-      const nameKey = (inspectedMember.name || "").toLowerCase().trim();
-      const entry = {
+      setEphemeralResetInfo({
+        email: emailKey,
         password: nextPassword,
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser?.name || "Admin",
-      };
-
-      const nextMap: Record<
-        string,
-        { password: string; updatedAt: string; updatedBy?: string }
-      > = { ...adminResetPasswordsMap };
-      if (emailKey) nextMap[emailKey] = entry;
-      if (usernameKey) nextMap[usernameKey] = entry;
-      if (nameKey) nextMap[nameKey] = entry;
-
-      setAdminResetPasswordsMap(nextMap);
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(
-            "ruang_sosmed_admin_reset_passwords_v1",
-            JSON.stringify(nextMap)
-          );
-        } catch {}
-      }
-
-      if (isSupabaseConfigured) {
-        const { data: existingRows } = await supabase
-          .from("contents")
-          .select("id, settings_json")
-          .eq("title", "__SYSTEM_USER_PASSWORDS__")
-          .order("updated_at", { ascending: false })
-          .limit(1);
-
-        const existing =
-          Array.isArray(existingRows) && existingRows.length > 0
-            ? (existingRows[0] as any)
-            : null;
-        const remotePasswords =
-          existing?.settings_json?.passwords &&
-          typeof existing.settings_json.passwords === "object"
-            ? existing.settings_json.passwords
-            : {};
-        const mergedPasswords = { ...remotePasswords, ...nextMap };
-        const payload = {
-          passwords: mergedPasswords,
-          updatedAt: new Date().toISOString(),
-        };
-
-        if (existing?.id) {
-          await supabase
-            .from("contents")
-            .update({
-              settings_json: payload,
-              status: "published",
-            })
-            .eq("id", existing.id);
-        } else {
-          const generatedId =
-            typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-              ? crypto.randomUUID()
-              : "00000000-0000-4000-8000-000000000101";
-          await supabase.from("contents").insert({
-            id: generatedId,
-            title: "__SYSTEM_USER_PASSWORDS__",
-            type: "page",
-            status: "published",
-            description: "System storage for admin-assisted password resets",
-            urgency: "not_urgent",
-            estimated_minutes: 0,
-            points_reward: 0,
-            settings_json: payload,
-          });
-        }
-
-        // Juga perbarui encrypted_password langsung di Supabase auth.users via RPC bila tersedia
-        try {
-          await supabase.rpc("admin_reset_user_password", {
-            p_identifier: inspectedMember.email || inspectedMember.name,
-            p_new_password: nextPassword,
-          });
-        } catch {}
-      }
+      });
 
       onShowToast(
-        `🔑 Password untuk ${inspectedMember.name} berhasil direset dan langsung aktif untuk login.`
+        `🔑 Password untuk ${inspectedMember.name} berhasil direset secara aman di Supabase Auth.`
       );
       setResetPasswordInput("");
     } catch (err: any) {
-      onShowToast(`Gagal mereset password: ${err?.message || "Error"}`);
+      onShowToast(`Gagal mereset password: ${err?.message || "Akses ditolak"}`);
     } finally {
       setIsSavingPassword(false);
     }
@@ -706,14 +615,25 @@ export function AdminLearnersDirectory({
     setIsAdjustingPoints(true);
     const newPoints = finalCalculatedPoints;
     try {
-      if (isSupabaseConfigured && adjustPointsTarget.email) {
-        const { error } = await supabase
-          .from("profiles")
-          .update({ total_points: newPoints })
-          .ilike("email", adjustPointsTarget.email);
-
-        if (error) {
-          console.error("Supabase points update error:", error);
+      if (isSupabaseConfigured) {
+        const isUuid =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            adjustPointsTarget.id || ""
+          );
+        let targetUuid = isUuid ? adjustPointsTarget.id : null;
+        if (!targetUuid && adjustPointsTarget.email) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("id")
+            .ilike("email", adjustPointsTarget.email)
+            .maybeSingle();
+          targetUuid = prof?.id || null;
+        }
+        if (targetUuid) {
+          await supabase.rpc("admin_adjust_learner_points", {
+            p_target_id: targetUuid,
+            p_new_points: newPoints,
+          });
         }
       }
 
@@ -823,7 +743,7 @@ export function AdminLearnersDirectory({
       avatarText: asg.avatarText,
       jobTitle: sbMatch?.jobTitle ?? lbMatch?.role ?? `${asg.roleBadge} Specialist`,
       cohort: sbMatch?.cohort ?? "Batch Oktober 2026",
-      accessRole: roleOverrides[asg.id] ?? "Learner",
+      accessRole: optimisticRoles[asg.id] ?? "Learner",
       assignedCount: learnerAssignedItems.length,
       completedChapters: asg.completedChapters,
       totalChapters: totalCourseChapters,
@@ -888,10 +808,10 @@ export function AdminLearnersDirectory({
     const mEmailKey = (m.email || "").toLowerCase().trim();
     const mNameKey = (m.name || "").toLowerCase().trim();
     const mOverride =
-      roleOverrides[mKey] ||
-      roleOverrides[mEmailKey] ||
-      roleOverrides[mNameKey] ||
-      roleOverrides[m.id];
+      optimisticRoles[mKey] ||
+      optimisticRoles[mEmailKey] ||
+      optimisticRoles[mNameKey] ||
+      optimisticRoles[m.id];
 
     if (!existing) {
       const initialRole = mOverride || m.accessRole;
@@ -914,12 +834,12 @@ export function AdminLearnersDirectory({
       return;
     }
 
-    // Explicit admin override always takes precedence over automatic merge
+    // Explicit optimistic role update from current Admin action
     const existingOverride =
-      roleOverrides[key] ||
-      roleOverrides[existing.email?.toLowerCase().trim() || ""] ||
-      roleOverrides[existing.name?.toLowerCase().trim() || ""] ||
-      roleOverrides[existing.id];
+      optimisticRoles[key] ||
+      optimisticRoles[existing.email?.toLowerCase().trim() || ""] ||
+      optimisticRoles[existing.name?.toLowerCase().trim() || ""] ||
+      optimisticRoles[existing.id];
 
     const activeOverride = mOverride || existingOverride;
 
@@ -1030,10 +950,9 @@ export function AdminLearnersDirectory({
     const emailKey = (member.email || "").toLowerCase().trim();
     const idKey = member.id;
     const nameKey = (member.name || "").toLowerCase().trim();
-    const firstName = nameKey.split(" ")[0];
 
-    // 1. Update local state immediately so UI updates with 0 latency
-    setRoleOverrides((prev) => ({
+    // 1. Update local state optimistically before persisting via Supabase RPC
+    setOptimisticRoles((prev) => ({
       ...prev,
       [key]: nextRole,
       [emailKey]: nextRole,
@@ -1041,105 +960,26 @@ export function AdminLearnersDirectory({
       [nameKey]: nextRole,
     }));
 
-    // 2. Persist to localStorage across all alias keys
-    const allAliases = Array.from(
-      new Set(
-        [
-          key,
-          emailKey,
-          idKey,
-          nameKey,
-          firstName,
-          emailKey.includes("afterlance") || nameKey.includes("allisha") ? "afterlance@gmail.com" : null,
-          emailKey.includes("afterlance") || nameKey.includes("allisha") ? "allisha fathya" : null,
-          emailKey.includes("afterlance") || nameKey.includes("allisha") ? "allisha" : null,
-        ].filter(Boolean) as string[]
-      )
-    );
-
-    if (typeof window !== "undefined") {
-      try {
-        allAliases.forEach((alias) => {
-          window.localStorage.setItem(`ruang_sosmed_role_override_${alias}`, nextRole);
-        });
-
-        // Also sync active session user if matches this member
-        const rawSession = window.localStorage.getItem("ruang_sosmed_session_user_v1");
-        if (rawSession) {
-          const s = JSON.parse(rawSession);
-          const sEmail = (s.email || "").toLowerCase().trim();
-          const sName = (s.name || "").toLowerCase().trim();
-          const sUsername = (s.username || "").toLowerCase().trim();
-          const isSessionMatch =
-            (sEmail && (sEmail === emailKey || emailKey.includes(sEmail) || sEmail.includes(emailKey))) ||
-            (sName && (sName === nameKey || nameKey.includes(sName) || sName.includes(nameKey))) ||
-            (sUsername && (emailKey.includes(sUsername) || nameKey.includes(sUsername))) ||
-            ((sEmail.includes("afterlance") || sName.includes("allisha")) &&
-              (emailKey.includes("afterlance") || nameKey.includes("allisha")));
-
-          if (isSessionMatch) {
-            s.role = nextRole === "Learner" ? "learner" : "admin";
-            window.localStorage.setItem(
-              "ruang_sosmed_session_user_v1",
-              JSON.stringify(s)
-            );
-            window.localStorage.setItem(
-              "ruang_sosmed_role_mode_v1",
-              nextRole === "Learner" ? "learner" : "admin"
-            );
-          }
-        }
-
-        // Live broadcast across open browser tabs & windows
-        if ("BroadcastChannel" in window) {
-          try {
-            const bc = new BroadcastChannel("ruang_sosmed_channel");
-            bc.postMessage({
-              type: "ROLE_OVERRIDE_BROADCAST",
-              targetEmail: member.email,
-              targetName: member.name,
-              nextRole: nextRole,
-            });
-            setTimeout(() => bc.close(), 300);
-          } catch {}
-        }
-
-        window.dispatchEvent(
-          new CustomEvent("ruang_sosmed_role_updated", {
-            detail: { target: member, nextRole },
-          })
-        );
-        window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
-        window.dispatchEvent(new Event("ruang_sosmed_role_mode_changed"));
-        window.dispatchEvent(new Event("storage"));
-      } catch {}
-    }
-
-    // 3. Notify parent app if current active user is demoted or changed
+    // 2. Notify parent app if current active user is changed
     const isTargetCurrentUser = Boolean(
       currentUser &&
         ((currentUser.email && emailKey && currentUser.email.toLowerCase().trim() === emailKey) ||
-         (currentUser.name && nameKey && currentUser.name.toLowerCase().trim() === nameKey) ||
-         (currentUser.name && nameKey && (nameKey.includes(currentUser.name.toLowerCase().trim()) || currentUser.name.toLowerCase().trim().includes(nameKey))) ||
-         (currentUser.username && emailKey && emailKey.includes(currentUser.username.toLowerCase().trim())) ||
-         ((currentUser.name?.toLowerCase().includes("allisha") || currentUser.email?.toLowerCase().includes("afterlance")) &&
-          (nameKey.includes("allisha") || emailKey.includes("afterlance"))))
+          (currentUser.name && nameKey && currentUser.name.toLowerCase().trim() === nameKey))
     );
 
     if (isTargetCurrentUser && onUpdateCurrentUserRole) {
       onUpdateCurrentUserRole(nextRole);
     }
 
-    // 4. Persist to RuangSosmedStore and Supabase
+    // 3. Persist strictly to Supabase via hardened admin_update_user_role RPC
     try {
       await updateMemberAccessRole(member.email || member.name || member.id, nextRole);
+      onShowToast(
+        `Peran akses ${member.name} diperbarui ke "${nextRole}" di Ruang Sosmed 2.0.`
+      );
     } catch {
-      // ignore
+      onShowToast(`Gagal memperbarui peran ${member.name}. Pastikan Anda login sebagai Admin.`);
     }
-
-    onShowToast(
-      `Updated access role for ${member.name} to "${nextRole}" in Ruang Sosmed 2.0.`
-    );
   };
 
   const handleInviteSubmit = (e: React.FormEvent) => {
@@ -1360,6 +1200,107 @@ export function AdminLearnersDirectory({
           );
         })}
       </section>
+
+      {/* Pending PRO Payment Verification Queue (Admin Approval) */}
+      {pendingProRequests.length > 0 && (
+        <section
+          aria-label="Verifikasi Pembayaran Learner PRO"
+          className="rounded-xl bg-[#FFFBEB] p-4 border border-[#F59E0B]/40 space-y-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-extrabold uppercase tracking-wider text-[#B45309] flex items-center gap-1.5">
+                <Zap size={13} className="text-[#F59E0B]" />
+                <span>Verifikasi Pembayaran Learner PRO ({pendingProRequests.length})</span>
+              </h2>
+              <p className="text-[11px] text-[#78350F] mt-0.5">
+                Periksa bukti pembayaran sebelum mengaktifkan akses PRO agar tidak ada aktivasi tanpa pembayaran.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {pendingProRequests.map((req) => (
+              <div
+                key={req.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#FFFFFF] px-3.5 py-2.5 border border-[#FDE68A]"
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-xs font-bold text-[#121215]">
+                    {req.user_name}{" "}
+                    <span className="font-normal text-[#5E5E5E]">({req.user_email})</span>
+                  </p>
+                  <p className="text-[11px] text-[#5E5E5E]">
+                    Paket: <strong className="text-[#121215]">{req.package_name}</strong> ({req.price_label}) •{" "}
+                    Metode: {req.payment_method}
+                    {req.buyer_contact ? ` • WA: ${req.buyer_contact}` : ""}
+                  </p>
+                  {req.proof_url && /^https?:\/\//i.test(req.proof_url) && (
+                    <a
+                      href={req.proof_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block text-[11px] font-semibold text-[#4F39F6] hover:underline"
+                    >
+                      Lihat Bukti Pembayaran ↗
+                    </a>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { error } = await supabase.rpc("admin_set_learner_pro", {
+                        p_target_email: req.user_email,
+                        p_target_name: req.user_name,
+                        p_is_pro: true,
+                        p_package_name: req.package_name,
+                        p_request_id: req.id,
+                      });
+                      if (error) {
+                        onShowToast(`Gagal mengaktifkan PRO: ${error.message}`);
+                        return;
+                      }
+                      toggleStudentProByAdmin(req.user_name, req.user_email);
+                      setSupabaseProMap((prev) => ({
+                        ...prev,
+                        [req.user_email.toLowerCase()]: "PRO",
+                        [req.user_name.toLowerCase()]: "PRO",
+                      }));
+                      setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
+                      onShowToast(`✅ Pembayaran diverifikasi! ${req.user_name} resmi aktif PRO.`);
+                    }}
+                    className="rounded-lg bg-[#10B981] hover:bg-[#059669] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
+                  >
+                    Setujui & Aktifkan PRO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { error } = await supabase.rpc("admin_set_learner_pro", {
+                        p_target_email: req.user_email,
+                        p_target_name: req.user_name,
+                        p_is_pro: false,
+                        p_package_name: req.package_name,
+                        p_request_id: req.id,
+                      });
+                      if (error) {
+                        onShowToast(`Gagal menolak permintaan: ${error.message}`);
+                        return;
+                      }
+                      setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
+                      onShowToast(`Permintaan upgrade PRO untuk ${req.user_name} ditolak.`);
+                    }}
+                    className="rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] px-3 py-1.5 text-[11px] font-bold text-[#DC2626] border border-[#FECACA] cursor-pointer"
+                  >
+                    Tolak
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Filter & Search Toolbar + Responsive Learners Directory Table */}
       <section className="rounded-xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4">
@@ -2116,13 +2057,13 @@ export function AdminLearnersDirectory({
                   </p>
                   <p className="text-xs font-bold text-[#121215] mt-1.5">
                     {pwRecord
-                      ? "Password Admin Aktif"
-                      : "Password Default / Auth"}
+                      ? "Password Baru Aktif"
+                      : "Terenkripsi (Supabase Auth)"}
                   </p>
                   <p className="text-[11px] text-[#5E5E5E] mt-0.5 truncate">
                     {pwRecord
-                      ? `Diperbarui ${new Date(pwRecord.updatedAt).toLocaleDateString("id-ID")}`
-                      : "Belum direset manual"}
+                      ? `Direset ${new Date(pwRecord.updatedAt).toLocaleDateString("id-ID")}`
+                      : "Password disimpan aman ter-hash"}
                   </p>
                   <button
                     type="button"
@@ -2444,10 +2385,10 @@ export function AdminLearnersDirectory({
                             id="admin-reset-password-input"
                             type={showResetPassword ? "text" : "password"}
                             required
-                            minLength={4}
+                            minLength={6}
                             value={resetPasswordInput}
                             onChange={(e) => setResetPasswordInput(e.target.value)}
-                            placeholder="Masukkan minimal 4 karakter..."
+                            placeholder="Masukkan minimal 6 karakter..."
                             className="w-full rounded-lg bg-[#FFFFFF] px-3 py-2 pr-9 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
                           />
                           <button
@@ -2518,13 +2459,13 @@ export function AdminLearnersDirectory({
                   <div className="md:col-span-5 rounded-xl bg-[#FFFFFF] p-4 border border-[#EAECEF] space-y-3 flex flex-col justify-between">
                     <div className="space-y-2">
                       <h3 className="text-xs font-bold uppercase tracking-wider text-[#121215]">
-                        Info Password Terakhir
+                        Keamanan Password
                       </h3>
                       {pwRecord ? (
                         <div className="rounded-lg bg-[#ECFDF5] border border-[#10B981]/30 p-3 space-y-1.5">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-[10px] font-bold uppercase text-[#059669]">
-                              Password Aktif (Admin Reset)
+                              Salin Sekali (Sesi Aktif)
                             </span>
                             <button
                               type="button"
@@ -2542,13 +2483,12 @@ export function AdminLearnersDirectory({
                           </p>
                           <p className="text-[10px] text-[#5E5E5E]">
                             Direset oleh {pwRecord.updatedBy || "Admin"} pada{" "}
-                            {new Date(pwRecord.updatedAt).toLocaleString("id-ID")}
+                            {new Date(pwRecord.updatedAt).toLocaleString("id-ID")}. Akan hilang otomatis saat modal ditutup.
                           </p>
                         </div>
                       ) : (
                         <div className="rounded-lg bg-[#F8F9FB] border border-[#EAECEF] p-3 text-xs text-[#5E5E5E]">
-                          Belum pernah dilakukan reset manual dari Admin untuk user
-                          ini.
+                          Password dikelola terenkripsi (bcrypt) di Supabase Auth dan tidak pernah disimpan atau diekspos dalam bentuk plaintext.
                         </div>
                       )}
                     </div>

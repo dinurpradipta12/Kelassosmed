@@ -457,35 +457,9 @@ export function LearnerTopNavbar({
                                     Peran Akun: Siswa Learner
                                   </span>
                                 ) : (
-                                  <>
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#4F39F6]">
-                                      {n.unread ? "• Menunggu Konfirmasi" : "✓ Telah Dilihat"}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        acceptCollaboratorInvitation({
-                                          email: currentUser?.email || "afterlance@gmail.com",
-                                          role: "Admin",
-                                          cohort: "Ruang Sosmed Class",
-                                        });
-                                        onShowToast(
-                                          "🎉 Selamat! Anda telah resmi bergabung sebagai Admin pada Ruang Sosmed 2.0 Workspace!"
-                                        );
-                                        if (onSwitchToAdmin) {
-                                          setTimeout(() => {
-                                            setNotifOpen(false);
-                                            onSwitchToAdmin();
-                                          }, 400);
-                                        }
-                                      }}
-                                      className="inline-flex items-center gap-1 rounded-md bg-[#4F39F6] hover:bg-[#3E29D8] px-2.5 py-1 text-[11px] font-bold text-white transition-colors cursor-pointer shadow-xs"
-                                    >
-                                      <Check size={11} />
-                                      <span>Terima Undangan</span>
-                                    </button>
-                                  </>
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#4F39F6]">
+                                    {n.unread ? "• Belum Dibaca" : "✓ Telah Dilihat"}
+                                  </span>
                                 )}
                               </div>
                             )}

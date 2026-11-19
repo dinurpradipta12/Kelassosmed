@@ -5,9 +5,25 @@
 // =============================================================================
 
 import { NextResponse } from "next/server";
+import {
+  API_SECURITY_HEADERS,
+  checkFetchMetadata,
+  escapeHtml,
+  verifyApiCaller,
+} from "@/lib/supabase/server-auth";
 
 export async function POST(request: Request) {
+  const fetchMetaErr = checkFetchMetadata(request);
+  if (fetchMetaErr) return fetchMetaErr;
+
   try {
+    const caller = await verifyApiCaller(request, {
+      requiredRoles: ["admin", "mentor"],
+    });
+    if (!caller.ok) {
+      return caller.response;
+    }
+
     const body = await request.json();
     const { email, fullName, role, cohort, note } = body as {
       email?: string;
@@ -17,31 +33,45 @@ export async function POST(request: Request) {
       note?: string;
     };
 
-    if (!email || !email.includes("@")) {
+    const cleanEmail = (email || "").trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return NextResponse.json(
         { ok: false, error: "Alamat email tidak valid." },
-        { status: 400 }
+        { status: 400, headers: API_SECURITY_HEADERS }
       );
     }
 
-    const targetRole = role || "Mentor";
-    const targetCohort = cohort || "Ruang Sosmed Class";
-    const targetName = fullName?.trim() || email.split("@")[0];
+    const targetRole = (role || "Mentor").trim();
+    const targetCohort = (cohort || "Ruang Sosmed Class").trim();
+    const targetName = fullName?.trim() || cleanEmail.split("@")[0];
     const inviteNote = note?.trim() || "";
+
+    const safeEmail = escapeHtml(cleanEmail);
+    const safeRole = escapeHtml(targetRole);
+    const safeCohort = escapeHtml(targetCohort);
+    const safeName = escapeHtml(targetName);
+    const safeNote = escapeHtml(inviteNote);
+
+    const rawSiteUrl = (
+      process.env.NEXT_PUBLIC_SITE_URL || "https://ruangsosmedid.com"
+    ).trim();
+    const ctaUrl = /^https?:\/\//i.test(rawSiteUrl)
+      ? rawSiteUrl
+      : "https://ruangsosmedid.com";
 
     const resendApiKey = process.env.RESEND_API_KEY;
     const fromSender =
       process.env.RESEND_FROM_EMAIL || "Ruang Sosmed 2.0 <invite@ruangsosmedid.com>";
 
     // Build modern, responsive HTML email template
-    const emailSubject = `Undangan Kolaborasi: ${targetRole} di "${targetCohort}" — Ruang Sosmed 2.0`;
+    const emailSubject = `Undangan Kolaborasi: ${targetRole.replace(/[\r\n]/g, " ")} di "${targetCohort.replace(/[\r\n]/g, " ")}" — Ruang Sosmed 2.0`;
     const emailHtml = `
 <!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${emailSubject}</title>
+  <title>${escapeHtml(emailSubject)}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #F8F9FB; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #121215;">
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F8F9FB; padding: 32px 16px;">
@@ -74,14 +104,14 @@ export async function POST(request: Request) {
           <tr>
             <td style="padding: 32px;">
               <h2 style="margin: 0 0 12px; font-size: 18px; font-weight: 700; color: #121215;">
-                Halo, ${targetName}! 👋
+                Halo, ${safeName}! 👋
               </h2>
               <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #4B5563;">
                 Anda telah resmi diundang oleh tim <strong>Ruang Sosmed 2.0</strong> untuk berkolaborasi sebagai 
                 <span style="background-color: #EEF2FF; color: #4F39F6; font-weight: 700; padding: 2px 8px; border-radius: 6px;">
-                  ${targetRole}
+                  ${safeRole}
                 </span> 
-                pada kelas / cohort <strong>"${targetCohort}"</strong>.
+                pada kelas / cohort <strong>"${safeCohort}"</strong>.
               </p>
 
               <!-- Cohort & Role Summary Card -->
@@ -94,21 +124,21 @@ export async function POST(request: Request) {
                     <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px; color: #1F2937;">
                       <tr>
                         <td width="120" style="color: #6B7280; font-weight: 500;">Peran / Akses:</td>
-                        <td style="font-weight: 700; color: #4F39F6;">${targetRole}</td>
+                        <td style="font-weight: 700; color: #4F39F6;">${safeRole}</td>
                       </tr>
                       <tr>
                         <td style="color: #6B7280; font-weight: 500;">Cohort Kelas:</td>
-                        <td style="font-weight: 600;">${targetCohort}</td>
+                        <td style="font-weight: 600;">${safeCohort}</td>
                       </tr>
                       <tr>
                         <td style="color: #6B7280; font-weight: 500;">Email Tujuan:</td>
-                        <td>${email}</td>
+                        <td>${safeEmail}</td>
                       </tr>
                       ${
-                        inviteNote
+                        safeNote
                           ? `<tr>
                               <td style="color: #6B7280; font-weight: 500; vertical-align: top;">Pesan Pengundang:</td>
-                              <td style="font-style: italic; color: #374151;">"${inviteNote}"</td>
+                              <td style="font-style: italic; color: #374151;">"${safeNote}"</td>
                             </tr>`
                           : ""
                       }
@@ -121,7 +151,7 @@ export async function POST(request: Request) {
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin: 28px 0 24px; text-align: center;">
                 <tr>
                   <td align="center">
-                    <a href="http://localhost:3000" target="_blank" style="display: inline-block; background-color: #4F39F6; color: #FFFFFF; font-size: 14px; font-weight: 700; text-decoration: none; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 12px rgba(79, 57, 246, 0.25);">
+                    <a href="${escapeHtml(ctaUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #4F39F6; color: #FFFFFF; font-size: 14px; font-weight: 700; text-decoration: none; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 12px rgba(79, 57, 246, 0.25);">
                       Terima Undangan &amp; Masuk ke Ruang Sosmed →
                     </a>
                   </td>
@@ -129,7 +159,7 @@ export async function POST(request: Request) {
               </table>
 
               <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #9CA3AF; text-align: center;">
-                Undangan ini juga sudah tersinkronisasi langsung pada lonceng notifikasi akun Ruang Sosmed Anda.
+                Undangan ini juga sudah tersinkronisasi langsung pada akun Ruang Sosmed Anda.
               </p>
             </td>
           </tr>
@@ -167,7 +197,7 @@ export async function POST(request: Request) {
           },
           body: JSON.stringify({
             from: fromSender,
-            to: [email],
+            to: [cleanEmail],
             subject: emailSubject,
             html: emailHtml,
           }),
@@ -181,55 +211,51 @@ export async function POST(request: Request) {
 
         if (resendResponse.ok && resendData.id) {
           resendResult = { success: true, id: resendData.id };
-          console.log("[Resend API Success] Email sent:", {
-            id: resendData.id,
-            to: email,
-            role: targetRole,
-          });
         } else {
           resendResult = {
             success: false,
-            error: resendData.message || resendData.name || "Resend API error",
+            error: resendData.message || resendData.name || "Email service error",
           };
-          console.warn("[Resend API Error]:", resendData);
         }
-      } catch (sendErr) {
+      } catch {
         resendResult = {
           success: false,
-          error: sendErr instanceof Error ? sendErr.message : "Network error",
+          error: "Gagal menghubungi layanan email.",
         };
-        console.error("[Resend Network Exception]:", sendErr);
       }
     } else {
       resendResult = {
         success: false,
-        error: "RESEND_API_KEY belum dikonfigurasi di file .env.local",
+        error: "Layanan pengiriman email undangan sedang tidak aktif.",
       };
     }
 
-    return NextResponse.json({
-      ok: true,
-      deliveredToInApp: true,
-      emailSent: resendResult.success,
-      resendId: resendResult.id || null,
-      resendError: resendResult.error || null,
-      recipient: {
-        email,
-        name: targetName,
-        role: targetRole,
-        cohort: targetCohort,
+    return NextResponse.json(
+      {
+        ok: true,
+        deliveredToInApp: true,
+        emailSent: resendResult.success,
+        resendId: resendResult.id || null,
+        resendError: resendResult.error || null,
+        recipient: {
+          email: cleanEmail,
+          name: targetName,
+          role: targetRole,
+          cohort: targetCohort,
+        },
+        message: resendResult.success
+          ? `🎉 Email undangan berhasil dikirim ke ${cleanEmail}!`
+          : `Undangan tercatat di platform. (${resendResult.error})`,
       },
-      message: resendResult.success
-        ? `🎉 Email undangan berhasil dikirim via Resend ke ${email}!`
-        : `Undangan tercatat di platform. (Resend: ${resendResult.error})`,
-    });
-  } catch (error) {
+      { headers: API_SECURITY_HEADERS }
+    );
+  } catch {
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Internal Server Error",
+        error: "Terjadi kesalahan pada server.",
       },
-      { status: 500 }
+      { status: 500, headers: API_SECURITY_HEADERS }
     );
   }
 }

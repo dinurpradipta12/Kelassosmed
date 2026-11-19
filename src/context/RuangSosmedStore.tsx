@@ -234,6 +234,58 @@ export function getNormalizedProPackages(
   ];
 }
 
+export interface AdminActivityNotification {
+  id: string;
+  eventType: "user_registered" | "pro_subscribed";
+  userName: string;
+  userEmail?: string;
+  packageName?: string;
+  priceLabel?: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+}
+
+/** Build formatted admin activity notification payload for new member signup or PRO subscription. */
+export function buildAdminActivityNotification(params: {
+  eventType: "user_registered" | "pro_subscribed";
+  userName: string;
+  userEmail?: string;
+  packageName?: string;
+  priceLabel?: string;
+  id?: string;
+  createdAt?: string;
+}): AdminActivityNotification {
+  const cleanName = (params.userName || "").trim() || "Member Baru";
+  const pkgLabel = (params.packageName || "").trim() || "Learner PRO Bulanan";
+  const priceSuffix = params.priceLabel?.trim()
+    ? ` (${params.priceLabel.trim()})`
+    : "";
+
+  const isRegister = params.eventType === "user_registered";
+  return {
+    id:
+      params.id ||
+      `adm-${params.eventType}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 7)}`,
+    eventType: params.eventType,
+    userName: cleanName,
+    userEmail: params.userEmail?.trim() || undefined,
+    packageName: isRegister ? undefined : pkgLabel,
+    priceLabel: isRegister ? undefined : params.priceLabel?.trim() || undefined,
+    title: isRegister
+      ? "Say, Hi! 🎉 Member Baru Bergabung"
+      : "Yuhuu! ⚡ Langganan PRO Baru",
+    message: isRegister
+      ? `Say, Hi! ${cleanName} telah bergabung ke Ruang Sosmed 2.0. Yuk sambut member baru dan bantu mereka memulai perjalanan belajarnya!`
+      : `Yuhuu! ${cleanName} telah berlangganan dan mengambil paket ${pkgLabel}${priceSuffix}. Akses fitur eksklusifnya sudah aktif dan siap digunakan!`,
+    createdAt: params.createdAt || new Date().toISOString(),
+    read: false,
+  };
+}
+
 export const INITIAL_COHORT_PROJECTS: CohortProjectItem[] = [
   { id: "cohort-1", name: "Ruang Sosmed Class", color: "#EC4899", description: "Batch Utama Ruang Sosmed" },
   { id: "cohort-2", name: "Creator Growth Lab", color: "#10B981", description: "Short-Form Video Track" },
@@ -299,6 +351,9 @@ interface PersistedGlobalState {
 
   // Global Synchronized User Avatars map (keyed by lowercase email / name / username / id)
   userAvatars: Record<string, string>;
+
+  // Admin-only Real-time Activity Notifications (new member signups & PRO subscriptions)
+  adminNotifications: AdminActivityNotification[];
 }
 
 const STORAGE_KEY = "ruang_sosmed_2_0_clean_store_v6";
@@ -540,12 +595,12 @@ async function pushContentToSupabase(
     }
 
     if (error) {
-      console.warn("[RuangSosmed] Gagal sync konten ke Supabase:", error.message);
+      if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Gagal sync konten ke Supabase:", error.message);
       return null;
     }
     return dbId;
   } catch (e) {
-    console.warn("[RuangSosmed] Gagal sync konten ke Supabase:", e);
+    if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Gagal sync konten ke Supabase:", e);
     return null;
   } finally {
     inFlightPushTitles.delete(titleKey);
@@ -592,7 +647,7 @@ async function syncRewardsToSupabase(catalog: RewardItem[]): Promise<void> {
       });
     }
   } catch (err) {
-    console.warn("[RuangSosmed] Failed to sync rewards to Supabase:", err);
+    if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Failed to sync rewards to Supabase:", err);
   }
 }
 
@@ -631,7 +686,7 @@ async function syncCertificateConfigToSupabase(
       });
     }
   } catch (err) {
-    console.warn("[RuangSosmed] Failed to sync certificate config to Supabase:", err);
+    if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Failed to sync certificate config to Supabase:", err);
   }
 }
 
@@ -690,10 +745,12 @@ async function syncLearnerProConfigToSupabase(
       });
     }
   } catch (err) {
-    console.warn(
-      "[RuangSosmed] Failed to sync learnerProConfig to Supabase:",
-      err
-    );
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[RuangSosmed] Failed to sync learnerProConfig to Supabase:",
+        err
+      );
+    }
   }
 }
 
@@ -727,10 +784,12 @@ async function syncMaintenanceConfigToSupabase(config: MaintenanceConfig) {
       });
     }
   } catch (err) {
-    console.warn(
-      "[RuangSosmed] Failed to sync maintenanceConfig to Supabase:",
-      err
-    );
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[RuangSosmed] Failed to sync maintenanceConfig to Supabase:",
+        err
+      );
+    }
   }
 }
 
@@ -770,7 +829,53 @@ async function syncCohortProjectsToSupabase(
       });
     }
   } catch (err) {
-    console.warn("[RuangSosmed] Failed to sync cohortProjects to Supabase:", err);
+    if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Failed to sync cohortProjects to Supabase:", err);
+  }
+}
+
+const ADMIN_NOTIFS_STORAGE_KEY = "ruang_sosmed_admin_notifications_v1";
+
+async function syncAdminNotificationsToSupabase(
+  notifications: AdminActivityNotification[]
+): Promise<void> {
+  if (!isSupabaseConfigured || !Array.isArray(notifications)) return;
+  try {
+    const trimmed = notifications.slice(0, 50);
+    const existing = await getLatestSystemContentRow(
+      "__SYSTEM_ADMIN_NOTIFICATIONS__"
+    );
+    const payload = {
+      notifications: trimmed,
+      updatedAt: new Date().toISOString(),
+    };
+    if (existing?.id) {
+      await supabase
+        .from("contents")
+        .update({
+          settings_json: payload,
+          status: "published",
+        })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("contents").insert({
+        id: newUuid(),
+        title: "__SYSTEM_ADMIN_NOTIFICATIONS__",
+        type: "page",
+        status: "published",
+        description: "System storage for Admin activity notifications",
+        urgency: "not_urgent",
+        estimated_minutes: 0,
+        points_reward: 0,
+        settings_json: payload,
+      });
+    }
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[RuangSosmed] Failed to sync adminNotifications to Supabase:",
+        err
+      );
+    }
   }
 }
 
@@ -862,7 +967,7 @@ async function syncUserAvatarsToSupabase(
       });
     }
   } catch (err) {
-    console.warn("[RuangSosmed] Failed to sync userAvatars to Supabase:", err);
+    if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Failed to sync userAvatars to Supabase:", err);
   }
 }
 
@@ -1253,6 +1358,7 @@ export const DEMO_GLOBAL_STATE: PersistedGlobalState = {
   learnerProConfig: DEFAULT_LEARNER_PRO_CONFIG,
   maintenanceConfig: DEFAULT_MAINTENANCE_CONFIG,
   userAvatars: {},
+  adminNotifications: [],
 };
 
 const DEFAULT_GLOBAL_STATE: PersistedGlobalState = {
@@ -1303,6 +1409,7 @@ const DEFAULT_GLOBAL_STATE: PersistedGlobalState = {
   learnerProConfig: DEFAULT_LEARNER_PRO_CONFIG,
   maintenanceConfig: DEFAULT_MAINTENANCE_CONFIG,
   userAvatars: {},
+  adminNotifications: [],
 };
 
 interface RuangSosmedStoreContextValue extends PersistedGlobalState {
@@ -1454,6 +1561,15 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     isPro: boolean,
     user?: { name?: string; email?: string } | null
   ) => void;
+  submitProUpgradeRequest: (params: {
+    packageId?: string;
+    packageName: string;
+    priceLabel: string;
+    buyerName?: string;
+    buyerContact?: string;
+    paymentMethod?: string;
+    proofUrl?: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   toggleStudentProByAdmin: (studentName: string, studentEmail?: string) => void;
   registerLearnerProfile: (profile: {
     name: string;
@@ -1544,6 +1660,18 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     courseCount?: number;
     message: string;
   };
+
+  // 15. Admin-Only Live Activity Notifications (New Member & PRO Subscriptions)
+  pushAdminNotification: (params: {
+    eventType: "user_registered" | "pro_subscribed";
+    userName: string;
+    userEmail?: string;
+    packageName?: string;
+    priceLabel?: string;
+  }) => AdminActivityNotification;
+  markAdminNotificationRead: (id: string) => void;
+  markAllAdminNotificationsRead: () => void;
+  clearAdminNotifications: () => void;
 }
 
 const RuangSosmedContext = createContext<RuangSosmedStoreContextValue | null>(
@@ -1592,6 +1720,8 @@ export function RuangSosmedProvider({
   const recentAssignmentLocksRef = useRef<
     Map<string, { assignedLearners: string[]; expiresAt: number }>
   >(new Map());
+  const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
+  const adminNotifHydratedRef = useRef(false);
 
   // Hydrate from localStorage on mount
   useEffect(() => {
@@ -1807,6 +1937,7 @@ export function RuangSosmedProvider({
         setState((prev) => ({
           ...prev,
           ...parsed,
+          learnerIsPro: false,
           rewardsCatalog: savedRewardsCatalog,
           learnerAssignedItems: mergedAssigned,
           explorerItems: dedupedRawExplorer,
@@ -1875,7 +2006,10 @@ export function RuangSosmedProvider({
           learnerNotifications: (() => {
             const raw = Array.isArray(parsed.learnerNotifications)
               ? parsed.learnerNotifications.filter(
-                  (n) => !["notif-1", "notif-2", "notif-3"].includes(n.id)
+                  (n) =>
+                    !["notif-1", "notif-2", "notif-3", "notif-invite-allisha-active"].includes(
+                      n.id
+                    )
                 )
               : [];
 
@@ -1886,47 +2020,12 @@ export function RuangSosmedProvider({
                 dedupedMap.set(n.id, n);
               }
             });
-            const deduped = Array.from(dedupedMap.values());
-
-            const hasInviteOrJoined = deduped.some(
-              (n) =>
-                n.id === "notif-invite-allisha-active" ||
-                n.title.toLowerCase().includes("undangan") ||
-                n.title.toLowerCase().includes("resmi bergabung")
-            );
-
-            return hasInviteOrJoined
-              ? deduped
-              : [
-                  {
-                    id: "notif-invite-allisha-active",
-                    title: "🤝 Undangan Kolaborasi: Admin di Ruang Sosmed Class",
-                    body: 'Halo Allisha Fathya! Anda telah diundang bergabung sebagai Admin pada cohort "Ruang Sosmed Class". Pesan: "tes coba gabung"',
-                    time: "Baru saja",
-                    unread: true,
-                  },
-                  ...deduped,
-                ];
+            return Array.from(dedupedMap.values());
           })(),
           workspaceCollaborators:
             Array.isArray(parsed.workspaceCollaborators) &&
             parsed.workspaceCollaborators.length > 0
-              ? parsed.workspaceCollaborators.map((c: WorkspaceCollaborator) => {
-                  const cEmail = (c.email || "").toLowerCase();
-                  const cName = (c.name || "").toLowerCase();
-                  if (cEmail.includes("afterlance") || cName.includes("allisha")) {
-                    const isExplicitAdmin =
-                      typeof window !== "undefined" &&
-                      (window.localStorage.getItem(`ruang_sosmed_role_override_${cEmail}`) === "Admin" ||
-                       window.localStorage.getItem("ruang_sosmed_role_override_allisha") === "Admin" ||
-                       window.localStorage.getItem("ruang_sosmed_role_override_allisha fathya") === "Admin");
-                    return {
-                      ...c,
-                      role: isExplicitAdmin ? "Admin" : "Learner",
-                    };
-                  }
-                  return c;
-                })
+              ? parsed.workspaceCollaborators
               : INITIAL_WORKSPACE_COLLABORATORS,
           certificateConfig:
             parsed.certificateConfig ||
@@ -2021,6 +2120,7 @@ export function RuangSosmedProvider({
             }
             return merged;
           })(),
+          adminNotifications: [],
         }));
       } else {
         // Initial defaults
@@ -2103,6 +2203,26 @@ export function RuangSosmedProvider({
                   }
                 })()
               : {},
+          adminNotifications:
+            typeof window !== "undefined"
+              ? (() => {
+                  try {
+                    const rawAdm = window.localStorage.getItem(
+                      ADMIN_NOTIFS_STORAGE_KEY
+                    );
+                    const parsedAdm = rawAdm ? JSON.parse(rawAdm) : [];
+                    if (Array.isArray(parsedAdm)) {
+                      parsedAdm.forEach((n: any) => {
+                        if (n?.id) knownAdminNotifIdsRef.current.add(n.id);
+                      });
+                      adminNotifHydratedRef.current = true;
+                      return parsedAdm.slice(0, 50);
+                    }
+                  } catch {}
+                  adminNotifHydratedRef.current = true;
+                  return [];
+                })()
+              : [],
         }));
       }
     } catch {
@@ -2182,6 +2302,35 @@ export function RuangSosmedProvider({
                   : exp
               ),
             }));
+          } else if (
+            event.data?.type === "ADMIN_NOTIFICATION_NEW" &&
+            event.data.notification
+          ) {
+            const incoming = event.data
+              .notification as AdminActivityNotification;
+            if (incoming?.id) {
+              knownAdminNotifIdsRef.current.add(incoming.id);
+              setState((prev) => {
+                const existing = prev.adminNotifications || [];
+                if (existing.some((n) => n.id === incoming.id)) return prev;
+                const nextList = [incoming, ...existing].slice(0, 50);
+                try {
+                  window.localStorage.setItem(
+                    ADMIN_NOTIFS_STORAGE_KEY,
+                    JSON.stringify(nextList)
+                  );
+                } catch {}
+                return {
+                  ...prev,
+                  adminNotifications: nextList,
+                };
+              });
+              window.dispatchEvent(
+                new CustomEvent("ruang_sosmed_admin_notif", {
+                  detail: incoming,
+                })
+              );
+            }
           }
         };
       } catch {}
@@ -2199,84 +2348,98 @@ export function RuangSosmedProvider({
 
     const syncRegisteredLearners = async () => {
       try {
-        const [
-          profilesRes,
-          userProfilesRes,
-          contentsRes,
-          authRes,
-          inboxThreadsRes,
-          reportedIssuesRes,
-          learnerProSettingsRes,
-        ] = await Promise.all([
-          supabase.from("profiles").select("*"),
-          supabase.from("user_profiles").select("*"),
-          supabase
-            .from("contents")
-            .select("*")
-            .in("status", ["published", "archived"])
-            .order("created_at", { ascending: true }),
-          supabase.auth.getUser(),
-          supabase
-            .from("mentor_inbox_threads")
-            .select("*")
-            .order("updated_at", { ascending: false }),
-          supabase
-            .from("mentor_reported_issues")
-            .select("*")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("learner_pro_settings")
-            .select("*")
-            .eq("id", "default")
-            .maybeSingle(),
-        ]);
+        const { data: sessionData } = await supabase.auth.getSession();
+        const authUser = sessionData?.session?.user || null;
+        const authUserId = authUser?.id || null;
 
-        const authUserId = authRes?.data?.user?.id;
-        const localRoleMode =
-          typeof window !== "undefined"
-            ? window.localStorage.getItem("ruang_sosmed_role_mode_v1")
-            : null;
-        const hasLocalDevFlag =
-          typeof window !== "undefined" &&
-          (window.localStorage.getItem("ruang_sosmed_dev_session_v1") === "true" ||
-            window.location.search.includes("admin=1"));
-        let localSessionIsStaff = false;
-        if (typeof window !== "undefined") {
-          try {
-            const rawSessionUser = window.localStorage.getItem(
-              "ruang_sosmed_session_user_v1"
-            );
-            if (rawSessionUser) {
-              const parsedU = JSON.parse(rawSessionUser);
-              const uRole = String(parsedU?.role || "").toLowerCase();
-              const uName = String(parsedU?.name || "").toLowerCase();
-              const uUsername = String(parsedU?.username || "").toLowerCase();
-              const uEmail = String(parsedU?.email || "").toLowerCase();
-              if (
-                uRole === "admin" ||
-                uRole === "mentor" ||
-                uUsername === "arunika" ||
-                uName.includes("arunika") ||
-                uEmail.includes("dinur") ||
-                uEmail === "admin@ruangsosmed.id"
-              ) {
-                localSessionIsStaff = true;
-              }
-            }
-          } catch {}
+        let ownProfile: any = null;
+        let isStaffSession = false;
+
+        if (authUserId) {
+          const { data: ownProf } = await supabase
+            .from("profiles")
+            .select("id, role, full_name, email, avatar_url, subscription_tier, total_points, job_title")
+            .eq("id", authUserId)
+            .maybeSingle();
+
+          ownProfile = ownProf;
+          const rawDbRole = String(ownProf?.role || "learner").toLowerCase();
+          isStaffSession = rawDbRole === "admin" || rawDbRole === "mentor";
         }
 
-        const isStaffSession = Boolean(
-          (authUserId &&
-            Array.isArray(profilesRes.data) &&
-            profilesRes.data.some(
-              (p: any) =>
-                p.id === authUserId &&
-                (p.role === "admin" || p.role === "mentor")
-            )) ||
-            ((hasLocalDevFlag || localSessionIsStaff) &&
-              localRoleMode !== "learner")
-        );
+        const contentsRes = await supabase
+          .from("contents")
+          .select("*")
+          .in("status", ["published", "archived"])
+          .order("created_at", { ascending: true });
+
+        let profilesRes: { data: any[] | null; error: any } = {
+          data: ownProfile ? [ownProfile] : [],
+          error: null,
+        };
+        let userProfilesRes: { data: any[] | null; error: any } = {
+          data: [],
+          error: null,
+        };
+        let inboxThreadsRes: { data: any[] | null; error: any } = {
+          data: [],
+          error: null,
+        };
+        let reportedIssuesRes: { data: any[] | null; error: any } = {
+          data: [],
+          error: null,
+        };
+        let learnerProSettingsRes: { data: any | null; error: any } = {
+          data: null,
+          error: null,
+        };
+
+        if (authUserId) {
+          const [
+            inboxRes,
+            issuesRes,
+            proSettingsRes,
+            staffProfilesRes,
+            staffUserProfilesRes,
+          ] = await Promise.all([
+            supabase
+              .from("mentor_inbox_threads")
+              .select("*")
+              .order("updated_at", { ascending: false }),
+            supabase
+              .from("mentor_reported_issues")
+              .select("*")
+              .order("created_at", { ascending: false }),
+            supabase
+              .from("learner_pro_settings")
+              .select("*")
+              .eq("id", "default")
+              .maybeSingle(),
+            isStaffSession
+              ? supabase.from("profiles").select("*")
+              : Promise.resolve({ data: ownProfile ? [ownProfile] : [], error: null }),
+            isStaffSession
+              ? supabase.from("user_profiles").select("*")
+              : supabase
+                  .from("user_profiles")
+                  .select("*")
+                  .or(
+                    `user_id.eq.${authUserId}${
+                      authUser?.email ? `,email.ilike.${authUser.email}` : ""
+                    }`
+                  ),
+          ]);
+
+          inboxThreadsRes = inboxRes;
+          reportedIssuesRes = issuesRes;
+          learnerProSettingsRes = proSettingsRes;
+          profilesRes = staffProfilesRes;
+          userProfilesRes = staffUserProfilesRes;
+        } else if (typeof window !== "undefined") {
+          try {
+            window.localStorage.removeItem(ADMIN_NOTIFS_STORAGE_KEY);
+          } catch {}
+        }
 
         const justPushedIds = new Set<string>();
 
@@ -2424,64 +2587,45 @@ export function RuangSosmedProvider({
             ...proMapFromDb,
           };
 
-          // Strictly sync currentUser's learnerIsPro and learnerPoints from Supabase DB
-          let activeUserPro = prev.learnerIsPro;
-          let activeUserPoints = prev.learnerPoints;
-          let activeLearnerEmail = "";
-          let activeLearnerName = "";
-          try {
-            const cachedUserRaw = window.localStorage.getItem(
-              "ruang_sosmed_session_user_v1"
-            );
-            if (cachedUserRaw) {
-              const parsedU = JSON.parse(cachedUserRaw);
-              const emailLower = parsedU?.email
-                ? String(parsedU.email).toLowerCase().trim()
-                : "";
-              const nameStr = parsedU?.name ? String(parsedU.name).trim() : "";
-              activeLearnerEmail = emailLower;
-              activeLearnerName = nameStr;
+          // Strictly derive active user's PRO tier and points ONLY from authenticated DB profile
+          let activeUserPro = false;
+          let activeUserPoints = 0;
+          const activeLearnerEmail = String(
+            ownProfile?.email || authUser?.email || ""
+          )
+            .toLowerCase()
+            .trim();
+          const activeLearnerName = String(
+            ownProfile?.full_name || authUser?.user_metadata?.full_name || ""
+          ).trim();
 
-              // Check points from Supabase profiles
-              const matchProfile = Array.isArray(profilesRes.data)
-                ? profilesRes.data.find(
-                    (p: any) =>
-                      (p.email && emailLower && p.email.toLowerCase().trim() === emailLower) ||
-                      (p.full_name && nameStr && p.full_name.toLowerCase().trim() === nameStr.toLowerCase())
-                  )
-                : null;
+          if (authUserId && ownProfile) {
+            activeUserPoints = Number(ownProfile.total_points || 0);
+            activeUserPro =
+              isStaffSession ||
+              String(ownProfile.subscription_tier || "").toLowerCase() === "pro";
 
-              if (matchProfile && typeof matchProfile.total_points === "number") {
-                activeUserPoints = Number(matchProfile.total_points);
-              }
-
-              const dbTier =
-                (emailLower ? proMapFromDb[emailLower] : undefined) ??
-                (nameStr
-                  ? proMapFromDb[nameStr] ?? proMapFromDb[nameStr.toLowerCase()]
-                  : undefined);
-
-              if (dbTier !== undefined) {
-                activeUserPro = dbTier === "PRO";
-                if (nameStr) {
-                  nextSubs[nameStr] = dbTier;
-                  nextSubs[nameStr.toLowerCase()] = dbTier;
-                }
-                if (emailLower) {
-                  nextSubs[emailLower] = dbTier;
-                }
-              } else {
-                const fallbackTier =
-                  (emailLower ? nextSubs[emailLower] : undefined) ??
-                  (nameStr
-                    ? nextSubs[nameStr] ?? nextSubs[nameStr.toLowerCase()]
-                    : undefined);
-                if (fallbackTier !== undefined) {
-                  activeUserPro = fallbackTier === "PRO";
-                }
+            if (!activeUserPro && Array.isArray(userProfilesRes.data)) {
+              const ownUp = userProfilesRes.data.find(
+                (up: any) =>
+                  up.user_id === authUserId ||
+                  (activeLearnerEmail &&
+                    String(up.email || "").toLowerCase().trim() === activeLearnerEmail)
+              );
+              if (ownUp?.perks?.is_pro) {
+                activeUserPro = true;
               }
             }
-          } catch {}
+
+            const ownTierLabel: "PRO" | "Free" = activeUserPro ? "PRO" : "Free";
+            if (activeLearnerName) {
+              nextSubs[activeLearnerName] = ownTierLabel;
+              nextSubs[activeLearnerName.toLowerCase()] = ownTierLabel;
+            }
+            if (activeLearnerEmail) {
+              nextSubs[activeLearnerEmail] = ownTierLabel;
+            }
+          }
 
           const pointsChanged = prev.learnerPoints !== activeUserPoints;
           let nextNotifications = [...(prev.learnerNotifications ?? [])];
@@ -2674,6 +2818,16 @@ export function RuangSosmedProvider({
           )
             ? systemCohortProjectsRow.settings_json.cohortProjects
             : null;
+
+          const systemAdminNotifsRow = pickLatestSystemRow(
+            "__SYSTEM_ADMIN_NOTIFICATIONS__"
+          );
+          const remoteAdminNotifs: AdminActivityNotification[] = Array.isArray(
+            systemAdminNotifsRow?.settings_json?.notifications
+          )
+            ? (systemAdminNotifsRow.settings_json
+                .notifications as AdminActivityNotification[])
+            : [];
 
           if (!contentsRes.error && Array.isArray(contentsRes.data)) {
             const dbRows = (contentsRes.data as any[]).filter(
@@ -3409,6 +3563,75 @@ export function RuangSosmedProvider({
             } catch {}
           }
 
+          // 7) Merge Admin Activity Notifications (__SYSTEM_ADMIN_NOTIFICATIONS__) STRICTLY for Staff sessions
+          let nextAdminNotifications: AdminActivityNotification[] = [];
+          const freshlyArrivedAdminNotifs: AdminActivityNotification[] = [];
+
+          if (isStaffSession) {
+            const localNotifMap = new Map<string, AdminActivityNotification>();
+            (prev.adminNotifications || []).forEach((n) => {
+              if (n && n.id) localNotifMap.set(n.id, n);
+            });
+
+            const mergedAdminNotifsMap = new Map<string, AdminActivityNotification>(
+              localNotifMap
+            );
+
+            remoteAdminNotifs.forEach((rn) => {
+              if (!rn || typeof rn.id !== "string") return;
+              const existingLocal = localNotifMap.get(rn.id);
+              const mergedItem: AdminActivityNotification = {
+                ...rn,
+                read: Boolean(existingLocal?.read || rn.read),
+              };
+              mergedAdminNotifsMap.set(rn.id, mergedItem);
+
+              if (!knownAdminNotifIdsRef.current.has(rn.id)) {
+                knownAdminNotifIdsRef.current.add(rn.id);
+                const createdMs = Date.parse(rn.createdAt || "");
+                const isVeryRecent =
+                  !Number.isNaN(createdMs) && Date.now() - createdMs <= 60_000;
+                if (adminNotifHydratedRef.current || isVeryRecent) {
+                  freshlyArrivedAdminNotifs.push(mergedItem);
+                }
+              }
+            });
+            adminNotifHydratedRef.current = true;
+
+            nextAdminNotifications = Array.from(mergedAdminNotifsMap.values())
+              .sort((a, b) => {
+                const ta = Date.parse(a.createdAt || "") || 0;
+                const tb = Date.parse(b.createdAt || "") || 0;
+                return tb - ta;
+              })
+              .slice(0, 50);
+          } else {
+            adminNotifHydratedRef.current = false;
+          }
+
+          const adminNotifsChanged =
+            JSON.stringify(nextAdminNotifications) !==
+            JSON.stringify(prev.adminNotifications || []);
+
+          if (isStaffSession && adminNotifsChanged && typeof window !== "undefined") {
+            try {
+              window.localStorage.setItem(
+                ADMIN_NOTIFS_STORAGE_KEY,
+                JSON.stringify(nextAdminNotifications)
+              );
+            } catch {}
+          }
+
+          if (isStaffSession && freshlyArrivedAdminNotifs.length > 0 && typeof window !== "undefined") {
+            window.setTimeout(() => {
+              freshlyArrivedAdminNotifs.forEach((notif) => {
+                window.dispatchEvent(
+                  new CustomEvent("ruang_sosmed_admin_notif", { detail: notif })
+                );
+              });
+            }, 0);
+          }
+
           if (
             !proChanged &&
             !subsChanged &&
@@ -3427,7 +3650,8 @@ export function RuangSosmedProvider({
             !maintenanceConfigChanged &&
             !threadsChanged &&
             !issuesChanged &&
-            !avatarsChanged
+            !avatarsChanged &&
+            !adminNotifsChanged
           ) {
             // Data tidak berubah: pertahankan referensi state sebelumnya agar tidak ada glitch / flicker cover
             return prev;
@@ -3435,6 +3659,7 @@ export function RuangSosmedProvider({
 
           return {
             ...prev,
+            adminNotifications: nextAdminNotifications,
             userAvatars: nextUserAvatars,
             rewardsCatalog: nextRewards,
             certificateConfig: nextCertConfig,
@@ -3686,9 +3911,11 @@ export function RuangSosmedProvider({
               ),
             }));
           } else {
-            console.warn(
-              "[RuangSosmed] Konten hanya tersimpan lokal. Pastikan akun admin login via Supabase dengan role admin/mentor."
-            );
+            if (process.env.NODE_ENV !== "production") {
+              console.warn(
+                "[RuangSosmed] Konten hanya tersimpan lokal. Pastikan akun admin login via Supabase dengan role admin/mentor."
+              );
+            }
           }
         })();
       }
@@ -3885,10 +4112,12 @@ export function RuangSosmedProvider({
               })
               .eq("folder_name", oldTitle);
           } catch (err) {
-            console.warn(
-              "[RuangSosmed] Gagal sinkronisasi update folder ke Supabase:",
-              err
-            );
+            if (process.env.NODE_ENV !== "production") {
+              console.warn(
+                "[RuangSosmed] Gagal sinkronisasi update folder ke Supabase:",
+                err
+              );
+            }
           }
         })();
       }
@@ -4093,7 +4322,7 @@ export function RuangSosmedProvider({
               .ilike("title", target.title.trim());
           }
         } catch (e) {
-          console.warn("[RuangSosmed] Gagal update status arsip di Supabase:", e);
+          if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Gagal update status arsip di Supabase:", e);
         }
       })();
     }
@@ -4167,7 +4396,7 @@ export function RuangSosmedProvider({
             }
           }
         } catch (e) {
-          console.warn("[RuangSosmed] Gagal update share status di Supabase:", e);
+          if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Gagal update share status di Supabase:", e);
         }
       })();
     }
@@ -5934,7 +6163,7 @@ export function RuangSosmedProvider({
                 .delete()
                 .ilike("email", target.email.trim());
             } catch (e) {
-              console.warn("[RuangSosmed] Gagal hapus member dari DB:", e);
+              if (process.env.NODE_ENV !== "production") console.warn("[RuangSosmed] Gagal hapus member dari DB:", e);
             }
           })();
         }
@@ -6043,10 +6272,12 @@ export function RuangSosmedProvider({
               }
             }
           } catch (err) {
-            console.warn(
-              "[RuangSosmed] Failed to sync review to Supabase contents:",
-              err
-            );
+            if (process.env.NODE_ENV !== "production") {
+              console.warn(
+                "[RuangSosmed] Failed to sync review to Supabase contents:",
+                err
+              );
+            }
           }
         })();
       }
@@ -6074,70 +6305,45 @@ export function RuangSosmedProvider({
   );
 
   const persistProTierToSupabase = useCallback(
-    async (isPro: boolean, studentName?: string, studentEmail?: string) => {
+    async (
+      isPro: boolean,
+      studentName?: string,
+      studentEmail?: string,
+      packageName?: string
+    ) => {
       if (!isSupabaseConfigured) return;
       try {
-        const cleanEmail = studentEmail?.trim().toLowerCase();
-        const cleanName = studentName?.trim();
+        let cleanEmail = (studentEmail || "").trim().toLowerCase();
+        const cleanName = (studentName || "").trim();
 
-        if (cleanEmail) {
-          const { data } = await supabase
-            .from("user_profiles")
-            .select("username, perks")
-            .ilike("email", cleanEmail);
-
-          if (Array.isArray(data) && data.length > 0) {
-            for (const row of data) {
-              await supabase
-                .from("user_profiles")
-                .update({
-                  perks: { ...(row.perks || {}), is_pro: isPro },
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("username", row.username);
+        if (!cleanEmail && cleanName) {
+          const { data: profMatches } = await supabase
+            .from("profiles")
+            .select("email")
+            .ilike("full_name", cleanName)
+            .limit(1);
+          if (Array.isArray(profMatches) && profMatches[0]?.email) {
+            cleanEmail = String(profMatches[0].email).trim().toLowerCase();
+          } else {
+            const { data: upMatches } = await supabase
+              .from("user_profiles")
+              .select("email")
+              .ilike("name", cleanName)
+              .limit(1);
+            if (Array.isArray(upMatches) && upMatches[0]?.email) {
+              cleanEmail = String(upMatches[0].email).trim().toLowerCase();
             }
-            return;
           }
         }
 
-        if (cleanName) {
-          const { data } = await supabase
-            .from("user_profiles")
-            .select("username, perks")
-            .ilike("name", cleanName);
+        if (!cleanEmail) return;
 
-          if (Array.isArray(data) && data.length > 0) {
-            for (const row of data) {
-              await supabase
-                .from("user_profiles")
-                .update({
-                  perks: { ...(row.perks || {}), is_pro: isPro },
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("username", row.username);
-            }
-            return;
-          }
-        }
-
-        // If user only had a `profiles` row, create/upsert a matching `user_profiles` row
-        if (cleanEmail || cleanName) {
-          const fallbackUsername =
-            (cleanEmail ? cleanEmail.split("@")[0] : cleanName || "learner")
-              .toLowerCase()
-              .replace(/[^a-z0-9._-]/g, "_") + "_pro";
-          await supabase.from("user_profiles").upsert(
-            {
-              username: fallbackUsername,
-              email: cleanEmail || null,
-              name: cleanName || cleanEmail || "Learner",
-              role: "learner",
-              perks: { is_pro: isPro },
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "username" }
-          );
-        }
+        await supabase.rpc("admin_set_learner_pro", {
+          p_target_email: cleanEmail,
+          p_target_name: cleanName || cleanEmail,
+          p_is_pro: isPro,
+          p_package_name: packageName || "Learner PRO Monthly",
+        });
       } catch {
         // Ignore network errors
       }
@@ -6145,23 +6351,68 @@ export function RuangSosmedProvider({
     []
   );
 
+  const submitProUpgradeRequest = useCallback(
+    async (params: {
+      packageId?: string;
+      packageName: string;
+      priceLabel: string;
+      buyerName?: string;
+      buyerContact?: string;
+      paymentMethod?: string;
+      proofUrl?: string;
+    }): Promise<{ ok: boolean; error?: string }> => {
+      if (!isSupabaseConfigured) {
+        return {
+          ok: false,
+          error: "Koneksi database diperlukan untuk mengirim konfirmasi pembayaran.",
+        };
+      }
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData?.session?.user) {
+          return { ok: false, error: "Silakan login terlebih dahulu." };
+        }
+
+        const { error } = await supabase.rpc("submit_pro_upgrade_request", {
+          p_user_name: (params.buyerName || "").trim() || "Learner",
+          p_package_id: (params.packageId || "").trim() || "pro-monthly",
+          p_package_name: params.packageName.trim() || "Learner PRO Monthly",
+          p_price_label: params.priceLabel.trim() || "Rp 149.000",
+          p_payment_method: (params.paymentMethod || "").trim() || "QRIS / Transfer Manual",
+          p_buyer_contact: (params.buyerContact || "").trim(),
+          p_proof_url: params.proofUrl || null,
+        });
+
+        if (error) {
+          return { ok: false, error: error.message || "Gagal mengirim konfirmasi pembayaran." };
+        }
+
+        setState((prev) => ({
+          ...prev,
+          learnerNotifications: [
+            {
+              id: `notif-pro-pending-${Date.now()}`,
+              title: "⏳ Konfirmasi Pembayaran PRO Terkirim",
+              body: `Permintaan aktivasi paket "${params.packageName}" (${params.priceLabel}) sedang menunggu verifikasi Admin.`,
+              time: "Just now",
+              unread: true,
+            },
+            ...prev.learnerNotifications,
+          ],
+        }));
+
+        return { ok: true };
+      } catch {
+        return { ok: false, error: "Gagal mengirim konfirmasi pembayaran." };
+      }
+    },
+    []
+  );
+
   const setLearnerProStatus = useCallback(
     (isPro: boolean, user?: { name?: string; email?: string } | null) => {
-      let targetName = user?.name?.trim() || "";
-      let targetEmail = user?.email?.trim().toLowerCase() || "";
-
-      if (!targetName && typeof window !== "undefined") {
-        try {
-          const raw = window.localStorage.getItem("ruang_sosmed_session_user_v1");
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            targetName = parsed?.name || "";
-            targetEmail = (parsed?.email || "").toLowerCase();
-          }
-        } catch {}
-      }
-
-      void persistProTierToSupabase(isPro, targetName, targetEmail);
+      const targetName = user?.name?.trim() || "";
+      const targetEmail = user?.email?.trim().toLowerCase() || "";
 
       setState((prev) => {
         const nextSubs: Record<string, "PRO" | "Free"> = {
@@ -6180,24 +6431,10 @@ export function RuangSosmedProvider({
           ...prev,
           learnerIsPro: isPro,
           learnerSubscriptions: nextSubs,
-          learnerNotifications: [
-            {
-              id: `notif-pro-${Date.now()}`,
-              title: isPro
-                ? "⚡ Learner PRO Membership Activated!"
-                : "Subscription Switched to Free Tier",
-              body: isPro
-                ? "All 7 Premium features (Advance Courses, Resource Downloads, Agency Wiki & SOPs, HD Certificates, 1-on-1 Assignment Grading, Chapter Discussion Q&A, Personal Notes & Favorites) are now unlocked."
-                : "Your account is currently on the Free Learner plan.",
-              time: "Just now",
-              unread: true,
-            },
-            ...prev.learnerNotifications,
-          ],
         };
       });
     },
-    [persistProTierToSupabase]
+    []
   );
 
   const toggleStudentProByAdmin = useCallback(
@@ -6227,22 +6464,7 @@ export function RuangSosmedProvider({
 
         return {
           ...prev,
-          learnerIsPro: isNextPro,
           learnerSubscriptions: nextMap,
-          learnerNotifications: [
-            {
-              id: `notif-admin-pro-${Date.now()}`,
-              title: isNextPro
-                ? `⚡ Admin Activated Learner PRO for ${studentName}`
-                : `Subscription Updated to Free Tier (${studentName})`,
-              body: isNextPro
-                ? "Admin has unlocked all 7 Learner PRO features for your account."
-                : "Admin switched your account tier to Free.",
-              time: "Just now",
-              unread: true,
-            },
-            ...prev.learnerNotifications,
-          ],
         };
       });
     },
@@ -6333,41 +6555,7 @@ export function RuangSosmedProvider({
     ): Promise<void> => {
       const cleanKey = emailOrId.toLowerCase().trim();
 
-      // 1. Update localStorage immediate cache
-      if (typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(
-            `ruang_sosmed_role_override_${cleanKey}`,
-            nextRole
-          );
-          const rawSession = window.localStorage.getItem(
-            "ruang_sosmed_session_user_v1"
-          );
-          if (rawSession) {
-            const s = JSON.parse(rawSession);
-            const sEmail = (s.email || "").toLowerCase().trim();
-            const sName = (s.name || "").toLowerCase().trim();
-            const isMatch =
-              (sEmail && (sEmail === cleanKey || cleanKey.includes(sEmail))) ||
-              (sName && (sName === cleanKey || cleanKey.includes(sName) || sName.includes(cleanKey)));
-
-            if (isMatch) {
-              s.role = nextRole === "Learner" ? "learner" : "admin";
-              window.localStorage.setItem(
-                "ruang_sosmed_session_user_v1",
-                JSON.stringify(s)
-              );
-              if (nextRole === "Learner") {
-                window.localStorage.setItem("ruang_sosmed_role_mode_v1", "learner");
-              }
-              window.dispatchEvent(new Event("storage"));
-              window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
-            }
-          }
-        } catch {}
-      }
-
-      // 2. Update store state (workspaceCollaborators & assignees)
+      // 1. Update store state (workspaceCollaborators & assignees)
       setState((prev) => {
         let matchedCollab = false;
         const nextCollabs = prev.workspaceCollaborators.map((c) => {
@@ -6438,29 +6626,26 @@ export function RuangSosmedProvider({
         };
       });
 
-      // 3. Persist to Supabase `profiles` & `user_profiles`
+      // 2. Persist strictly via hardened `admin_update_user_role` RPC
       if (isSupabaseConfigured) {
         try {
           const dbRole = nextRole.toLowerCase();
+          let targetEmail = cleanKey;
           if (isUuid(emailOrId)) {
-            await supabase
+            const { data: prof } = await supabase
               .from("profiles")
-              .update({ role: dbRole })
-              .eq("id", emailOrId);
-          } else {
-            await supabase
-              .from("profiles")
-              .update({ role: dbRole })
-              .ilike("email", cleanKey);
+              .select("email")
+              .eq("id", emailOrId)
+              .maybeSingle();
+            if (prof?.email) targetEmail = String(prof.email).toLowerCase().trim();
           }
 
-          // Also update user_profiles if available
-          try {
-            await supabase
-              .from("user_profiles")
-              .update({ role: dbRole })
-              .ilike("email", cleanKey);
-          } catch {}
+          if (targetEmail.includes("@")) {
+            await supabase.rpc("admin_update_user_role", {
+              p_target_email: targetEmail,
+              p_new_role: dbRole,
+            });
+          }
         } catch {
           // ignore network error
         }
@@ -6571,16 +6756,13 @@ export function RuangSosmedProvider({
 
       const newPoints = state.learnerPoints - reward.pointsCost;
 
-      // Update Supabase profiles total_points if user is authenticated
-      if (isSupabaseConfigured && (learnerEmail || learnerName)) {
+      // Update Supabase profiles total_points atomically via hardened RPC
+      if (isSupabaseConfigured && reward.pointsCost > 0) {
         void (async () => {
           try {
-            if (learnerEmail) {
-              await supabase
-                .from("profiles")
-                .update({ total_points: newPoints })
-                .ilike("email", learnerEmail);
-            }
+            await supabase.rpc("redeem_learner_points", {
+              p_points_cost: reward.pointsCost,
+            });
           } catch {}
         })();
       }
@@ -6977,17 +7159,6 @@ export function RuangSosmedProvider({
           if (map[firstLast]) return map[firstLast];
         }
       }
-      for (const rawId of identifiers) {
-        if (!rawId) continue;
-        const clean = rawId.trim().toLowerCase();
-        if (
-          clean.includes("dinur") ||
-          clean === "arunika" ||
-          clean === "admin@ruangsosmed.id"
-        ) {
-          return "/avatars/Frame 23.png";
-        }
-      }
       return "";
     },
     [state.userAvatars]
@@ -7084,11 +7255,137 @@ export function RuangSosmedProvider({
             .update({ avatar_url: dbVal })
             .ilike("username", cleanUsername);
         }
-        void syncUserAvatarsToSupabase(mergedMap);
+        void (async () => {
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const uid = sessionData?.session?.user?.id;
+            if (!uid) return;
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("role")
+              .eq("id", uid)
+              .maybeSingle();
+            if (prof?.role === "admin" || prof?.role === "mentor") {
+              await syncUserAvatarsToSupabase(mergedMap);
+            }
+          } catch {}
+        })();
       }
     },
     []
   );
+
+  const pushAdminNotification = useCallback(
+    (params: {
+      eventType: "user_registered" | "pro_subscribed";
+      userName: string;
+      userEmail?: string;
+      packageName?: string;
+      priceLabel?: string;
+    }): AdminActivityNotification => {
+      const notif = buildAdminActivityNotification(params);
+      knownAdminNotifIdsRef.current.add(notif.id);
+      adminNotifHydratedRef.current = true;
+
+      const currentList = stateRef.current.adminNotifications || [];
+      const deduped = [
+        notif,
+        ...currentList.filter((n) => n.id !== notif.id),
+      ].slice(0, 50);
+
+      setState((prev) => ({
+        ...prev,
+        adminNotifications: [
+          notif,
+          ...(prev.adminNotifications || []).filter((n) => n.id !== notif.id),
+        ].slice(0, 50),
+      }));
+
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            ADMIN_NOTIFS_STORAGE_KEY,
+            JSON.stringify(deduped)
+          );
+        } catch {}
+
+        if ("BroadcastChannel" in window) {
+          try {
+            const bc = new BroadcastChannel("ruang_sosmed_channel");
+            bc.postMessage({
+              type: "ADMIN_NOTIFICATION_NEW",
+              notification: notif,
+            });
+            bc.close();
+          } catch {}
+        }
+
+        window.dispatchEvent(
+          new CustomEvent("ruang_sosmed_admin_notif", { detail: notif })
+        );
+      }
+
+      void syncAdminNotificationsToSupabase(deduped);
+      return notif;
+    },
+    []
+  );
+
+  const markAdminNotificationRead = useCallback((id: string) => {
+    setState((prev) => {
+      const nextList = (prev.adminNotifications || []).map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      );
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            ADMIN_NOTIFS_STORAGE_KEY,
+            JSON.stringify(nextList)
+          );
+        } catch {}
+      }
+      void syncAdminNotificationsToSupabase(nextList);
+      return {
+        ...prev,
+        adminNotifications: nextList,
+      };
+    });
+  }, []);
+
+  const markAllAdminNotificationsRead = useCallback(() => {
+    setState((prev) => {
+      const nextList = (prev.adminNotifications || []).map((n) => ({
+        ...n,
+        read: true,
+      }));
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            ADMIN_NOTIFS_STORAGE_KEY,
+            JSON.stringify(nextList)
+          );
+        } catch {}
+      }
+      void syncAdminNotificationsToSupabase(nextList);
+      return {
+        ...prev,
+        adminNotifications: nextList,
+      };
+    });
+  }, []);
+
+  const clearAdminNotifications = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(ADMIN_NOTIFS_STORAGE_KEY, JSON.stringify([]));
+      } catch {}
+    }
+    void syncAdminNotificationsToSupabase([]);
+    setState((prev) => ({
+      ...prev,
+      adminNotifications: [],
+    }));
+  }, []);
 
   const value: RuangSosmedStoreContextValue = {
     ...state,
@@ -7128,6 +7425,7 @@ export function RuangSosmedProvider({
     saveRsLessonNote,
     submitRsLessonReview,
     setLearnerProStatus,
+    submitProUpgradeRequest,
     toggleStudentProByAdmin,
     registerLearnerProfile,
     updateMemberAccessRole,
@@ -7147,6 +7445,10 @@ export function RuangSosmedProvider({
     resolveUserAvatar,
     unassignLearnerFromContent,
     redeemFolderAccessCode,
+    pushAdminNotification,
+    markAdminNotificationRead,
+    markAllAdminNotificationsRead,
+    clearAdminNotifications,
   };
 
   return (

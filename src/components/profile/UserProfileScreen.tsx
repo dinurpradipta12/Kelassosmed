@@ -183,51 +183,23 @@ interface UserProfileScreenProps {
 
 async function syncProfileToSupabaseSystemRow(
   profileData: UserProfileData,
-  roleMode: "admin" | "learner"
+  _roleMode: "admin" | "learner"
 ): Promise<void> {
   if (!isSupabaseConfigured) return;
-  const sysTitle =
-    roleMode === "admin"
-      ? "__SYSTEM_USER_PROFILE_ADMIN__"
-      : "__SYSTEM_USER_PROFILE_LEARNER__";
   try {
-    const { data: existingRows } = await supabase
-      .from("contents")
-      .select("id")
-      .eq("title", sysTitle)
-      .order("updated_at", { ascending: false })
-      .limit(1);
-    const existing =
-      Array.isArray(existingRows) && existingRows.length > 0
-        ? existingRows[0]
-        : null;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const uid = sessionData?.session?.user?.id;
+    if (!uid) return;
 
-    const payload = { userProfile: profileData };
-    if (existing?.id) {
-      await supabase
-        .from("contents")
-        .update({
-          settings_json: payload,
-          status: "published",
-        })
-        .eq("id", existing.id);
-    } else {
-      const generatedId =
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `00000000-0000-4000-8000-${String(Date.now()).padStart(12, "0").slice(-12)}`;
-      await supabase.from("contents").insert({
-        id: generatedId,
-        title: sysTitle,
-        type: "page",
-        status: "published",
-        description: `System storage for ${roleMode} user profile`,
-        urgency: "not_urgent",
-        estimated_minutes: 0,
-        points_reward: 0,
-        settings_json: payload,
-      });
-    }
+    await supabase
+      .from("profiles")
+      .update({
+        full_name: profileData.fullName,
+        avatar_url: profileData.avatarUrl || null,
+        header_url: profileData.headerBanner || null,
+        job_title: profileData.professionalRole || "Social Media Specialist",
+      })
+      .eq("id", uid);
   } catch {}
 }
 
@@ -363,46 +335,40 @@ export function UserProfileScreen({
     }
   }, [profile, storageKey]);
 
-  // Fetch synced profile across origins from Supabase __SYSTEM_USER_PROFILE_*__
+  // Fetch own verified profile from `public.profiles` (no shared system rows in contents)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let cancelled = false;
-    const sysTitle =
-      mode === "admin"
-        ? "__SYSTEM_USER_PROFILE_ADMIN__"
-        : "__SYSTEM_USER_PROFILE_LEARNER__";
     (async () => {
       try {
-        const { data: rows } = await supabase
-          .from("contents")
-          .select("settings_json")
-          .eq("title", sysTitle)
-          .order("updated_at", { ascending: false })
-          .limit(1);
-        const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-        if (cancelled) return;
-        const remoteProfile = data?.settings_json?.userProfile as
-          | Partial<UserProfileData>
-          | undefined;
-        if (remoteProfile && typeof remoteProfile === "object") {
-          setProfile((prev) => {
-            const merged: UserProfileData = {
-              ...prev,
-              ...remoteProfile,
-              fullName:
-                remoteProfile.fullName &&
-                remoteProfile.fullName !== "Arunika Developer"
-                  ? remoteProfile.fullName
-                  : prev.fullName,
-              avatarUrl: remoteProfile.avatarUrl || prev.avatarUrl,
-            };
-            try {
-              window.localStorage.setItem(storageKey, JSON.stringify(merged));
-              window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
-            } catch {}
-            return merged;
-          });
-        }
+        const { data: sessionData } = await supabase.auth.getSession();
+        const uid = sessionData?.session?.user?.id;
+        if (!uid || cancelled) return;
+
+        const { data: row } = await supabase
+          .from("profiles")
+          .select("full_name, avatar_url, header_url, job_title")
+          .eq("id", uid)
+          .maybeSingle();
+
+        if (cancelled || !row) return;
+        setProfile((prev) => {
+          const merged: UserProfileData = {
+            ...prev,
+            fullName:
+              row.full_name && row.full_name !== "Arunika Developer"
+                ? row.full_name
+                : prev.fullName,
+            avatarUrl: row.avatar_url || prev.avatarUrl,
+            headerBanner: row.header_url || prev.headerBanner,
+            professionalRole: row.job_title || prev.professionalRole,
+          };
+          try {
+            window.localStorage.setItem(storageKey, JSON.stringify(merged));
+            window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
+          } catch {}
+          return merged;
+        });
       } catch {}
     })();
     return () => {
@@ -1007,25 +973,15 @@ export function UserProfileScreen({
               )}
             </nav>
           </div>
-
-          <div className="hidden md:block pt-8 text-[11px] text-[#9CA3AF]">
-            <p>Powered by</p>
-            <p className="font-bold text-[#121215] text-xs mt-0.5 flex items-center gap-1.5">
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-[#121215] text-white text-[9px] font-black">
-                T
-              </span>
-              <span>Trenning</span>
-            </p>
-          </div>
         </aside>
 
         {/* Right Main Form Area */}
-        <main className="flex-1 bg-[#FFFFFF] p-6 sm:p-10 overflow-y-auto">
+        <main className="flex-1 bg-[#FFFFFF] px-4 sm:px-6 py-6 overflow-y-auto">
           {subView === "manual-setup" ? (
             /* MANUAL SETUP / PROFILE SETTINGS FORM */
             <form
               onSubmit={handleSaveManualSetup}
-              className="max-w-2xl space-y-7"
+              className="w-full space-y-7"
             >
               <div className="border-b border-[#EAECEF] pb-4">
                 <h1 className="text-lg font-bold text-[#121215]">
@@ -1414,7 +1370,7 @@ export function UserProfileScreen({
             /* TOP-RIGHT SCREENSHOT: EMAIL INVITE FORM */
             <form
               onSubmit={handleSaveEmailInvite}
-              className="max-w-2xl space-y-7 flex flex-col justify-between min-h-[520px]"
+              className="w-full space-y-7 flex flex-col justify-between min-h-[520px]"
             >
               <div className="space-y-6">
                 <div className="border-b border-[#EAECEF] pb-4 space-y-1">
@@ -1505,7 +1461,7 @@ export function UserProfileScreen({
       <header
         className={`sticky ${
           mode === "learner" ? "top-0" : "top-10"
-        } z-30 bg-[#FFFFFF] border-b border-[#EAECEF] px-6 py-3 flex flex-wrap items-center justify-between gap-4`}
+        } z-30 bg-[#FFFFFF] border-b border-[#EAECEF] px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4`}
       >
         <div className="flex items-center gap-3">
           {onBack && (
@@ -1599,7 +1555,7 @@ export function UserProfileScreen({
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 pt-6 space-y-6">
+      <div className="w-full px-4 sm:px-6 pt-6 space-y-6">
         {/* Hero Cover Banner + Overlapping Circular Avatar */}
         <div className="relative">
           {(() => {
