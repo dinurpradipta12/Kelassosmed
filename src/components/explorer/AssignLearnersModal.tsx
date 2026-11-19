@@ -12,10 +12,11 @@ import {
   BookOpen,
   KeyRound,
   Copy,
+  Edit3,
 } from "lucide-react";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
-import { getDefaultFolderAccessCode } from "@/lib/phase2-data";
+import { getItemAccessCode } from "@/lib/phase2-data";
 
 interface AssignLearnersModalProps {
   open: boolean;
@@ -37,6 +38,7 @@ export function AssignLearnersModal({
     explorerItems,
     resolveUserAvatar,
     unassignLearnerFromContent,
+    updateContentAccessCode,
   } = useRuangSosmedStore();
 
   const liveCourse = useMemo(
@@ -54,10 +56,15 @@ export function AssignLearnersModal({
   }, [liveCourse]);
 
   const [copiedFolderCode, setCopiedFolderCode] = useState(false);
-  const folderAccessCode =
-    liveCourse?.type === "Folder"
-      ? liveCourse.accessCode || getDefaultFolderAccessCode(liveCourse.title)
-      : "";
+  const [editingAccessCode, setEditingAccessCode] = useState(false);
+  const [customCodeInput, setCustomCodeInput] = useState("");
+  const itemAccessCode = useMemo(
+    () =>
+      liveCourse
+        ? getItemAccessCode(liveCourse)
+        : getItemAccessCode({ title: contentTitle, type: "Course" }),
+    [liveCourse, contentTitle]
+  );
 
   const folderChildCount = useMemo(() => {
     if (liveCourse?.type !== "Folder") return 0;
@@ -164,6 +171,8 @@ export function AssignLearnersModal({
     if (!open) {
       setSubmittedSummary(null);
       setSelectedIds([]);
+      setEditingAccessCode(false);
+      setCustomCodeInput("");
     }
   }, [open, contentTitle]);
 
@@ -350,45 +359,99 @@ export function AssignLearnersModal({
         </div>
       ) : (
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Kode Akses Otomatis Khusus Folder Series */}
-        {liveCourse?.type === "Folder" && folderAccessCode && (
-          <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-3.5 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white">
+        {/* Kode Akses Otomatis (Self-Assign via Kode untuk Folder maupun Materi Individual) */}
+        {itemAccessCode && (
+          <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-3.5 space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2 min-w-0">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white mt-0.5">
                   <KeyRound size={14} />
                 </span>
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-amber-950">
-                    Kode Akses Otomatis Folder Series ({folderChildCount} materi)
+                    {liveCourse?.type === "Folder"
+                      ? `Kode Akses Otomatis Folder Series (${folderChildCount} materi)`
+                      : `Kode Akses Otomatis ${liveCourse?.type || "Materi"} Ini`}
                   </p>
-                  <p className="text-[10px] text-amber-800">
-                    Siswa yang input kode ini otomatis masuk &amp; membuka seluruh kelas di folder ini.
+                  <p className="text-[10px] text-amber-800 leading-relaxed">
+                    {liveCourse?.type === "Folder"
+                      ? "Siswa yang input kode ini otomatis masuk & membuka seluruh kelas di folder ini."
+                      : `Tanpa perlu assign manual satu per satu — siswa yang input kode ini otomatis ter-assign ke "${contentTitle}".`}
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (
-                    typeof navigator !== "undefined" &&
-                    navigator.clipboard
-                  ) {
-                    void navigator.clipboard.writeText(folderAccessCode);
-                  }
-                  setCopiedFolderCode(true);
-                  setTimeout(() => setCopiedFolderCode(false), 2000);
-                }}
-                className="inline-flex items-center gap-1 rounded-lg bg-white hover:bg-amber-100 border border-amber-300 px-2.5 py-1.5 text-xs font-extrabold tracking-wider text-amber-900 cursor-pointer shrink-0"
-              >
-                <span>{folderAccessCode}</span>
-                {copiedFolderCode ? (
-                  <Check size={12} className="text-emerald-600" />
-                ) : (
-                  <Copy size={12} />
-                )}
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      typeof navigator !== "undefined" &&
+                      navigator.clipboard
+                    ) {
+                      void navigator.clipboard.writeText(itemAccessCode);
+                    }
+                    setCopiedFolderCode(true);
+                    setTimeout(() => setCopiedFolderCode(false), 2000);
+                  }}
+                  title="Salin kode akses otomatis"
+                  className="inline-flex items-center gap-1 rounded-lg bg-white hover:bg-amber-100 border border-amber-300 px-2.5 py-1.5 text-xs font-extrabold tracking-wider text-amber-900 cursor-pointer"
+                >
+                  <span>{itemAccessCode}</span>
+                  {copiedFolderCode ? (
+                    <Check size={12} className="text-emerald-600" />
+                  ) : (
+                    <Copy size={12} />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomCodeInput(itemAccessCode);
+                    setEditingAccessCode((prev) => !prev);
+                  }}
+                  title="Ubah kode akses"
+                  aria-label="Ubah kode akses"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 cursor-pointer"
+                >
+                  <Edit3 size={12} />
+                </button>
+              </div>
             </div>
+
+            {editingAccessCode && (
+              <div className="flex items-center gap-2 pt-2 border-t border-amber-200/80">
+                <input
+                  type="text"
+                  value={customCodeInput}
+                  onChange={(e) =>
+                    setCustomCodeInput(e.target.value.toUpperCase())
+                  }
+                  placeholder={`Default: ${itemAccessCode}`}
+                  aria-label="Kode akses custom"
+                  className="flex-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider text-amber-950 border border-amber-300 focus:border-[#4F39F6] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateContentAccessCode(
+                      liveCourse?.id || contentTitle,
+                      customCodeInput
+                    );
+                    setEditingAccessCode(false);
+                  }}
+                  className="rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
+                >
+                  Simpan Kode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingAccessCode(false)}
+                  className="rounded-lg bg-white hover:bg-amber-100 px-2.5 py-1.5 text-[11px] font-semibold text-amber-900 border border-amber-300 cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            )}
           </div>
         )}
 

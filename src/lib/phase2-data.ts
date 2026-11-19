@@ -51,6 +51,115 @@ export function getDefaultFolderAccessCode(folderTitle: string): string {
   return `${prefix || "SERIES"}-2026`;
 }
 
+export function getDefaultContentAccessCode(
+  title: string,
+  folderName?: string,
+  id?: string
+): string {
+  const clean = (title || "").trim();
+  if (!clean) return "MTR-01";
+
+  const tokenMatch =
+    /\b(batch|modul|module|part|sesi|session|week|minggu|tahap|level|ep|episode|bab|kelas)\s*#?0*(\d{1,3})\b/i.exec(
+      clean
+    ) || /#\s*0*(\d{1,3})\b/.exec(clean);
+
+  let batchToken = "";
+  if (tokenMatch) {
+    if (tokenMatch.length >= 3 && tokenMatch[2]) {
+      const keyword = tokenMatch[1].toUpperCase();
+      const num = tokenMatch[2].padStart(2, "0");
+      batchToken = `${keyword[0]}${num}`;
+    } else if (tokenMatch[1]) {
+      batchToken = tokenMatch[1].padStart(2, "0");
+    }
+  } else {
+    const trailingNumMatch = /\b0*(\d{1,3})\s*$/.exec(
+      clean.replace(/\s*\(copy\)\s*$/i, "")
+    );
+    if (trailingNumMatch?.[1]) {
+      batchToken = trailingNumMatch[1].padStart(2, "0");
+    }
+  }
+
+  const ignoredWords = new Set([
+    "batch",
+    "modul",
+    "module",
+    "part",
+    "sesi",
+    "session",
+    "week",
+    "minggu",
+    "tahap",
+    "level",
+    "ep",
+    "episode",
+    "bab",
+    "kelas",
+    "copy",
+  ]);
+
+  const rawWords = clean
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const meaningfulWords = rawWords.filter(
+    (w) => !ignoredWords.has(w.toLowerCase()) && !/^\d+$/.test(w)
+  );
+  const sourceWords = meaningfulWords.length > 0 ? meaningfulWords : rawWords;
+
+  let prefix = "";
+  if (sourceWords.length >= 2) {
+    prefix = sourceWords
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 4)
+      .toUpperCase();
+  } else if (sourceWords.length === 1) {
+    prefix = sourceWords[0].slice(0, 4).toUpperCase();
+  }
+  prefix = prefix || "MTR";
+
+  const hashAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const hashSeed = `${clean.toLowerCase()}|${(folderName || "").trim().toLowerCase()}`;
+  let hashVal = 2166136261;
+  for (let i = 0; i < hashSeed.length; i += 1) {
+    hashVal ^= hashSeed.charCodeAt(i);
+    hashVal = Math.imul(hashVal, 16777619) >>> 0;
+  }
+  const c1 = hashAlphabet[hashVal % hashAlphabet.length];
+  const c2 = hashAlphabet[(hashVal >>> 5) % hashAlphabet.length];
+  const hash2 = `${c1}${c2}`;
+
+  if (batchToken) {
+    if (/\(copy\)/i.test(clean)) {
+      const idHash = (id || clean).slice(-2).toUpperCase().replace(/[^A-Z0-9]/g, "X");
+      return `${prefix}-${batchToken}-C${idHash || "1"}`;
+    }
+    return `${prefix}-${batchToken}`;
+  }
+
+  return `${prefix}-${hash2}`;
+}
+
+export function getItemAccessCode(item: {
+  title: string;
+  type?: ExplorerItemType;
+  folderName?: string;
+  id?: string;
+  accessCode?: string;
+}): string {
+  if (item.accessCode && item.accessCode.trim()) {
+    return item.accessCode.trim().toUpperCase().replace(/\s+/g, "-");
+  }
+  if (item.type === "Folder") {
+    return getDefaultFolderAccessCode(item.title);
+  }
+  return getDefaultContentAccessCode(item.title, item.folderName, item.id);
+}
+
 export const INITIAL_EXPLORER_ITEMS: ExplorerContentItem[] = [];
 
 export interface DiscussionReply {

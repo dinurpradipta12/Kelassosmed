@@ -387,6 +387,8 @@ export function LearnerPortalView({
   });
   const [unlockedFolderModal, setUnlockedFolderModal] = useState<{
     folderTitle: string;
+    unlockedTitle?: string;
+    unlockType?: "folder" | "content";
     courseCount: number;
     codeUsed: string;
   } | null>(null);
@@ -1086,7 +1088,7 @@ export function LearnerPortalView({
     return () => window.clearTimeout(autoDismissTimer);
   }, []);
 
-  // Auto-redeem folder access code if student entered it during registration
+  // Auto-redeem folder or content access code if student entered it during registration
   useEffect(() => {
     if (typeof window === "undefined" || !explorerItems.length) return;
     let pendingCode = "";
@@ -1096,25 +1098,27 @@ export function LearnerPortalView({
     } catch {}
     if (!pendingCode) return;
 
-    const hasFoldersLoaded = explorerItems.some((e) => e.type === "Folder");
-    if (!hasFoldersLoaded) return;
-
     const result = redeemFolderAccessCode(pendingCode, {
       name: learnerProfileName || currentUser?.name || "Learner",
       email: currentUser?.email,
       username: currentUser?.username,
     });
-    if (result.success && result.folderTitle) {
+    if (result.success) {
       try {
         window.localStorage.removeItem("ruang_sosmed_pending_folder_code");
       } catch {}
       setUnlockedFolderModal({
-        folderTitle: result.folderTitle,
-        courseCount: result.courseCount ?? 0,
+        folderTitle: result.unlockedTitle || result.folderTitle || "Materi",
+        unlockedTitle: result.unlockedTitle,
+        unlockType: result.unlockType,
+        courseCount: result.courseCount ?? 1,
         codeUsed: pendingCode,
       });
+      if (result.folderTitle) {
+        setActiveLearnerFolder(result.folderTitle);
+      }
     } else {
-      // Hapus setelah dicoba jika folder list sudah termuat agar tidak loop error
+      // Hapus setelah dicoba jika materi list sudah termuat agar tidak loop error
       try {
         window.localStorage.removeItem("ruang_sosmed_pending_folder_code");
       } catch {}
@@ -1139,15 +1143,21 @@ export function LearnerPortalView({
       email: currentUser?.email,
       username: currentUser?.username,
     });
-    if (result.success && result.folderTitle) {
+    if (result.success) {
       setFolderCodeInput("");
       setJoinCodeModalOpen(false);
       setUnlockedFolderModal({
-        folderTitle: result.folderTitle,
-        courseCount: result.courseCount ?? 0,
+        folderTitle: result.unlockedTitle || result.folderTitle || "Materi",
+        unlockedTitle: result.unlockedTitle,
+        unlockType: result.unlockType,
+        courseCount: result.courseCount ?? 1,
         codeUsed: clean,
       });
-      setActiveLearnerFolder(result.folderTitle);
+      if (result.folderTitle) {
+        setActiveLearnerFolder(result.folderTitle);
+      } else {
+        setActiveLearnerFolder(null);
+      }
       setSelectedFolderFilter("All");
     } else {
       onShowToast(result.message);
@@ -1819,7 +1829,7 @@ export function LearnerPortalView({
                       Mulai Belajar dengan Kode Akses
                     </h2>
                     <p className="text-xs text-[#5E5E5E] leading-relaxed">
-                      Belum ada kelas yang di-assign ke akun Anda. Masukkan <strong>Kode Akses Folder</strong> dari mentor untuk langsung membuka serinya.
+                      Belum ada kelas yang di-assign ke akun Anda. Masukkan <strong>Kode Akses Materi / Folder</strong> dari mentor untuk langsung membuka kelas Anda secara otomatis.
                     </p>
                   </div>
 
@@ -1829,7 +1839,7 @@ export function LearnerPortalView({
                   >
                     <label className="flex items-center gap-1.5 text-xs font-bold text-[#121215]">
                       <KeyRound size={13} className="text-[#4F39F6]" />
-                      <span>Masuk dengan Kode Folder</span>
+                      <span>Masuk dengan Kode Materi / Folder</span>
                     </label>
                     <div className="flex items-center gap-2">
                       <input
@@ -1838,7 +1848,7 @@ export function LearnerPortalView({
                         onChange={(e) =>
                           setFolderCodeInput(e.target.value.toUpperCase())
                         }
-                        placeholder="Mis. MBI-2026"
+                        placeholder="Mis. MBSM-B01 atau MBI-2026"
                         className="flex-1 min-w-0 rounded-lg bg-white px-3 py-2 text-xs font-bold uppercase tracking-wider text-[#121215] placeholder:normal-case placeholder:font-normal placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
                       />
                       <button
@@ -2464,7 +2474,7 @@ export function LearnerPortalView({
                               className="inline-flex items-center gap-1.5 rounded-lg bg-[#EEF2FF] hover:bg-[#E0E7FF] border border-[#4F39F6]/20 px-3 py-1.5 text-xs font-bold text-[#4F39F6] transition-colors cursor-pointer"
                             >
                               <KeyRound size={12} />
-                              <span>Masuk Kode Folder</span>
+                              <span>Redeem Kode Akses</span>
                             </button>
                             <span className="rounded-lg bg-[#4F39F6]/10 border border-[#4F39F6]/20 px-3 py-1.5 text-xs font-bold text-[#4F39F6] tabular-nums">
                               {myLearningItems.length} Kelas
@@ -3424,7 +3434,7 @@ export function LearnerPortalView({
                     className="inline-flex items-center gap-1.5 rounded-lg bg-[#EEF2FF] hover:bg-[#E0E7FF] border border-[#4F39F6]/20 px-3 py-1.5 text-xs font-bold text-[#4F39F6] transition-colors cursor-pointer"
                   >
                     <KeyRound size={12} />
-                    <span>Masuk Folder (Kode Akses)</span>
+                    <span>Redeem Kode Akses</span>
                   </button>
                 </div>
               </div>
@@ -3470,7 +3480,7 @@ export function LearnerPortalView({
                   <p className="text-xs text-[#5E5E5E] max-w-md mx-auto">
                     {activeNavTab === "favorites"
                       ? "Klik ikon hati pada kursus untuk menyimpannya ke Favorit."
-                      : "Silakan masukkan Kode Akses Folder dari mentor atau tunggu materi kelas Anda diaktifkan."}
+                      : "Silakan masukkan Kode Akses Materi / Folder dari mentor atau tunggu materi kelas Anda diaktifkan."}
                   </p>
                 </div>
               ) : visibleCourseCards.length === 0 ? (
@@ -3814,19 +3824,19 @@ export function LearnerPortalView({
             </section>
           )}
 
-          {/* Modal: Masuk Folder Series dengan Kode Akses */}
+          {/* Modal: Redeem Kode Akses Materi / Folder */}
           <ModalDialog
             open={joinCodeModalOpen}
             onClose={() => setJoinCodeModalOpen(false)}
             titleId="join-folder-code-title"
-            title="Masuk Folder Series dengan Kode Akses"
-            subtitle="Masukkan kode unik dari Admin / Mentor untuk langsung membuka seluruh course di folder tersebut."
+            title="Redeem Kode Akses Materi / Folder"
+            subtitle="Masukkan kode unik dari Admin / Mentor untuk langsung membuka materi spesifik atau seluruh isi folder secara otomatis."
             maxWidthClass="max-w-md"
           >
             <form onSubmit={handleRedeemCodeSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-[#121215] mb-1.5">
-                  Kode Akses Folder
+                  Kode Akses Materi / Folder
                 </label>
                 <div className="relative flex items-center">
                   <KeyRound
@@ -3841,7 +3851,7 @@ export function LearnerPortalView({
                     onChange={(e) =>
                       setFolderCodeInput(e.target.value.toUpperCase())
                     }
-                    placeholder="Contoh: MBI-2026"
+                    placeholder="Contoh: MBSM-B01 atau MBI-2026"
                     className="w-full rounded-xl bg-[#F8F9FB] pl-9 pr-3 py-2.5 text-sm font-bold uppercase tracking-wider text-[#121215] placeholder:normal-case placeholder:font-normal placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:bg-white focus:border-[#4F39F6] focus:outline-none"
                   />
                 </div>
@@ -3867,12 +3877,16 @@ export function LearnerPortalView({
             </form>
           </ModalDialog>
 
-          {/* Modal: Konfirmasi Berhasil Masuk Folder Series */}
+          {/* Modal: Konfirmasi Berhasil Membuka Materi / Folder Series */}
           <ModalDialog
             open={Boolean(unlockedFolderModal)}
             onClose={() => setUnlockedFolderModal(null)}
             titleId="folder-unlocked-modal-title"
-            title="🔓 Folder Series Terbuka!"
+            title={
+              unlockedFolderModal?.unlockType === "content"
+                ? "🔓 Materi Berhasil Dibuka!"
+                : "🔓 Folder Series Terbuka!"
+            }
             subtitle="Akses kelas otomatis aktif di akun Anda"
             maxWidthClass="max-w-sm"
           >
@@ -3883,11 +3897,21 @@ export function LearnerPortalView({
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-bold text-[#121215]">
-                    Folder &ldquo;{unlockedFolderModal.folderTitle}&rdquo;
+                    {unlockedFolderModal.unlockType === "content"
+                      ? `Materi “${unlockedFolderModal.unlockedTitle || unlockedFolderModal.folderTitle}”`
+                      : `Folder “${unlockedFolderModal.folderTitle}”`}
                   </p>
                   <p className="text-xs text-[#5E5E5E] leading-relaxed">
-                    Kode <strong>{unlockedFolderModal.codeUsed}</strong> berhasil diverifikasi! Sebanyak{" "}
-                    <strong>{unlockedFolderModal.courseCount} materi</strong> di folder ini kini muncul di daftar belajar Anda.
+                    {unlockedFolderModal.unlockType === "content" ? (
+                      <>
+                        Kode <strong>{unlockedFolderModal.codeUsed}</strong> berhasil diverifikasi! Materi ini otomatis ter-assign dan kini muncul di daftar belajar Anda.
+                      </>
+                    ) : (
+                      <>
+                        Kode <strong>{unlockedFolderModal.codeUsed}</strong> berhasil diverifikasi! Sebanyak{" "}
+                        <strong>{unlockedFolderModal.courseCount} materi</strong> di folder ini kini muncul di daftar belajar Anda.
+                      </>
+                    )}
                   </p>
                 </div>
                 <button

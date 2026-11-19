@@ -18,6 +18,7 @@ import {
   gradeSubmissionAction,
   postChapterDiscussionAction,
   saveLessonNoteAndReviewAction,
+  redeemAccessCodeAction,
 } from "@/app/actions/lms-actions";
 import {
   API_SECURITY_HEADERS,
@@ -66,7 +67,8 @@ export async function POST(request: Request) {
         | "evaluate_quiz"
         | "grade_submission"
         | "post_discussion"
-        | "save_lesson_note_review";
+        | "save_lesson_note_review"
+        | "redeem_access_code";
       payload: Record<string, unknown>;
     };
 
@@ -112,6 +114,23 @@ export async function POST(request: Request) {
             typeof saveLessonNoteAndReviewAction
           >[0]
         );
+        return NextResponse.json(res, { headers: API_SECURITY_HEADERS });
+      }
+      case "redeem_access_code": {
+        const rawPayload = (payload || {}) as Record<string, unknown>;
+        const res = await redeemAccessCodeAction({
+          code: String(rawPayload.code || ""),
+          targetTitles: Array.isArray(rawPayload.targetTitles)
+            ? rawPayload.targetTitles.map((t) => String(t || ""))
+            : undefined,
+          learnerId: caller.user.id,
+          learnerEmail: caller.email || String(rawPayload.learnerEmail || ""),
+          learnerName: caller.fullName || String(rawPayload.learnerName || ""),
+          learnerUsername:
+            typeof rawPayload.learnerUsername === "string"
+              ? rawPayload.learnerUsername
+              : undefined,
+        });
         return NextResponse.json(res, { headers: API_SECURITY_HEADERS });
       }
       default:

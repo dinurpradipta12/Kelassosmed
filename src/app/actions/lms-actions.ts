@@ -8,8 +8,10 @@
 // =============================================================================
 
 import { revalidatePath } from "next/cache";
+import { createClient } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import type { ContentType } from "@/lib/design-tokens";
+import { getItemAccessCode, type ExplorerItemType } from "@/lib/phase2-data";
 
 export interface PublishContentPayload {
   id?: string;
@@ -203,5 +205,293 @@ export async function saveLessonNoteAndReviewAction(payload: {
   return {
     ok: true,
     updatedAt,
+  };
+}
+
+export interface RedeemAccessCodePayload {
+  code: string;
+  targetTitles?: string[];
+  learnerId?: string;
+  learnerEmail?: string;
+  learnerName?: string;
+  learnerUsername?: string;
+}
+
+function createServiceRoleClient() {
+  const url = (
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    ""
+  ).trim();
+  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
+function mapDbRowTypeToExplorer(
+  dbType: string | null | undefined,
+  metaItemType?: string | null,
+  isFolderMeta?: boolean
+): ExplorerItemType {
+  if (isFolderMeta || String(dbType || "").toLowerCase() === "folder") {
+    return "Folder";
+  }
+  if (
+    metaItemType === "Course" ||
+    metaItemType === "Page" ||
+    metaItemType === "Quiz" ||
+    metaItemType === "Learning Path" ||
+    metaItemType === "Wiki" ||
+    metaItemType === "Folder"
+  ) {
+    return metaItemType;
+  }
+  switch (String(dbType || "").toLowerCase()) {
+    case "quiz":
+      return "Quiz";
+    case "page":
+      return "Page";
+    case "learning_path":
+      return "Learning Path";
+    case "wiki":
+      return "Wiki";
+    default:
+      return "Course";
+  }
+}
+
+export async function redeemAccessCodeAction(payload: RedeemAccessCodePayload) {
+  const cleanCode = (payload.code || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "-");
+
+  if (!cleanCode) {
+    return {
+      ok: false,
+      error: "Kode akses tidak boleh kosong.",
+      updatedCount: 0,
+      matchedTitles: [] as string[],
+    };
+  }
+
+  const adminClient = createServiceRoleClient();
+  if (!adminClient) {
+    return {
+      ok: false,
+      error: "Service role client belum tersedia.",
+      updatedCount: 0,
+      matchedTitles: [] as string[],
+    };
+  }
+
+  const { data: rows, error: fetchErr } = await adminClient
+    .from("contents")
+    .select(
+      "id, title, type, status, folder_name, access_code, settings_json"
+    )
+    .not("title", "ilike", "__SYSTEM_%");
+
+  if (fetchErr || !Array.isArray(rows)) {
+    return {
+      ok: false,
+      error: fetchErr?.message || "Gagal memuat data materi.",
+      updatedCount: 0,
+      matchedTitles: [] as string[],
+    };
+  }
+
+  const activeRows = rows.filter((row: any) => {
+    const meta = row?.settings_json?.explorer_meta || {};
+    const statusLower = String(row?.status || "").toLowerCase();
+    return statusLower !== "archived" && !meta.isArchived;
+  });
+
+  const targetTitleSet = new Set(
+    (payload.targetTitles || [])
+      .map((t) => String(t || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  const directMatches = activeRows.filter((row: any) => {
+    const meta = row?.settings_json?.explorer_meta || {};
+    const resolvedType = mapDbRowTypeToExplorer(
+      row.type,
+      meta.itemType,
+      Boolean(meta.isFolder)
+    );
+    const resolvedFolderName = row.folder_name || meta.folderName || undefined;
+    const explicitCode = String(row.access_code || meta.accessCode || "").trim();
+    const resolvedCode = getItemAccessCode({
+      title: row.title,
+      type: resolvedType,
+      folderName: resolvedFolderName,
+      id: row.id,
+      accessCode: explicitCode || undefined,
+    });
+    if (resolvedCode === cleanCode) return true;
+    // Allow title match fallback ONLY when the DB row has no conflicting explicit code
+    if (
+      !explicitCode &&
+      targetTitleSet.has(String(row.title || "").trim().toLowerCase())
+    ) {
+      return true;
+    }
+    return false;
+  });
+
+  if (directMatches.length === 0) {
+    return {
+      ok: false,
+      error: `Kode akses "${cleanCode}" tidak ditemukan di database.`,
+      updatedCount: 0,
+      matchedTitles: [] as string[],
+    };
+  }
+
+  const expandedMap = new Map<string, any>();
+  for (const row of directMatches) {
+    expandedMap.set(row.id, row);
+    const meta = row?.settings_json?.explorer_meta || {};
+    const isFolderRow =
+      String(row.type || "").toLowerCase() === "folder" ||
+      Boolean(meta.isFolder);
+    if (isFolderRow) {
+      const folderLower = String(row.title || "").trim().toLowerCase();
+      for (const candidate of activeRows) {
+        if (candidate.id === row.id) continue;
+        const cMeta = candidate?.settings_json?.explorer_meta || {};
+        const cIsFolder =
+          String(candidate.type || "").toLowerCase() === "folder" ||
+          Boolean(cMeta.isFolder);
+        if (cIsFolder) continue;
+        const cFolderName = String(
+          candidate.folder_name || cMeta.folderName || ""
+        )
+          .trim()
+          .toLowerCase();
+        if (cFolderName && cFolderName === folderLower) {
+          expandedMap.set(candidate.id, candidate);
+        }
+      }
+    }
+  }
+
+  const tokensToAdd = Array.from(
+    new Set(
+      [payload.learnerName, payload.learnerEmail, payload.learnerUsername]
+        .map((v) => String(v || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  const matchedTitles: string[] = [];
+  let updatedCount = 0;
+
+  for (const row of expandedMap.values()) {
+    const existingSettings =
+      row?.settings_json && typeof row.settings_json === "object"
+        ? row.settings_json
+        : {};
+    const existingMeta =
+      existingSettings.explorer_meta &&
+      typeof existingSettings.explorer_meta === "object"
+        ? existingSettings.explorer_meta
+        : {};
+    const existingLearners: string[] = Array.isArray(
+      existingMeta.assignedLearners
+    )
+      ? existingMeta.assignedLearners
+      : [];
+
+    const dedupMap = new Map<string, string>();
+    [...existingLearners, ...tokensToAdd].forEach((entry) => {
+      const clean = String(entry || "").trim();
+      if (!clean) return;
+      const key = clean.toLowerCase();
+      if (!dedupMap.has(key)) dedupMap.set(key, clean);
+    });
+    const nextLearners = Array.from(dedupMap.values());
+
+    const resolvedType = mapDbRowTypeToExplorer(
+      row.type,
+      existingMeta.itemType,
+      Boolean(existingMeta.isFolder)
+    );
+    const resolvedAccessCode = getItemAccessCode({
+      title: row.title,
+      type: resolvedType,
+      folderName: row.folder_name || existingMeta.folderName,
+      id: row.id,
+      accessCode: row.access_code || existingMeta.accessCode,
+    });
+
+    const nextSettings = {
+      ...existingSettings,
+      explorer_meta: {
+        ...existingMeta,
+        accessCode: resolvedAccessCode,
+        assignedLearners: nextLearners,
+        assignedCount: nextLearners.length,
+      },
+    };
+
+    const { error: updateErr } = await adminClient
+      .from("contents")
+      .update({
+        access_code: resolvedAccessCode,
+        settings_json: nextSettings,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+
+    if (updateErr && String(updateErr.message || "").includes("access_code")) {
+      await adminClient
+        .from("contents")
+        .update({
+          settings_json: nextSettings,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+    }
+
+    const isFolderRow = resolvedType === "Folder";
+    const isUuidCaller =
+      typeof payload.learnerId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        payload.learnerId
+      );
+
+    if (!isFolderRow && isUuidCaller) {
+      await adminClient.from("enrollments").upsert(
+        {
+          content_id: row.id,
+          learner_id: payload.learnerId,
+          status: "not_started",
+          progress_percent: 0,
+          completed_chapter_ids: [],
+        },
+        {
+          onConflict: "content_id,learner_id",
+          ignoreDuplicates: true,
+        }
+      );
+    }
+
+    updatedCount += 1;
+    matchedTitles.push(row.title);
+  }
+
+  revalidatePath("/");
+  return {
+    ok: updatedCount > 0,
+    updatedCount,
+    matchedTitles,
   };
 }

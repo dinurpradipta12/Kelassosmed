@@ -47,6 +47,7 @@ import {
 } from "@/lib/design-tokens";
 import {
   getDefaultFolderAccessCode,
+  getItemAccessCode,
   type ExplorerContentItem,
   type ExplorerItemType,
 } from "@/lib/phase2-data";
@@ -2105,6 +2106,7 @@ export function LearningContentExplorer({
 
           const renderStandardCard = (item: ExplorerContentItem) => {
             const menuOpen = openMenuCardId === item.id;
+            const itemCode = getItemAccessCode(item);
 
             return (
               <article
@@ -2122,20 +2124,44 @@ export function LearningContentExplorer({
 
                   {/* Card Body */}
                   <div className="p-3.5 space-y-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <ContentBadge type={item.type} size="sm" />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenAssignModal(item);
-                        }}
-                        title="Quick-assign learners"
-                        aria-label={`Quick-assign learners to ${item.title}`}
-                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#F8F9FB] text-[#5E5E5E] border border-[#EAECEF] hover:bg-[#4F39F6] hover:text-white hover:border-[#4F39F6] transition-colors cursor-pointer"
-                      >
-                        <UserPlus size={12} strokeWidth={2.2} />
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (
+                              typeof navigator !== "undefined" &&
+                              navigator.clipboard
+                            ) {
+                              void navigator.clipboard.writeText(itemCode);
+                            }
+                            onShowToast(
+                              `Kode akses '${itemCode}' untuk "${item.title}" berhasil disalin! Siswa cukup input kode ini untuk otomatis ter-assign.`
+                            );
+                          }}
+                          title={`Klik untuk salin Kode Akses Otomatis: ${itemCode}`}
+                          aria-label={`Salin kode akses ${itemCode} untuk ${item.title}`}
+                          className="inline-flex items-center gap-1 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-amber-800 transition-colors cursor-pointer"
+                        >
+                          <KeyRound size={10} />
+                          <span>{itemCode}</span>
+                          <Copy size={9} className="opacity-70" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenAssignModal(item);
+                          }}
+                          title="Quick-assign learners / kelola kode akses"
+                          aria-label={`Quick-assign learners to ${item.title}`}
+                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#F8F9FB] text-[#5E5E5E] border border-[#EAECEF] hover:bg-[#4F39F6] hover:text-white hover:border-[#4F39F6] transition-colors cursor-pointer"
+                        >
+                          <UserPlus size={12} strokeWidth={2.2} />
+                        </button>
+                      </div>
                     </div>
 
                     <h3 className="text-[13px] font-bold text-[#121215] group-hover:text-[#4F39F6] transition-colors line-clamp-1 leading-tight">
@@ -2221,6 +2247,17 @@ export function LearningContentExplorer({
                           >
                             <ImageIcon size={13} className="text-[#5E5E5E]" />
                             <span>Ganti Thumbnail</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuCardId(null);
+                              onOpenAssignModal(item);
+                            }}
+                            className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold text-[#4F39F6] hover:bg-[#4F39F6]/10 cursor-pointer"
+                          >
+                            <KeyRound size={13} />
+                            <span>Kode ({itemCode})</span>
                           </button>
                           <button
                             type="button"
@@ -2529,7 +2566,32 @@ export function LearningContentExplorer({
                       <ContentBadge type={item.type} />
                     </td>
                     <td className="py-3.5 px-3">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {(() => {
+                          const rowCode = getItemAccessCode(item);
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (
+                                  typeof navigator !== "undefined" &&
+                                  navigator.clipboard
+                                ) {
+                                  void navigator.clipboard.writeText(rowCode);
+                                }
+                                onShowToast(
+                                  `Kode akses '${rowCode}' untuk "${item.title}" berhasil disalin!`
+                                );
+                              }}
+                              title={`Klik untuk salin Kode Akses: ${rowCode}`}
+                              className="inline-flex items-center gap-1 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-amber-800 cursor-pointer"
+                            >
+                              <KeyRound size={10} />
+                              <span>{rowCode}</span>
+                            </button>
+                          );
+                        })()}
                         {item.folderName && (
                           <span className="rounded-md bg-[#4F39F6]/10 border border-[#4F39F6]/20 px-2 py-0.5 text-[11px] font-semibold text-[#4F39F6]">
                             📁 {item.folderName}

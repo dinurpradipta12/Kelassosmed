@@ -27,6 +27,7 @@ import {
   INITIAL_VERSIONS,
   INITIAL_WORKSPACE_COLLABORATORS,
   getDefaultFolderAccessCode,
+  getItemAccessCode,
   type ExplorerContentItem,
   type ExplorerItemType,
   type DiscussionThread,
@@ -600,6 +601,8 @@ async function pushContentToSupabase(
       ? item.assignedLearners
       : preservedAssignedLearners;
 
+    const resolvedAccessCode = getItemAccessCode(item);
+
     const upsertPayload: Record<string, any> = {
       id: dbId,
       type: toDbContentType(item.type),
@@ -607,6 +610,7 @@ async function pushContentToSupabase(
       description: item.description || "",
       thumbnail_url: item.thumbnailUrl || null,
       folder_name: item.folderName || null,
+      access_code: resolvedAccessCode,
       points_reward: 100,
       status: "published",
       urgency: item.urgency === "Urgent" ? "urgent" : "not_urgent",
@@ -632,11 +636,7 @@ async function pushContentToSupabase(
           cohort: item.cohort,
           thumbnailUrl: item.thumbnailUrl,
           folderName: item.folderName,
-          accessCode:
-            item.accessCode ||
-            (item.type === "Folder"
-              ? getDefaultFolderAccessCode(item.title)
-              : undefined),
+          accessCode: resolvedAccessCode,
           assignedLearners: resolvedAssignedLearners,
           assignedCount: resolvedAssignedLearners.length,
           chapterOutline: buildCompactChapterOutline(effectiveCurriculum),
@@ -648,7 +648,7 @@ async function pushContentToSupabase(
       .from("contents")
       .upsert(upsertPayload, { onConflict: "id" });
 
-    // Fallback aman bila enum DB belum memiliki `'folder'` atau kolom `folder_name` belum dibuat
+    // Fallback aman bila enum DB belum memiliki `'folder'` atau kolom `folder_name`/`access_code` belum dibuat
     if (error && upsertPayload.type === "folder") {
       const retryPayload: Record<string, any> = {
         ...upsertPayload,
@@ -658,16 +658,34 @@ async function pushContentToSupabase(
         .from("contents")
         .upsert(retryPayload, { onConflict: "id" });
       error = retryRes.error;
-      if (error && String(error.message || "").includes("folder_name")) {
-        delete retryPayload.folder_name;
+      if (
+        error &&
+        (String(error.message || "").includes("folder_name") ||
+          String(error.message || "").includes("access_code"))
+      ) {
+        if (String(error.message || "").includes("folder_name")) {
+          delete retryPayload.folder_name;
+        }
+        if (String(error.message || "").includes("access_code")) {
+          delete retryPayload.access_code;
+        }
         const retryNoCol = await supabase
           .from("contents")
           .upsert(retryPayload, { onConflict: "id" });
         error = retryNoCol.error;
       }
-    } else if (error && String(error.message || "").includes("folder_name")) {
+    } else if (
+      error &&
+      (String(error.message || "").includes("folder_name") ||
+        String(error.message || "").includes("access_code"))
+    ) {
       const retryPayload: Record<string, any> = { ...upsertPayload };
-      delete retryPayload.folder_name;
+      if (String(error.message || "").includes("folder_name")) {
+        delete retryPayload.folder_name;
+      }
+      if (String(error.message || "").includes("access_code")) {
+        delete retryPayload.access_code;
+      }
       const retryNoCol = await supabase
         .from("contents")
         .upsert(retryPayload, { onConflict: "id" });
@@ -1741,10 +1759,13 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     }
   ) => {
     success: boolean;
+    unlockType?: "folder" | "content";
+    unlockedTitle?: string;
     folderTitle?: string;
     courseCount?: number;
     message: string;
   };
+  updateContentAccessCode: (contentIdOrTitle: string, newCode: string) => void;
 
   // 15. Admin-Only Live Activity Notifications (New Member & PRO Subscriptions)
   pushAdminNotification: (params: {
@@ -3510,10 +3531,14 @@ export function RuangSosmedProvider({
                   meta.folderId ||
                   local?.folderId ||
                   undefined,
-                accessCode:
-                  meta.accessCode ||
-                  local?.accessCode ||
-                  (isFolder ? getDefaultFolderAccessCode(r.title) : undefined),
+                accessCode: getItemAccessCode({
+                  title: r.title,
+                  type,
+                  folderName:
+                    r.folder_name || meta.folderName || local?.folderName,
+                  id: r.id,
+                  accessCode: r.access_code || meta.accessCode || local?.accessCode,
+                }),
               };
             });
 
@@ -4402,15 +4427,15 @@ export function RuangSosmedProvider({
           ...(parentFolder?.assignedLearners || []),
         ])
       );
-      const normalizedAccessCode = isFolder
-        ? (
-            accessCode?.trim() ||
-            existingSameTitle?.accessCode ||
-            getDefaultFolderAccessCode(title)
-          )
-            .toUpperCase()
-            .replace(/\s+/g, "-")
-        : existingSameTitle?.accessCode;
+      const candidateId =
+        existingSameTitle?.id || (isFolder ? `folder-${nowId}` : `exp-${nowId}`);
+      const normalizedAccessCode = getItemAccessCode({
+        title,
+        type,
+        folderName: effectiveFolderName,
+        id: candidateId,
+        accessCode: accessCode?.trim() || existingSameTitle?.accessCode,
+      });
       const savedLocalThumb =
         typeof window !== "undefined"
           ? window.localStorage.getItem(
@@ -4421,7 +4446,7 @@ export function RuangSosmedProvider({
         savedLocalThumb || existingSameTitle?.thumbnailUrl || undefined;
 
       const newExplorerItem: ExplorerContentItem = {
-        id: existingSameTitle?.id || (isFolder ? `folder-${nowId}` : `exp-${nowId}`),
+        id: candidateId,
         title,
         type,
         assignedCount: inheritedLearners.length,
@@ -5750,6 +5775,63 @@ export function RuangSosmedProvider({
     []
   );
 
+  const updateContentAccessCode = useCallback(
+    (contentIdOrTitle: string, newCode: string) => {
+      const needle = (contentIdOrTitle || "").trim().toLowerCase();
+      if (!needle) return;
+      const target = stateRef.current.explorerItems.find(
+        (i) =>
+          i.id.toLowerCase() === needle ||
+          i.title.trim().toLowerCase() === needle
+      );
+      if (!target) return;
+
+      const cleanCode = newCode.trim().toUpperCase().replace(/\s+/g, "-");
+      const nextCode =
+        cleanCode ||
+        getItemAccessCode({
+          title: target.title,
+          type: target.type,
+          folderName: target.folderName,
+          id: target.id,
+        });
+
+      const updatedItem: ExplorerContentItem = {
+        ...target,
+        accessCode: nextCode,
+      };
+
+      setState((prev) => {
+        const nextItems = prev.explorerItems.map((exp) =>
+          exp.id === target.id ||
+          exp.title.trim().toLowerCase() === target.title.trim().toLowerCase()
+            ? { ...exp, accessCode: nextCode }
+            : exp
+        );
+        try {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              "ruang_sosmed_explorer_items_v2",
+              JSON.stringify(nextItems)
+            );
+          }
+        } catch {}
+        return {
+          ...prev,
+          explorerItems: nextItems,
+        };
+      });
+
+      void pushContentToSupabase(
+        updatedItem,
+        stateRef.current.courseCurriculums?.[
+          updatedItem.title.trim().toLowerCase()
+        ] ?? null
+      );
+    },
+    []
+  );
+
   const redeemFolderAccessCode = useCallback(
     (
       code: string,
@@ -5761,6 +5843,8 @@ export function RuangSosmedProvider({
       }
     ): {
       success: boolean;
+      unlockType?: "folder" | "content";
+      unlockedTitle?: string;
       folderTitle?: string;
       courseCount?: number;
       message: string;
@@ -5772,22 +5856,23 @@ export function RuangSosmedProvider({
       if (!cleanCode) {
         return {
           success: false,
-          message: "Masukkan kode akses folder terlebih dahulu.",
+          message: "Masukkan kode akses terlebih dahulu.",
         };
       }
 
       const matchedFolder = stateRef.current.explorerItems.find((item) => {
         if (item.type !== "Folder" || item.isArchived) return false;
-        const folderCode = (
-          item.accessCode || getDefaultFolderAccessCode(item.title)
-        )
-          .trim()
-          .toUpperCase()
-          .replace(/\s+/g, "-");
-        return folderCode === cleanCode;
+        return getItemAccessCode(item) === cleanCode;
       });
 
-      if (!matchedFolder) {
+      const matchedContent = !matchedFolder
+        ? stateRef.current.explorerItems.find((item) => {
+            if (item.type === "Folder" || item.isArchived) return false;
+            return getItemAccessCode(item) === cleanCode;
+          })
+        : undefined;
+
+      if (!matchedFolder && !matchedContent) {
         return {
           success: false,
           message: `Kode akses "${cleanCode}" tidak ditemukan. Periksa kembali kode dari mentor Anda.`,
@@ -5808,23 +5893,39 @@ export function RuangSosmedProvider({
         };
       }
 
-      const folderTitleLower = matchedFolder.title.trim().toLowerCase();
-      const childCourses = stateRef.current.explorerItems.filter(
-        (item) =>
-          item.type !== "Folder" &&
-          !item.isArchived &&
-          item.folderName?.trim().toLowerCase() === folderTitleLower
-      );
+      const targetItems: ExplorerContentItem[] = [];
+      let childCourseCount = 0;
+
+      if (matchedFolder) {
+        const folderTitleLower = matchedFolder.title.trim().toLowerCase();
+        const childCourses = stateRef.current.explorerItems.filter(
+          (item) =>
+            item.type !== "Folder" &&
+            !item.isArchived &&
+            item.folderName?.trim().toLowerCase() === folderTitleLower
+        );
+        childCourseCount = childCourses.length;
+        targetItems.push(matchedFolder, ...childCourses);
+      } else if (matchedContent) {
+        childCourseCount = 1;
+        targetItems.push(matchedContent);
+      }
 
       const itemsToPush: ExplorerContentItem[] = [];
       const lockExpires = Date.now() + 15000;
 
-      [matchedFolder, ...childCourses].forEach((entry) => {
-        const nextList = Array.from(
-          new Set([...(entry.assignedLearners || []), ...learnerTokens])
-        );
+      targetItems.forEach((entry) => {
+        const existingMap = new Map<string, string>();
+        [...(entry.assignedLearners || []), ...learnerTokens].forEach((val) => {
+          const cleanVal = String(val || "").trim();
+          if (!cleanVal) return;
+          const k = cleanVal.toLowerCase();
+          if (!existingMap.has(k)) existingMap.set(k, cleanVal);
+        });
+        const nextList = Array.from(existingMap.values());
         const updated: ExplorerContentItem = {
           ...entry,
+          accessCode: getItemAccessCode(entry),
           assignedLearners: nextList,
           assignedCount: nextList.length,
         };
@@ -5842,20 +5943,41 @@ export function RuangSosmedProvider({
         );
       });
 
-      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      if (typeof window !== "undefined") {
         try {
-          const bc = new BroadcastChannel("ruang_sosmed_channel");
-          itemsToPush.forEach((updatedExp) => {
-            bc.postMessage({
-              type: "ASSIGNMENT_UPDATED",
-              contentId: updatedExp.id,
-              contentTitle: updatedExp.title,
-              assignedLearners: updatedExp.assignedLearners || [],
-            });
+          const unlockedNames = itemsToPush
+            .filter((i) => i.type !== "Folder")
+            .map((i) => i.title);
+          learnerTokens.forEach((tok) => {
+            const k = `ruang_sosmed_user_assignments_${tok.toLowerCase()}`;
+            const rawExisting = window.localStorage.getItem(k);
+            const prevArr: string[] = rawExisting
+              ? JSON.parse(rawExisting)
+              : [];
+            const nextArr = Array.from(new Set([...prevArr, ...unlockedNames]));
+            window.localStorage.setItem(k, JSON.stringify(nextArr));
           });
-          bc.close();
         } catch {}
+
+        if ("BroadcastChannel" in window) {
+          try {
+            const bc = new BroadcastChannel("ruang_sosmed_channel");
+            itemsToPush.forEach((updatedExp) => {
+              bc.postMessage({
+                type: "ASSIGNMENT_UPDATED",
+                contentId: updatedExp.id,
+                contentTitle: updatedExp.title,
+                assignedLearners: updatedExp.assignedLearners || [],
+              });
+            });
+            bc.close();
+          } catch {}
+        }
       }
+
+      const primaryTitle = matchedFolder
+        ? matchedFolder.title
+        : matchedContent?.title || "Materi";
 
       setState((prev) => {
         const displayName = learner.name || learner.email || "Learner";
@@ -5879,7 +6001,7 @@ export function RuangSosmedProvider({
                 initials,
                 avatarBg: "#EEF2FF",
                 avatarText: "#4F39F6",
-                roleBadge: "Folder Code",
+                roleBadge: matchedFolder ? "Folder Code" : "Content Code",
                 completedChapters: 0,
                 totalChapters: Math.max(
                   1,
@@ -5890,22 +6012,37 @@ export function RuangSosmedProvider({
               ...prev.assignees,
             ];
 
+        const nextExplorer = prev.explorerItems.map((exp) => {
+          const updatedMatch = itemsToPush.find(
+            (u) =>
+              u.id === exp.id ||
+              u.title.trim().toLowerCase() === exp.title.trim().toLowerCase()
+          );
+          return updatedMatch ? updatedMatch : exp;
+        });
+
+        try {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              "ruang_sosmed_explorer_items_v2",
+              JSON.stringify(nextExplorer)
+            );
+          }
+        } catch {}
+
         return {
           ...prev,
           assignees: nextAssignees,
-          explorerItems: prev.explorerItems.map((exp) => {
-            const updatedMatch = itemsToPush.find(
-              (u) =>
-                u.id === exp.id ||
-                u.title.trim().toLowerCase() === exp.title.trim().toLowerCase()
-            );
-            return updatedMatch ? updatedMatch : exp;
-          }),
+          explorerItems: nextExplorer,
           learnerNotifications: [
             {
-              id: `notif-folder-code-${Date.now()}`,
-              title: `🔓 Akses Folder "${matchedFolder.title}" Terbuka`,
-              body: `Berhasil bergabung ke seri folder "${matchedFolder.title}" (${childCourses.length} materi) menggunakan kode ${cleanCode}.`,
+              id: `notif-code-${Date.now()}`,
+              title: matchedFolder
+                ? `🔓 Akses Folder "${primaryTitle}" Terbuka`
+                : `🔓 Akses Materi "${primaryTitle}" Terbuka`,
+              body: matchedFolder
+                ? `Berhasil bergabung ke seri folder "${primaryTitle}" (${childCourseCount} materi) menggunakan kode ${cleanCode}.`
+                : `Berhasil membuka akses materi "${primaryTitle}" secara otomatis menggunakan kode ${cleanCode}.`,
               time: "Baru saja",
               unread: true,
             },
@@ -5914,20 +6051,73 @@ export function RuangSosmedProvider({
         };
       });
 
-      itemsToPush.forEach((pushedItem) => {
-        void pushContentToSupabase(
-          pushedItem,
-          stateRef.current.courseCurriculums?.[
-            pushedItem.title.trim().toLowerCase()
-          ] ?? null
-        );
-      });
+      if (isSupabaseConfigured && typeof window !== "undefined") {
+        void (async () => {
+          try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const accessToken = sessionData?.session?.access_token;
+            if (accessToken) {
+              const apiRes = await fetch("/api/lms", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({
+                  action: "redeem_access_code",
+                  payload: {
+                    code: cleanCode,
+                    targetTitles: itemsToPush.map((i) => i.title),
+                    learnerName: learner.name || "",
+                    learnerEmail: learner.email || "",
+                    learnerUsername: learner.username || "",
+                  },
+                }),
+              });
+              if (apiRes.ok) {
+                const parsed = await apiRes.json().catch(() => null);
+                if (parsed?.ok) return;
+              }
+            }
+          } catch {}
+
+          try {
+            await supabase.rpc("redeem_access_code", {
+              p_code: cleanCode,
+              p_target_titles: itemsToPush.map((i) => i.title),
+              p_learner_name: learner.name || learner.email || null,
+            });
+          } catch {}
+
+          itemsToPush.forEach((pushedItem) => {
+            void pushContentToSupabase(
+              pushedItem,
+              stateRef.current.courseCurriculums?.[
+                pushedItem.title.trim().toLowerCase()
+              ] ?? null
+            );
+          });
+        })();
+      }
+
+      if (matchedFolder) {
+        return {
+          success: true,
+          unlockType: "folder",
+          unlockedTitle: matchedFolder.title,
+          folderTitle: matchedFolder.title,
+          courseCount: childCourseCount,
+          message: `Berhasil masuk folder "${matchedFolder.title}" (${childCourseCount} materi terbuka)!`,
+        };
+      }
 
       return {
         success: true,
-        folderTitle: matchedFolder.title,
-        courseCount: childCourses.length,
-        message: `Berhasil masuk folder "${matchedFolder.title}" (${childCourses.length} materi terbuka)!`,
+        unlockType: "content",
+        unlockedTitle: matchedContent!.title,
+        folderTitle: matchedContent?.folderName || undefined,
+        courseCount: 1,
+        message: `Berhasil membuka akses materi "${matchedContent!.title}"!`,
       };
     },
     []
@@ -8077,6 +8267,7 @@ export function RuangSosmedProvider({
     resolveUserAvatar,
     unassignLearnerFromContent,
     redeemFolderAccessCode,
+    updateContentAccessCode,
     pushAdminNotification,
     markAdminNotificationRead,
     markAllAdminNotificationsRead,
