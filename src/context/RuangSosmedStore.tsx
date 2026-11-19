@@ -476,6 +476,33 @@ function fromDbContentType(t: string): ExplorerItemType {
   }
 }
 
+function buildCompactChapterOutline(
+  curriculum?: CourseSectionAccordion[] | null
+): any[] {
+  if (!Array.isArray(curriculum)) return [];
+  return curriculum.map((sec) => ({
+    id: sec.id,
+    sectionTitle: sec.sectionTitle,
+    shortTitle: sec.shortTitle,
+    hidden: Boolean(sec.hidden),
+    _outlineOnly: true,
+    chapters: Array.isArray(sec.chapters)
+      ? sec.chapters.map((ch) => ({
+          id: ch.id,
+          title: ch.title,
+          type: ch.type,
+          duration: ch.duration,
+          completed: Boolean(ch.completed),
+          locked: Boolean(ch.locked),
+          points: ch.points,
+          isPro: Boolean(ch.isPro),
+          hidden: Boolean(ch.hidden),
+          videoUrl: ch.videoUrl ? ch.videoUrl : undefined,
+        }))
+      : [],
+  }));
+}
+
 /** Upsert satu konten (+ kurikulumnya) ke Supabase. Mengembalikan UUID baris jika sukses. */
 const inFlightPushTitles = new Set<string>();
 
@@ -491,38 +518,84 @@ async function pushContentToSupabase(
     let dbId = isUuid(item.id) ? item.id : null;
     let preservedReviews: any[] = [];
     let preservedAssignedLearners: string[] = [];
+    let preservedCurriculum: CourseSectionAccordion[] = [];
+    const needsExistingCurriculum =
+      item.type !== "Folder" &&
+      (!Array.isArray(curriculum) ||
+        curriculum.length === 0 ||
+        curriculum.some((s: any) => s?._outlineOnly));
+
     if (!dbId) {
       // Cek apakah konten dengan title ini sudah tersimpan di Supabase
       const { data: existing } = await supabase
         .from("contents")
-        .select("id, settings_json")
+        .select(
+          needsExistingCurriculum
+            ? "id, settings_json"
+            : ("id, reviews:settings_json->reviews, explorer_meta:settings_json->explorer_meta" as any)
+        )
         .ilike("title", item.title.trim())
         .limit(1)
         .maybeSingle();
-      if (existing?.id && isUuid(existing.id)) {
-        dbId = existing.id;
+      if ((existing as any)?.id && isUuid((existing as any).id)) {
+        dbId = (existing as any).id;
       } else {
         dbId = newUuid();
       }
-      if (Array.isArray(existing?.settings_json?.reviews)) {
-        preservedReviews = existing.settings_json.reviews;
+      const reviewsArr =
+        (existing as any)?.reviews ?? (existing as any)?.settings_json?.reviews;
+      if (Array.isArray(reviewsArr)) {
+        preservedReviews = reviewsArr;
       }
-      if (Array.isArray(existing?.settings_json?.explorer_meta?.assignedLearners)) {
-        preservedAssignedLearners = existing.settings_json.explorer_meta.assignedLearners;
+      const metaObj =
+        (existing as any)?.explorer_meta ??
+        (existing as any)?.settings_json?.explorer_meta;
+      if (Array.isArray(metaObj?.assignedLearners)) {
+        preservedAssignedLearners = metaObj.assignedLearners;
+      }
+      if (
+        needsExistingCurriculum &&
+        Array.isArray((existing as any)?.settings_json?.curriculum)
+      ) {
+        preservedCurriculum = (existing as any).settings_json.curriculum;
       }
     } else {
       const { data: existing } = await supabase
         .from("contents")
-        .select("settings_json")
+        .select(
+          needsExistingCurriculum
+            ? "settings_json"
+            : ("reviews:settings_json->reviews, explorer_meta:settings_json->explorer_meta" as any)
+        )
         .eq("id", dbId)
         .maybeSingle();
-      if (Array.isArray(existing?.settings_json?.reviews)) {
-        preservedReviews = existing.settings_json.reviews;
+      const reviewsArr =
+        (existing as any)?.reviews ?? (existing as any)?.settings_json?.reviews;
+      if (Array.isArray(reviewsArr)) {
+        preservedReviews = reviewsArr;
       }
-      if (Array.isArray(existing?.settings_json?.explorer_meta?.assignedLearners)) {
-        preservedAssignedLearners = existing.settings_json.explorer_meta.assignedLearners;
+      const metaObj =
+        (existing as any)?.explorer_meta ??
+        (existing as any)?.settings_json?.explorer_meta;
+      if (Array.isArray(metaObj?.assignedLearners)) {
+        preservedAssignedLearners = metaObj.assignedLearners;
+      }
+      if (
+        needsExistingCurriculum &&
+        Array.isArray((existing as any)?.settings_json?.curriculum)
+      ) {
+        preservedCurriculum = (existing as any).settings_json.curriculum;
       }
     }
+
+    const effectiveCurriculum: CourseSectionAccordion[] =
+      !needsExistingCurriculum && Array.isArray(curriculum)
+        ? curriculum
+        : preservedCurriculum.length > 0
+        ? preservedCurriculum
+        : Array.isArray(curriculum)
+        ? curriculum
+        : [];
     const resolvedAssignedLearners: string[] = Array.isArray(item.assignedLearners)
       ? item.assignedLearners
       : preservedAssignedLearners;
@@ -546,7 +619,7 @@ async function pushContentToSupabase(
         pass_unit: "percent",
         max_attempts: 3,
         reviews: preservedReviews,
-        curriculum: curriculum ?? [],
+        curriculum: effectiveCurriculum,
         explorer_meta: {
           itemType: item.type,
           isFolder: item.type === "Folder",
@@ -566,6 +639,7 @@ async function pushContentToSupabase(
               : undefined),
           assignedLearners: resolvedAssignedLearners,
           assignedCount: resolvedAssignedLearners.length,
+          chapterOutline: buildCompactChapterOutline(effectiveCurriculum),
         },
       },
     };
@@ -1737,6 +1811,125 @@ export function RuangSosmedProvider({
   const lastWatermarkRef = useRef<string>("");
   const syncInFlightRef = useRef<boolean>(false);
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cachedContentsRowsRef = useRef<any[] | null>(null);
+  const lastContentsWmKeyRef = useRef<string>("");
+  const fetchedCurriculumTsRef = useRef<Record<string, string>>({});
+  const inFlightCurriculumKeysRef = useRef<Set<string>>(new Set());
+  const contentUpdatedAtRef = useRef<Record<string, string>>({});
+  const isStaffSessionRef = useRef<boolean>(false);
+  const realtimeControlRef = useRef<{
+    connect: () => void;
+    disconnect: () => void;
+  } | null>(null);
+
+  const loadCourseCurriculumOnDemand = useCallback(
+    async (courseTitleOrId: string, expectedUpdatedAt?: string) => {
+      if (!isSupabaseConfigured || !courseTitleOrId) return;
+      const cleanArg = courseTitleOrId.trim();
+      if (!cleanArg) return;
+      const dedupKey = cleanArg.toLowerCase();
+      if (inFlightCurriculumKeysRef.current.has(dedupKey)) return;
+      inFlightCurriculumKeysRef.current.add(dedupKey);
+      try {
+        const query = isUuid(cleanArg)
+          ? supabase
+              .from("contents")
+              .select("id, title, settings_json, updated_at")
+              .eq("id", cleanArg)
+              .maybeSingle()
+          : supabase
+              .from("contents")
+              .select("id, title, settings_json, updated_at")
+              .ilike("title", cleanArg)
+              .limit(1)
+              .maybeSingle();
+
+        const { data, error } = await query;
+        if (error || !data) return;
+
+        const titleKey = String((data as any).title || cleanArg)
+          .trim()
+          .toLowerCase();
+        const remoteUpdatedAt = String(
+          (data as any).updated_at || expectedUpdatedAt || "loaded"
+        );
+        fetchedCurriculumTsRef.current[titleKey] = remoteUpdatedAt;
+        fetchedCurriculumTsRef.current[dedupKey] = remoteUpdatedAt;
+        contentUpdatedAtRef.current[titleKey] = remoteUpdatedAt;
+        if ((data as any).id) {
+          contentUpdatedAtRef.current[String((data as any).id)] = remoteUpdatedAt;
+        }
+
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              `ruang_sosmed_curriculum_ts_${titleKey}`,
+              remoteUpdatedAt
+            );
+          } catch {}
+        }
+
+        const remoteCurr = (data as any).settings_json?.curriculum;
+        if (!Array.isArray(remoteCurr) || remoteCurr.length === 0) return;
+
+        let localCurr: CourseSectionAccordion[] | null =
+          stateRef.current.courseCurriculums?.[titleKey] || null;
+        if (!localCurr && typeof window !== "undefined") {
+          try {
+            const raw = window.localStorage.getItem(
+              `ruang_sosmed_curriculum_${titleKey}`
+            );
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) localCurr = parsed;
+            }
+          } catch {}
+        }
+
+        const merged = overlayLocalProgress(remoteCurr, localCurr);
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              `ruang_sosmed_curriculum_${titleKey}`,
+              JSON.stringify(merged)
+            );
+          } catch {}
+        }
+
+        setState((prev) => {
+          const prevStr = JSON.stringify(prev.courseCurriculums?.[titleKey] || []);
+          if (prevStr === JSON.stringify(merged)) {
+            return prev;
+          }
+          const firstKey = prev.explorerItems[0]?.title?.trim().toLowerCase() || "";
+          const nextCurriculums = {
+            ...(prev.courseCurriculums || {}),
+            [titleKey]: merged,
+          };
+          const nextCatalog = syncLearnerCatalogWithExplorer(
+            prev.explorerItems,
+            prev.learnerAssignedItems,
+            nextCurriculums
+          );
+          return {
+            ...prev,
+            courseCurriculums: nextCurriculums,
+            learnerAssignedItems: nextCatalog,
+            courseSections:
+              titleKey === firstKey ||
+              titleKey === "fundamental social media specialist"
+                ? merged
+                : prev.courseSections,
+          };
+        });
+      } catch {
+        // Ignore network errors on lazy curriculum load
+      } finally {
+        inFlightCurriculumKeysRef.current.delete(dedupKey);
+      }
+    },
+    []
+  );
 
   // Hydrate from localStorage on mount
   useEffect(() => {
@@ -2369,6 +2562,7 @@ export function RuangSosmedProvider({
 
       syncInFlightRef.current = true;
       let latestWmSerialized = "";
+      let wmContentsKey = "";
       try {
         if (!options?.force) {
           const { data: wmData, error: wmErr } = await supabase.rpc(
@@ -2376,6 +2570,9 @@ export function RuangSosmedProvider({
           );
           if (!wmErr && wmData !== null && wmData !== undefined) {
             latestWmSerialized = JSON.stringify(wmData);
+            wmContentsKey = `${(wmData as any).contents_ts ?? ""}:${
+              (wmData as any).contents_count ?? ""
+            }`;
             if (
               latestWmSerialized !== "" &&
               latestWmSerialized === lastWatermarkRef.current
@@ -2391,6 +2588,9 @@ export function RuangSosmedProvider({
           );
           if (!wmErr && wmData !== null && wmData !== undefined) {
             latestWmSerialized = JSON.stringify(wmData);
+            wmContentsKey = `${(wmData as any).contents_ts ?? ""}:${
+              (wmData as any).contents_count ?? ""
+            }`;
           }
         }
 
@@ -2433,13 +2633,76 @@ export function RuangSosmedProvider({
           isStaffSession = rawDbRole === "admin" || rawDbRole === "mentor";
         }
 
-        const contentsRes = await supabase
-          .from("contents")
-          .select(
-            "id, project_id, type, title, description, thumbnail_url, category_tags, urgency, estimated_minutes, points_reward, is_pro_only, status, settings_json, author_id, folder_name, folder_id, access_code, cohort, sort_order, created_at, updated_at"
-          )
-          .in("status", ["published", "archived"])
-          .order("created_at", { ascending: true });
+        // Governance koneksi Realtime: hanya buka WebSocket permanen untuk Admin/Mentor
+        isStaffSessionRef.current = isStaffSession;
+        if (isStaffSession) {
+          realtimeControlRef.current?.connect();
+        } else {
+          realtimeControlRef.current?.disconnect();
+        }
+
+        let contentsRes: { data: any[] | null; error: any };
+        if (
+          wmContentsKey &&
+          wmContentsKey !== ":" &&
+          wmContentsKey === lastContentsWmKeyRef.current &&
+          Array.isArray(cachedContentsRowsRef.current)
+        ) {
+          contentsRes = { data: cachedContentsRowsRef.current, error: null };
+        } else {
+          const [sysRes, catRes] = await Promise.all([
+            supabase
+              .from("contents")
+              .select("id, title, status, settings_json, created_at, updated_at")
+              .like("title", "__SYSTEM_%")
+              .order("created_at", { ascending: true }),
+            supabase
+              .from("contents")
+              .select(
+                "id, project_id, type, title, description, thumbnail_url, category_tags, urgency, estimated_minutes, points_reward, is_pro_only, status, author_id, folder_name, folder_id, access_code, cohort, sort_order, created_at, updated_at, explorer_meta:settings_json->explorer_meta, reviews:settings_json->reviews" as any
+              )
+              .in("status", ["published", "archived"])
+              .not("title", "like", "__SYSTEM_%")
+              .order("created_at", { ascending: true }),
+          ]);
+
+          if (!sysRes.error && !catRes.error && Array.isArray(catRes.data)) {
+            const normalizedCatalog = (catRes.data as any[]).map((row) => ({
+              ...row,
+              __isLightweightRow: true,
+              settings_json: row.settings_json || {
+                explorer_meta: row.explorer_meta || {},
+                reviews: Array.isArray(row.reviews) ? row.reviews : [],
+                curriculum: Array.isArray(row.explorer_meta?.chapterOutline)
+                  ? row.explorer_meta.chapterOutline
+                  : [],
+              },
+            }));
+            const combinedRows = [
+              ...(Array.isArray(sysRes.data) ? sysRes.data : []),
+              ...normalizedCatalog,
+            ];
+            contentsRes = { data: combinedRows, error: null };
+            cachedContentsRowsRef.current = combinedRows;
+            if (wmContentsKey && wmContentsKey !== ":") {
+              lastContentsWmKeyRef.current = wmContentsKey;
+            }
+          } else {
+            contentsRes = await supabase
+              .from("contents")
+              .select(
+                "id, project_id, type, title, description, thumbnail_url, category_tags, urgency, estimated_minutes, points_reward, is_pro_only, status, settings_json, author_id, folder_name, folder_id, access_code, cohort, sort_order, created_at, updated_at"
+              )
+              .in("status", ["published", "archived"])
+              .order("created_at", { ascending: true });
+            if (!contentsRes.error && Array.isArray(contentsRes.data)) {
+              cachedContentsRowsRef.current = contentsRes.data;
+              if (wmContentsKey && wmContentsKey !== ":") {
+                lastContentsWmKeyRef.current = wmContentsKey;
+              }
+            }
+          }
+        }
 
         let profilesRes: { data: any[] | null; error: any } = {
           data: ownProfile ? [ownProfile] : [],
@@ -3025,6 +3288,11 @@ export function RuangSosmedProvider({
                     String(r.title).trim().toLowerCase()
               );
               const key = String(r.title).trim().toLowerCase();
+              const rowUpdatedAt = String(r.updated_at || "");
+              if (rowUpdatedAt) {
+                contentUpdatedAtRef.current[key] = rowUpdatedAt;
+                if (r.id) contentUpdatedAtRef.current[String(r.id)] = rowUpdatedAt;
+              }
               const dbCurr = r.settings_json?.curriculum;
               const localCurr =
                 prev.courseCurriculums?.[key] ||
@@ -3040,6 +3308,13 @@ export function RuangSosmedProvider({
                       }
                     })()
                   : null);
+              const cachedCurrTs =
+                fetchedCurriculumTsRef.current[key] ||
+                (typeof window !== "undefined"
+                  ? window.localStorage.getItem(
+                      `ruang_sosmed_curriculum_ts_${key}`
+                    )
+                  : null);
 
               const cachedThumb =
                 typeof window !== "undefined"
@@ -3048,51 +3323,108 @@ export function RuangSosmedProvider({
                   : null;
 
               if (Array.isArray(dbCurr) && dbCurr.length > 0) {
-                const merged = overlayLocalProgress(dbCurr, localCurr);
+                const rawMerged = overlayLocalProgress(dbCurr, localCurr);
+                const hasFreshLocalBody = Boolean(
+                  r.__isLightweightRow &&
+                    cachedCurrTs &&
+                    rowUpdatedAt &&
+                    cachedCurrTs === rowUpdatedAt &&
+                    Array.isArray(localCurr) &&
+                    localCurr.length > 0 &&
+                    !localCurr.some((sec: any) => Boolean(sec?._outlineOnly))
+                );
+                const merged = hasFreshLocalBody
+                  ? (rawMerged.map((sec: any) => {
+                      if (!sec || !sec._outlineOnly) return sec;
+                      const rest = { ...sec };
+                      delete rest._outlineOnly;
+                      return rest;
+                    }) as CourseSectionAccordion[])
+                  : rawMerged;
                 nextCurriculums[key] = merged;
 
-                // Jika versi lokal memiliki judul bab nyata (bukan "Chapter 3") sedangkan DB masih generic placeholder, perbarui DB Supabase
-                const localHasSpecific = (localCurr || []).some((s: any) =>
-                  (s.chapters || []).some(
-                    (ch: any) => !isGenericPlaceholderTitle(ch.title)
-                  )
-                );
-                const dbHasGeneric = dbCurr.some((s: any) =>
-                  (s.chapters || []).some((ch: any) =>
-                    isGenericPlaceholderTitle(ch.title)
-                  )
-                );
-                if (localHasSpecific && dbHasGeneric && isStaffSession) {
-                  const resolvedThumbForPush =
-                    r.thumbnail_url ||
-                    meta.thumbnailUrl ||
-                    local?.thumbnailUrl ||
-                    cachedThumb ||
-                    undefined;
-                  void pushContentToSupabase(
-                    {
-                      id: r.id,
-                      title: r.title,
-                      type,
-                      category: meta.category,
-                      bannerGradient: meta.bannerGradient,
-                      bannerAccent: meta.bannerAccent,
-                      bannerPattern: meta.bannerPattern,
-                      language: meta.language,
-                      description: r.description,
-                      assignedCount: 0,
-                      urgency: r.urgency === "urgent" ? "Urgent" : "Not Urgent",
-                      editedLabel: "Published",
-                      statusLabel: "Completed",
-                      progressPercent: 0,
-                      editedDate: "Today",
-                      thumbnailUrl: resolvedThumbForPush,
-                    },
-                    merged
+                if (r.__isLightweightRow) {
+                  // Row katalog ringan hanya berisi outline bab; muat isi penuh secara lazy untuk course utama bila belum ter-cache atau ada pembaruan
+                  const needsRefreshFromDb =
+                    !isFolder &&
+                    (!cachedCurrTs || (rowUpdatedAt && cachedCurrTs !== rowUpdatedAt));
+                  const isPrimaryCourse =
+                    key === "fundamental social media specialist" ||
+                    dbRows.findIndex((itemRow) => itemRow?.type !== "folder") ===
+                      dbRows.indexOf(r);
+                  if (needsRefreshFromDb && isPrimaryCourse) {
+                    void loadCourseCurriculumOnDemand(
+                      r.id || r.title,
+                      rowUpdatedAt
+                    );
+                  }
+                } else {
+                  if (typeof window !== "undefined" && rowUpdatedAt) {
+                    try {
+                      window.localStorage.setItem(
+                        `ruang_sosmed_curriculum_ts_${key}`,
+                        rowUpdatedAt
+                      );
+                      fetchedCurriculumTsRef.current[key] = rowUpdatedAt;
+                    } catch {}
+                  }
+                  // Jika versi lokal memiliki judul bab nyata (bukan "Chapter 3") sedangkan DB masih generic placeholder, perbarui DB Supabase
+                  const localHasSpecific = (localCurr || []).some((s: any) =>
+                    (s.chapters || []).some(
+                      (ch: any) => !isGenericPlaceholderTitle(ch.title)
+                    )
                   );
+                  const dbHasGeneric = dbCurr.some((s: any) =>
+                    (s.chapters || []).some((ch: any) =>
+                      isGenericPlaceholderTitle(ch.title)
+                    )
+                  );
+                  if (localHasSpecific && dbHasGeneric && isStaffSession) {
+                    const resolvedThumbForPush =
+                      r.thumbnail_url ||
+                      meta.thumbnailUrl ||
+                      local?.thumbnailUrl ||
+                      cachedThumb ||
+                      undefined;
+                    void pushContentToSupabase(
+                      {
+                        id: r.id,
+                        title: r.title,
+                        type,
+                        category: meta.category,
+                        bannerGradient: meta.bannerGradient,
+                        bannerAccent: meta.bannerAccent,
+                        bannerPattern: meta.bannerPattern,
+                        language: meta.language,
+                        description: r.description,
+                        assignedCount: 0,
+                        urgency: r.urgency === "urgent" ? "Urgent" : "Not Urgent",
+                        editedLabel: "Published",
+                        statusLabel: "Completed",
+                        progressPercent: 0,
+                        editedDate: "Today",
+                        thumbnailUrl: resolvedThumbForPush,
+                      },
+                      merged
+                    );
+                  }
                 }
               } else if (localCurr) {
                 nextCurriculums[key] = localCurr;
+              } else if (r.__isLightweightRow && !isFolder) {
+                const isPrimaryCourse =
+                  key === "fundamental social media specialist" ||
+                  dbRows.findIndex((itemRow) => itemRow?.type !== "folder") ===
+                    dbRows.indexOf(r);
+                if (
+                  isPrimaryCourse &&
+                  (!cachedCurrTs || (rowUpdatedAt && cachedCurrTs !== rowUpdatedAt))
+                ) {
+                  void loadCourseCurriculumOnDemand(
+                    r.id || r.title,
+                    rowUpdatedAt
+                  );
+                }
               }
 
               const isArchived =
@@ -3861,14 +4193,88 @@ export function RuangSosmedProvider({
 
     void syncRegisteredLearners({ force: true });
 
-    // Low-egress sync: rely primarily on Supabase Realtime + lightweight watermark check every 60s (never when hidden)
+    let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+    let idleDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connectStaffRealtime = () => {
+      if (!isStaffSessionRef.current) return;
+      if (realtimeChannel) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      realtimeChannel = supabase
+        .channel("realtime-user-profiles-pro")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "user_profiles" },
+          () => scheduleRealtimeSync()
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles" },
+          () => scheduleRealtimeSync()
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "contents" },
+          () => scheduleRealtimeSync()
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "pro_upgrade_requests" },
+          () => scheduleRealtimeSync()
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "mentor_inbox_threads" },
+          () => scheduleRealtimeSync()
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "mentor_reported_issues" },
+          () => scheduleRealtimeSync()
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "learner_pro_settings" },
+          () => scheduleRealtimeSync()
+        )
+        .subscribe();
+    };
+
+    const disconnectStaffRealtime = () => {
+      if (realtimeChannel) {
+        void supabase.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+    };
+
+    realtimeControlRef.current = {
+      connect: connectStaffRealtime,
+      disconnect: disconnectStaffRealtime,
+    };
+
+    // Low-egress sync: WebSocket Realtime khusus Admin/Mentor + watermark check 90s saat tab aktif
     const intervalId = window.setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
       void syncRegisteredLearners({ force: false });
-    }, 60_000);
+    }, 90_000);
 
     const handleVisibilityOrFocus = () => {
-      if (typeof document !== "undefined" && document.hidden) return;
+      if (typeof document !== "undefined" && document.hidden) {
+        if (idleDisconnectTimer) clearTimeout(idleDisconnectTimer);
+        idleDisconnectTimer = setTimeout(() => {
+          if (typeof document !== "undefined" && document.hidden) {
+            disconnectStaffRealtime();
+          }
+        }, 90_000);
+        return;
+      }
+      if (idleDisconnectTimer) {
+        clearTimeout(idleDisconnectTimer);
+        idleDisconnectTimer = null;
+      }
+      if (isStaffSessionRef.current) {
+        connectStaffRealtime();
+      }
       if (Date.now() - lastSyncAtRef.current < 15_000) return;
       void syncRegisteredLearners({ force: false });
     };
@@ -3884,54 +4290,25 @@ export function RuangSosmedProvider({
     const {
       data: { subscription: authSub },
     } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+      if (event === "SIGNED_IN") {
         lastWatermarkRef.current = "";
+        void syncRegisteredLearners({ force: true });
+      } else if (event === "SIGNED_OUT") {
+        isStaffSessionRef.current = false;
+        disconnectStaffRealtime();
+        lastWatermarkRef.current = "";
+        lastContentsWmKeyRef.current = "";
+        cachedContentsRowsRef.current = null;
         void syncRegisteredLearners({ force: true });
       }
     });
 
-    const realtimeChannel = supabase
-      .channel("realtime-user-profiles-pro")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "user_profiles" },
-        () => scheduleRealtimeSync()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        () => scheduleRealtimeSync()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "contents" },
-        () => scheduleRealtimeSync()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pro_upgrade_requests" },
-        () => scheduleRealtimeSync()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mentor_inbox_threads" },
-        () => scheduleRealtimeSync()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mentor_reported_issues" },
-        () => scheduleRealtimeSync()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "learner_pro_settings" },
-        () => scheduleRealtimeSync()
-      )
-      .subscribe();
-
     return () => {
       if (realtimeDebounceRef.current) {
-        window.clearTimeout(realtimeDebounceRef.current);
+        clearTimeout(realtimeDebounceRef.current);
+      }
+      if (idleDisconnectTimer) {
+        clearTimeout(idleDisconnectTimer);
       }
       window.clearInterval(intervalId);
       window.removeEventListener("focus", handleVisibilityOrFocus);
@@ -3939,7 +4316,8 @@ export function RuangSosmedProvider({
       window.removeEventListener("ruang_sosmed_points_awarded", handlePointsAwarded);
       window.removeEventListener("ruang_sosmed_profile_updated", handlePointsAwarded);
       authSub.unsubscribe();
-      void supabase.removeChannel(realtimeChannel);
+      disconnectStaffRealtime();
+      realtimeControlRef.current = null;
     };
   }, []);
 
@@ -7140,6 +7518,32 @@ export function RuangSosmedProvider({
     (courseTitle: string): CourseSectionAccordion[] | null => {
       const key = courseTitle.toLowerCase().trim();
       const inStore = state.courseCurriculums?.[key] || null;
+      const expectedTs = contentUpdatedAtRef.current[key];
+      const cachedTs =
+        fetchedCurriculumTsRef.current[key] ||
+        (typeof window !== "undefined"
+          ? window.localStorage.getItem(`ruang_sosmed_curriculum_ts_${key}`)
+          : null);
+      const isOutlineOnlyInStore = Boolean(
+        Array.isArray(inStore) &&
+          inStore.some((sec: any) => Boolean(sec?._outlineOnly))
+      );
+
+      if (
+        isSupabaseConfigured &&
+        key &&
+        (isOutlineOnlyInStore || !inStore || (expectedTs && cachedTs !== expectedTs))
+      ) {
+        const matchedExp = stateRef.current.explorerItems.find(
+          (e) => e.title?.trim().toLowerCase() === key && e.type !== "Folder"
+        );
+        if (matchedExp) {
+          void loadCourseCurriculumOnDemand(
+            matchedExp.id || courseTitle,
+            expectedTs
+          );
+        }
+      }
 
       let inLocal: CourseSectionAccordion[] | null = null;
       if (typeof window !== "undefined") {
@@ -7198,7 +7602,7 @@ export function RuangSosmedProvider({
       }
       return inStore || inLocal || null;
     },
-    [state.courseCurriculums]
+    [state.courseCurriculums, loadCourseCurriculumOnDemand]
   );
 
   const saveCourseCurriculumLive = useCallback(

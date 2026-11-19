@@ -2136,7 +2136,7 @@ export function AdminDirectoryInsightsModal({
               <span>Ringkasan Insight &amp; Rekomendasi Aksi Admin</span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
-              <div className="rounded-xl bg-[#EEF2FF]/70 border border-[#C7D2FE] p-3.5 space-y-1">
+              <div className="rounded-xl bg-[#EEF2FF] border border-[#C7D2FE] p-3.5 space-y-1">
                 <p className="font-bold text-[#312E81]">Paket Kontributor Utama</p>
                 <p className="text-[#4338CA] leading-relaxed">
                   {analytics.topPackage && analytics.topPackage.grossRevenue > 0

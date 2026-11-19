@@ -32,6 +32,8 @@ import {
   RotateCw,
   XCircle,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   useRuangSosmedStore,
@@ -146,6 +148,8 @@ export function AdminLearnersDirectory({
   >("all");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [supabaseMembers, setSupabaseMembers] = useState<DirectoryMember[]>([]);
   const [supabaseProMap, setSupabaseProMap] = useState<Record<string, "PRO" | "Free">>({});
 
@@ -566,6 +570,9 @@ export function AdminLearnersDirectory({
     void loadSupabaseDirectory();
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let dirChannel: ReturnType<typeof supabase.channel> | null = null;
+
     const scheduleRefresh = () => {
       if (typeof document !== "undefined" && document.hidden) return;
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -574,41 +581,68 @@ export function AdminLearnersDirectory({
       }, 1000);
     };
 
-    const handleVisibility = () => {
+    const subscribeDirChannel = () => {
+      if (dirChannel) return;
       if (typeof document !== "undefined" && document.hidden) return;
+      dirChannel = supabase
+        .channel("admin-learners-directory-sync")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "profiles" },
+          scheduleRefresh
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "user_profiles" },
+          scheduleRefresh
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "user_subscriptions" },
+          scheduleRefresh
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "pro_upgrade_requests" },
+          scheduleRefresh
+        )
+        .subscribe();
+    };
+
+    const disconnectDirChannel = () => {
+      if (dirChannel) {
+        void supabase.removeChannel(dirChannel);
+        dirChannel = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.hidden) {
+        if (idleDisconnectTimer) clearTimeout(idleDisconnectTimer);
+        idleDisconnectTimer = setTimeout(() => {
+          if (typeof document !== "undefined" && document.hidden) {
+            disconnectDirChannel();
+          }
+        }, 90_000);
+        return;
+      }
+      if (idleDisconnectTimer) {
+        clearTimeout(idleDisconnectTimer);
+        idleDisconnectTimer = null;
+      }
+      subscribeDirChannel();
       if (Date.now() - lastDirFetchAtRef.current < 30_000) return;
       void loadSupabaseDirectory();
     };
-    document.addEventListener("visibilitychange", handleVisibility);
 
-    const dirChannel = supabase
-      .channel("admin-learners-directory-sync")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        scheduleRefresh
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "user_profiles" },
-        scheduleRefresh
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "user_subscriptions" },
-        scheduleRefresh
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pro_upgrade_requests" },
-        scheduleRefresh
-      )
-      .subscribe();
+    document.addEventListener("visibilitychange", handleVisibility);
+    subscribeDirChannel();
 
     return () => {
-      if (debounceTimer) window.clearTimeout(debounceTimer);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (idleDisconnectTimer) clearTimeout(idleDisconnectTimer);
       document.removeEventListener("visibilitychange", handleVisibility);
-      void supabase.removeChannel(dirChannel);
+      disconnectDirChannel();
     };
   }, [loadSupabaseDirectory]);
 
@@ -1298,6 +1332,28 @@ export function AdminLearnersDirectory({
       const db = getMemberSubInfo(b)?.daysRemaining ?? 9999;
       return da - db;
     });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [subscriptionTab, cohortFilter, roleFilter, searchQuery, pageSize]);
+
+  const totalFilteredCount = filteredMembers.length;
+  const effectivePageSize =
+    pageSize > 0 ? pageSize : Math.max(1, totalFilteredCount);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalFilteredCount / effectivePageSize)
+  );
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const pageStartIndex = (safeCurrentPage - 1) * effectivePageSize;
+  const pageEndIndex = Math.min(
+    totalFilteredCount,
+    pageStartIndex + effectivePageSize
+  );
+  const paginatedMembers =
+    pageSize > 0
+      ? filteredMembers.slice(pageStartIndex, pageStartIndex + pageSize)
+      : filteredMembers;
 
   const applyLocalSubscriptionUpdate = (
     member: { name: string; email: string },
@@ -2210,7 +2266,7 @@ export function AdminLearnersDirectory({
                           </td>
                         </tr>
                       ) : (
-                        filteredMembers.map((member) => {
+                        paginatedMembers.map((member) => {
                           const pct =
                             member.totalChapters > 0
                               ? Math.round(
@@ -2488,6 +2544,113 @@ export function AdminLearnersDirectory({
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination Bar */}
+                {totalFilteredCount > 0 && (
+                  <nav
+                    aria-label="Navigasi halaman direktori member"
+                    className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#EAECEF] text-xs text-[#5E5E5E]"
+                  >
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="tabular-nums">
+                        Menampilkan{" "}
+                        <strong className="text-[#121215]">
+                          {pageStartIndex + 1}–{pageEndIndex}
+                        </strong>{" "}
+                        dari{" "}
+                        <strong className="text-[#121215]">
+                          {totalFilteredCount}
+                        </strong>{" "}
+                        member
+                      </span>
+
+                      <select
+                        aria-label="Jumlah baris per halaman"
+                        value={pageSize}
+                        onChange={(e) => setPageSize(Number(e.target.value))}
+                        className="rounded-lg bg-[#F8F9FB] px-2.5 py-1 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none cursor-pointer"
+                      >
+                        <option value={10}>10 / halaman</option>
+                        <option value={25}>25 / halaman</option>
+                        <option value={50}>50 / halaman</option>
+                        <option value={100}>100 / halaman</option>
+                        <option value={0}>Semua ({totalFilteredCount})</option>
+                      </select>
+                    </div>
+
+                    {totalPages > 1 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={safeCurrentPage <= 1}
+                          onClick={() =>
+                            setCurrentPage((p) => Math.max(1, p - 1))
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#FFFFFF] hover:bg-[#F8F9FB] disabled:opacity-45 px-2.5 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <ChevronLeft size={13} />
+                          <span>Sebelumnya</span>
+                        </button>
+
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter(
+                            (p) =>
+                              p === 1 ||
+                              p === totalPages ||
+                              Math.abs(p - safeCurrentPage) <= 1
+                          )
+                          .reduce<Array<number | "ellipsis">>(
+                            (acc, p, idx, arr) => {
+                              if (idx > 0 && p - arr[idx - 1] > 1) {
+                                acc.push("ellipsis");
+                              }
+                              acc.push(p);
+                              return acc;
+                            },
+                            []
+                          )
+                          .map((item, idx) =>
+                            item === "ellipsis" ? (
+                              <span
+                                key={`ellipsis-${idx}`}
+                                className="px-1.5 text-[#9CA3AF]"
+                              >
+                                …
+                              </span>
+                            ) : (
+                              <button
+                                key={item}
+                                type="button"
+                                onClick={() => setCurrentPage(item)}
+                                aria-current={
+                                  item === safeCurrentPage ? "page" : undefined
+                                }
+                                className={`min-w-[28px] rounded-lg px-2 py-1 text-xs font-bold border transition-colors cursor-pointer tabular-nums ${
+                                  item === safeCurrentPage
+                                    ? "bg-[#4F39F6] text-white border-[#4F39F6]"
+                                    : "bg-[#FFFFFF] text-[#5E5E5E] border-[#EAECEF] hover:bg-[#F8F9FB] hover:text-[#121215]"
+                                }`}
+                              >
+                                {item}
+                              </button>
+                            )
+                          )}
+
+                        <button
+                          type="button"
+                          disabled={safeCurrentPage >= totalPages}
+                          onClick={() =>
+                            setCurrentPage((p) => Math.min(totalPages, p + 1))
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#FFFFFF] hover:bg-[#F8F9FB] disabled:opacity-45 px-2.5 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <span>Berikutnya</span>
+                          <ChevronRight size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </nav>
+                )}
               </div>
             </>
           );
