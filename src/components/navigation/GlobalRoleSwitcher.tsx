@@ -10,6 +10,7 @@ import {
   User,
 } from "lucide-react";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import { AdminFloatingNotificationButton } from "@/components/admin/AdminFloatingNotificationButton";
 
 export type AppRoleMode = "admin" | "learner";
 
@@ -31,6 +32,7 @@ interface GlobalRoleSwitcherProps {
   currentUser?: AuthenticatedUser | null;
   onOpenAuth?: () => void;
   onLogout?: () => void;
+  onNavigateLearners?: () => void;
 }
 
 export function GlobalRoleSwitcher({
@@ -43,6 +45,7 @@ export function GlobalRoleSwitcher({
   currentUser,
   onOpenAuth,
   onLogout,
+  onNavigateLearners,
 }: GlobalRoleSwitcherProps) {
   const { resolveUserAvatar } = useRuangSosmedStore();
 
@@ -135,6 +138,12 @@ export function GlobalRoleSwitcher({
                 ⌘K
               </kbd>
             </button>
+          )}
+
+          {isAdmin && (
+            <AdminFloatingNotificationButton
+              onNavigateLearners={onNavigateLearners}
+            />
           )}
 
           {/* User Auth Status / Login Button */}

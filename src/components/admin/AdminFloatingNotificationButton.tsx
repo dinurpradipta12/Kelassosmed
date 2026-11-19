@@ -389,80 +389,80 @@ export function AdminFloatingNotificationButton({
     return list.filter((n) => n.eventType === filterTab);
   }, [adminNotifications, filterTab]);
 
-  if (!mounted || typeof document === "undefined") {
-    return null;
-  }
-
-  return createPortal(
+  return (
     <>
-      {/* Hidden pre-populated live region fallback for screen readers */}
-      <div aria-live="assertive" className="sr-only">
-        {liveAnnouncement}
-      </div>
-
-      {/* Top-Right Floating Bell Trigger Button */}
-      <div className="fixed top-14 right-5 z-50 flex items-center justify-end">
-        <div className="relative">
-          {unreadCount > 0 && (
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute -inset-1 rounded-2xl bg-[#4F39F6]/20 animate-ping"
-              style={{ animationDuration: "2.4s" }}
-            />
-          )}
-          <button
-            ref={triggerBtnRef}
-            type="button"
-            onClick={() => {
-              setInboxOpen((prev) => !prev);
-            }}
-            aria-label={
-              unreadCount > 0
-                ? `Notifikasi Admin (${unreadCount} belum dibaca)`
-                : "Notifikasi Admin"
-            }
-            aria-expanded={inboxOpen}
-            aria-haspopup="dialog"
-            title="Notifikasi Member Baru & Langganan PRO"
-            className={`relative flex h-11 w-11 items-center justify-center rounded-2xl border backdrop-blur-md transition-all duration-150 cursor-pointer ${
-              inboxOpen
-                ? "bg-[#4F39F6] text-white border-[#4F39F6] shadow-[0_10px_28px_rgba(79,57,246,0.32)]"
-                : "bg-[#FFFFFF]/95 text-[#121215] border-[#EAECEF] shadow-[0_8px_24px_rgba(16,15,17,0.12)] hover:border-[#4F39F6]/50 hover:shadow-[0_10px_28px_rgba(79,57,246,0.18)]"
-            }`}
-          >
-            {unreadCount > 0 && !inboxOpen ? (
-              <BellRing size={19} className="text-[#4F39F6]" />
-            ) : (
-              <Bell size={19} />
-            )}
-
-            {unreadCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-[#EF4444] text-white text-[10px] font-extrabold shadow-md ring-2 ring-white tabular-nums">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Live Floating Popup Notifications (Top Layer manual popover directly below bell button) */}
-      <div
-        ref={popoverRef}
-        role="region"
-        aria-label="Notifikasi Aktivitas Admin"
-        {...({ popover: "manual" } as Record<string, string>)}
-        onMouseEnter={() => setIsPopupPaused(true)}
-        onMouseLeave={() => setIsPopupPaused(false)}
-        onFocusCapture={() => setIsPopupPaused(true)}
-        onBlurCapture={(e) => {
-          if (!popoverRef.current?.contains(e.relatedTarget as Node | null)) {
-            setIsPopupPaused(false);
+      {/* Top-Bar Docked Bell Trigger Button (Never overlaps page content or toolbars) */}
+      <div className="relative shrink-0">
+        {unreadCount > 0 && !inboxOpen && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -inset-0.5 rounded-lg bg-[#4F39F6]/20 animate-ping"
+            style={{ animationDuration: "2.4s" }}
+          />
+        )}
+        <button
+          ref={triggerBtnRef}
+          type="button"
+          onClick={() => {
+            setInboxOpen((prev) => !prev);
+          }}
+          aria-label={
+            unreadCount > 0
+              ? `Notifikasi Admin (${unreadCount} belum dibaca)`
+              : "Notifikasi Admin"
           }
-        }}
-        className={`admin-notif-popover w-[min(360px,calc(100vw-2rem))] space-y-2.5 ${
-          activePopups.length > 0 && !inboxOpen ? "is-open" : ""
-        }`}
-      >
+          aria-expanded={inboxOpen}
+          aria-haspopup="dialog"
+          title="Notifikasi Member Baru & Langganan PRO"
+          className={`relative inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[11px] font-semibold transition-all duration-150 cursor-pointer ${
+            inboxOpen
+              ? "bg-[#4F39F6] text-white border-[#4F39F6] shadow-2xs"
+              : unreadCount > 0
+              ? "bg-[#EEF2FF] text-[#4F39F6] border-[#C7D2FE] hover:bg-[#E0E7FF]"
+              : "bg-[#F8F9FB] text-[#5E5E5E] border-[#EAECEF] hover:bg-[#EAECEF]/70 hover:text-[#121215]"
+          }`}
+        >
+          {unreadCount > 0 && !inboxOpen ? (
+            <BellRing size={13} className="shrink-0 text-[#4F39F6]" />
+          ) : (
+            <Bell size={13} className="shrink-0" />
+          )}
+
+          {unreadCount > 0 && (
+            <span className="inline-flex min-w-[16px] h-4 px-1 items-center justify-center rounded-full bg-[#EF4444] text-white text-[9px] font-extrabold leading-none tabular-nums">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {mounted &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            {/* Hidden pre-populated live region fallback for screen readers */}
+            <div aria-live="assertive" className="sr-only">
+              {liveAnnouncement}
+            </div>
+
+            {/* Live Floating Popup Notifications (Top Layer manual popover directly below bell button) */}
+            <div
+              ref={popoverRef}
+              role="region"
+              aria-label="Notifikasi Aktivitas Admin"
+              {...({ popover: "manual" } as Record<string, string>)}
+              onMouseEnter={() => setIsPopupPaused(true)}
+              onMouseLeave={() => setIsPopupPaused(false)}
+              onFocusCapture={() => setIsPopupPaused(true)}
+              onBlurCapture={(e) => {
+                if (!popoverRef.current?.contains(e.relatedTarget as Node | null)) {
+                  setIsPopupPaused(false);
+                }
+              }}
+              className={`admin-notif-popover w-[min(360px,calc(100vw-2rem))] space-y-2.5 ${
+                activePopups.length > 0 && !inboxOpen ? "is-open" : ""
+              }`}
+            >
         {activePopups.map((popup) => {
           const isProEvent = popup.eventType === "pro_subscribed";
           return (
@@ -576,7 +576,7 @@ export function AdminFloatingNotificationButton({
           role="dialog"
           aria-modal="false"
           aria-label="Riwayat Notifikasi Admin"
-          className="fixed top-[108px] right-5 z-50 w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_18px_48px_rgba(16,15,17,0.16)] overflow-hidden"
+          className="fixed top-11 right-4 z-50 w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_18px_48px_rgba(16,15,17,0.16)] overflow-hidden"
         >
           {/* Header */}
           <div className="px-4 py-3 border-b border-[#EAECEF] flex items-center justify-between gap-2 bg-[#F8F9FB]">
@@ -737,7 +737,9 @@ export function AdminFloatingNotificationButton({
           </div>
         </div>
       )}
-    </>,
-    document.body
+          </>,
+          document.body
+        )}
+    </>
   );
 }

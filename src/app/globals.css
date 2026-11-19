@@ -708,7 +708,7 @@ html[data-theme-active="true"] .shadow-\[0_4px_16px_rgba\(16\,15\,17\,0\.08\)\] 
 [popover].admin-notif-popover {
   display: none;
   position: fixed;
-  inset: 6.75rem 1.25rem auto auto;
+  inset: 2.85rem 1rem auto auto;
   z-index: 60;
   margin: 0;
   padding: 0;

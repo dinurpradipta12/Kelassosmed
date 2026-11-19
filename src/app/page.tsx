@@ -59,7 +59,6 @@ import { AdminRewardsManager } from "@/components/admin/AdminRewardsManager";
 import {
   AdminSettingsScreen,
 } from "@/components/admin/AdminHistoryAndSettings";
-import { AdminFloatingNotificationButton } from "@/components/admin/AdminFloatingNotificationButton";
 import { UserProfileScreen } from "@/components/profile/UserProfileScreen";
 import {
   type ContentType,
@@ -1125,13 +1124,11 @@ function RuangSosmedStudioInner() {
           currentUser={currentUser}
           onOpenAuth={() => handleOpenAuth("login")}
           onLogout={handleLogout}
+          onNavigateLearners={() => {
+            handleRoleModeChange("admin");
+            handleSelectNav("learners");
+          }}
           leftOffsetClass={roleMode === "admin" ? "pl-[56px]" : ""}
-        />
-      )}
-
-      {isCurrentUserAdmin && roleMode === "admin" && (
-        <AdminFloatingNotificationButton
-          onNavigateLearners={() => handleSelectNav("learners")}
         />
       )}
 
