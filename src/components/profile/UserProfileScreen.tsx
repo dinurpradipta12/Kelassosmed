@@ -29,7 +29,12 @@ import {
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
 import { ContentBadge } from "@/components/ui/ContentBadge";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  supabase,
+  isSupabaseConfigured,
+  STORAGE_BUCKETS,
+} from "@/lib/supabase/client";
+import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
 
 export type ProfileUserRole = "Learner" | "Admin" | "Super Admin";
 
@@ -499,19 +504,27 @@ export function UserProfileScreen({
     }
   };
 
-  const handleHeaderFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleHeaderFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        syncHeaderBanner(reader.result);
-        setHeaderPickerOpen(false);
-        onShowToast(`Header profil "${file.name}" berhasil diperbarui.`);
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData?.session?.user?.id || "public";
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.AVATARS,
+        folderPath: `${uid}/header`,
+        fileName: file.name,
+        maxWidth: 1440,
+        maxHeight: 480,
+        quality: 0.82,
+      });
+      syncHeaderBanner(url);
+      setHeaderPickerOpen(false);
+      onShowToast(`Header profil "${file.name}" berhasil dioptimasi & diperbarui.`);
+    } catch {
+      onShowToast("Gagal mengunggah gambar header.");
+    }
   };
 
   const syncFormFieldsFromProfile = React.useCallback(
@@ -640,51 +653,27 @@ export function UserProfileScreen({
     }
   };
 
-  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== "string") return;
-      const rawDataUrl = reader.result;
-      // Resize uploaded photo smoothly to <= 256px if large so localStorage + Supabase sync stay fast
-      if (rawDataUrl.length > 90000 && typeof Image !== "undefined") {
-        const img = new Image();
-        img.onload = () => {
-          try {
-            const maxDim = 256;
-            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-            const canvas = document.createElement("canvas");
-            canvas.width = Math.max(1, Math.round(img.width * scale));
-            canvas.height = Math.max(1, Math.round(img.height * scale));
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              const compressed = canvas.toDataURL("image/jpeg", 0.82);
-              syncAvatarAcrossApp(compressed);
-              setAvatarPickerOpen(false);
-              onShowToast(`Foto profil "${file.name}" diterapkan & disinkronkan.`);
-              return;
-            }
-          } catch {}
-          syncAvatarAcrossApp(rawDataUrl);
-          setAvatarPickerOpen(false);
-          onShowToast(`Foto profil "${file.name}" diterapkan & disinkronkan.`);
-        };
-        img.onerror = () => {
-          syncAvatarAcrossApp(rawDataUrl);
-          setAvatarPickerOpen(false);
-          onShowToast(`Foto profil "${file.name}" diterapkan & disinkronkan.`);
-        };
-        img.src = rawDataUrl;
-      } else {
-        syncAvatarAcrossApp(rawDataUrl);
-        setAvatarPickerOpen(false);
-        onShowToast(`Foto profil "${file.name}" diterapkan & disinkronkan.`);
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData?.session?.user?.id || "public";
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.AVATARS,
+        folderPath: `${uid}/avatar`,
+        fileName: file.name,
+        maxWidth: 320,
+        maxHeight: 320,
+        quality: 0.82,
+      });
+      syncAvatarAcrossApp(url);
+      setAvatarPickerOpen(false);
+      onShowToast(`Foto profil "${file.name}" berhasil dioptimasi & disinkronkan.`);
+    } catch {
+      onShowToast("Gagal mengunggah foto profil.");
+    }
   };
 
   const handleSaveManualSetup = (e: React.FormEvent) => {

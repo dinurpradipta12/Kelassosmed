@@ -161,7 +161,7 @@ export async function uploadFileToRuangSosmedStorage(params: {
   const { data, error } = await supabase.storage
     .from(params.bucket)
     .upload(filePath, params.file, {
-      cacheControl: "3600",
+      cacheControl: "31536000",
       upsert: params.upsert ?? false,
     });
 

@@ -35,7 +35,8 @@ import {
   type LearnerProPackageItem,
   type MaintenanceConfig,
 } from "@/context/RuangSosmedStore";
-import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { isSupabaseConfigured, STORAGE_BUCKETS } from "@/lib/supabase/client";
+import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
 
 interface AdminHistoryScreenProps {
   onShowToast: (msg: string) => void;
@@ -330,51 +331,28 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     );
   };
 
-  const handleMaintImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMaintImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== "string") return;
-
-      // Compress oversized raster images (>900KB) so localStorage & Supabase sync stay fast
-      const isSvg = file.type === "image/svg+xml";
-      if (!isSvg && file.size > 900 * 1024 && typeof Image !== "undefined") {
-        const img = new Image();
-        img.onload = () => {
-          const maxDim = 1920;
-          let { width, height } = img;
-          if (width > maxDim || height > maxDim) {
-            const ratio = Math.min(maxDim / width, maxDim / height);
-            width = Math.round(width * ratio);
-            height = Math.round(height * ratio);
-          }
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressed = canvas.toDataURL("image/webp", 0.86);
-            setMaintDraft((prev) => ({ ...prev, customImageUrl: compressed }));
-            onShowToast(
-              "Desain 404 berhasil diunggah & dioptimasi. Klik Simpan Perubahan untuk menerapkan."
-            );
-            return;
-          }
-          setMaintDraft((prev) => ({ ...prev, customImageUrl: result }));
-        };
-        img.src = result;
-      } else {
-        setMaintDraft((prev) => ({ ...prev, customImageUrl: result }));
-        onShowToast(
-          "Desain 404 berhasil diunggah. Klik Simpan Perubahan untuk menerapkan."
-        );
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+    try {
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.MEDIA,
+        folderPath: "maintenance",
+        fileName: file.name,
+        maxWidth: 1600,
+        maxHeight: 1000,
+        quality: 0.84,
+      });
+      setMaintDraft((prev) => ({ ...prev, customImageUrl: url }));
+      onShowToast(
+        "Desain 404 berhasil diunggah & dioptimasi. Klik Simpan Perubahan untuk menerapkan."
+      );
+    } catch {
+      onShowToast("Gagal mengunggah gambar halaman pemeliharaan.");
+    }
   };
 
   const updateSelectedPackage = (patch: Partial<LearnerProPackageItem>) => {
@@ -458,39 +436,51 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     onShowToast("Paket dihapus dari daftar.");
   };
 
-  const handleQrisUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setProDraft((prev) => ({
-          ...prev,
-          qrCodeUrl: reader.result as string,
-        }));
-        onShowToast(
-          "Gambar QRIS Global berhasil diunggah. Klik Simpan Perubahan untuk menerapkan."
-        );
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+    try {
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.MEDIA,
+        folderPath: "qris",
+        fileName: file.name,
+        maxWidth: 800,
+        maxHeight: 800,
+        quality: 0.88,
+      });
+      setProDraft((prev) => ({
+        ...prev,
+        qrCodeUrl: url,
+      }));
+      onShowToast(
+        "Gambar QRIS Global berhasil diunggah & dioptimasi. Klik Simpan Perubahan untuk menerapkan."
+      );
+    } catch {
+      onShowToast("Gagal mengunggah gambar QRIS Global.");
+    }
   };
 
-  const handlePkgQrisUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePkgQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !selectedPkg) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        updateSelectedPackage({ qrCodeUrl: reader.result as string });
-        onShowToast(
-          `QRIS khusus untuk "${selectedPkg.name}" berhasil diunggah.`
-        );
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file || !selectedPkg) return;
+    try {
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.MEDIA,
+        folderPath: "qris",
+        fileName: file.name,
+        maxWidth: 800,
+        maxHeight: 800,
+        quality: 0.88,
+      });
+      updateSelectedPackage({ qrCodeUrl: url });
+      onShowToast(
+        `QRIS khusus untuk "${selectedPkg.name}" berhasil diunggah & dioptimasi.`
+      );
+    } catch {
+      onShowToast("Gagal mengunggah gambar QRIS paket.");
+    }
   };
 
   const handleUpdateFeatureItem = (index: number, value: string) => {

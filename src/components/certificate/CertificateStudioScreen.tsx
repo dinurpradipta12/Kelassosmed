@@ -27,6 +27,8 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import { STORAGE_BUCKETS } from "@/lib/supabase/client";
+import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
 import {
   DEFAULT_CERTIFICATE_CONFIG,
   CERTIFICATE_PRESET_TEMPLATES,
@@ -192,7 +194,7 @@ export function CertificateStudioScreen({
     }
   };
 
-  const processBgFile = (file: File) => {
+  const processBgFile = async (file: File) => {
     if (!file) return;
 
     const isImage =
@@ -204,21 +206,28 @@ export function CertificateStudioScreen({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
+    try {
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.MEDIA,
+        folderPath: "certificates/bg",
+        fileName: file.name,
+        maxWidth: 1600,
+        maxHeight: 1130,
+        quality: 0.85,
+      });
       handleUpdateDraft({
         templateId: "custom-upload",
-        customBackgroundUrl: result,
+        customBackgroundUrl: url,
         borderStyle: "none",
         showWatermarkSeal: false,
       });
       setTemplateSubTab("custom");
       onShowToast(
-        "Desain sertifikat custom berhasil diterapkan! Sesuaikan posisi nama di tab Teks & Posisi."
+        "Desain sertifikat custom berhasil dioptimasi! Sesuaikan posisi nama di tab Teks & Posisi."
       );
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      onShowToast("Gagal mengunggah gambar background sertifikat.");
+    }
   };
 
   // Upload handler for custom background certificate (PNG/JPG/SVG)
@@ -253,38 +262,54 @@ export function CertificateStudioScreen({
     }
   };
 
-  // Upload handler for custom signature (PNG)
-  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload handler for custom signature (PNG transparent preserved)
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
+    try {
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.MEDIA,
+        folderPath: "certificates/signatures",
+        fileName: file.name,
+        maxWidth: 600,
+        maxHeight: 240,
+        preferPng: true,
+      });
       handleUpdateDraft({
         signatureType: "image",
-        customSignatureUrl: result,
+        customSignatureUrl: url,
       });
-      onShowToast("Gambar tanda tangan berhasil diunggah!");
-    };
-    reader.readAsDataURL(file);
+      onShowToast("Gambar tanda tangan berhasil diunggah & dioptimasi!");
+    } catch {
+      onShowToast("Gagal mengunggah gambar tanda tangan.");
+    }
   };
 
   // Upload handler for custom logo
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
+    try {
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.MEDIA,
+        folderPath: "certificates/logos",
+        fileName: file.name,
+        maxWidth: 512,
+        maxHeight: 512,
+        preferPng: true,
+      });
       handleUpdateDraft({
         showLogo: true,
-        customLogoUrl: result,
+        customLogoUrl: url,
       });
-      onShowToast("Logo institusi berhasil diunggah!");
-    };
-    reader.readAsDataURL(file);
+      onShowToast("Logo institusi berhasil diunggah & dioptimasi!");
+    } catch {
+      onShowToast("Gagal mengunggah logo institusi.");
+    }
   };
 
   const isCenter = draftConfig.recipientNameAlign === "center";

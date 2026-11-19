@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Users,
   UserPlus,
@@ -26,14 +26,38 @@ import {
   BookOpen,
   Gift,
   Send,
+  Calendar,
+  Clock,
+  AlertTriangle,
+  RotateCw,
+  XCircle,
+  BarChart3,
 } from "lucide-react";
-import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import {
+  useRuangSosmedStore,
+  getNormalizedProPackages,
+} from "@/context/RuangSosmedStore";
 import { type ExplorerContentItem } from "@/lib/phase2-data";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { ContentBadge } from "@/components/ui/ContentBadge";
 import { OfficialCertificateModal } from "@/components/certificate/OfficialCertificateModal";
+import {
+  AdminDirectoryInsightsModal,
+  type InsightsProRequestRecord,
+} from "@/components/admin/AdminDirectoryInsightsModal";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
+import {
+  addDaysToIsoDate,
+  diffCalendarDays,
+  formatIndoDate,
+  getSubscriptionStatusInfo,
+  getTodayIsoDate,
+  isMissingSubDateColumnError,
+  type SubscriptionStatusInfo,
+} from "@/lib/subscription-utils";
+
+let dirProfilesHasSubDateCols = true;
 
 interface AdminLearnersDirectoryProps {
   onShowToast: (msg: string) => void;
@@ -59,6 +83,12 @@ interface DirectoryMember {
   avgQuizScore: number;
   points: number;
   credentialId: string;
+  subscriptionTier?: "PRO" | "Free";
+  proStartedAt?: string | null;
+  proExpiresAt?: string | null;
+  proPackageName?: string | null;
+  createdAt?: string | null;
+  paymentMethod?: string | null;
 }
 
 const INITIAL_DIRECTORY_EXTRA: DirectoryMember[] = [
@@ -94,7 +124,9 @@ export function AdminLearnersDirectory({
     courseSections,
     learnerIsPro,
     learnerSubscriptions,
+    learnerProConfig,
     toggleStudentProByAdmin,
+    setStudentProTierLocal,
     cohortProjects,
     registerLearnerProfile,
     workspaceCollaborators,
@@ -109,9 +141,40 @@ export function AdminLearnersDirectory({
 
   const [cohortFilter, setCohortFilter] = useState("All Cohorts");
   const [roleFilter, setRoleFilter] = useState("All Roles");
+  const [subscriptionTab, setSubscriptionTab] = useState<
+    "all" | "pro_active" | "expiring"
+  >("all");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [supabaseMembers, setSupabaseMembers] = useState<DirectoryMember[]>([]);
   const [supabaseProMap, setSupabaseProMap] = useState<Record<string, "PRO" | "Free">>({});
+
+  // Manual PRO Activation & Renewal Modal State
+  const [renewModalMember, setRenewModalMember] = useState<DirectoryMember | null>(
+    null
+  );
+  const [renewStartDate, setRenewStartDate] = useState<string>(getTodayIsoDate);
+  const [renewDueDate, setRenewDueDate] = useState<string>(() =>
+    addDaysToIsoDate(getTodayIsoDate(), 30)
+  );
+  const [renewPackageName, setRenewPackageName] = useState<string>(
+    "Learner PRO Monthly"
+  );
+  const [isSavingRenewal, setIsSavingRenewal] = useState(false);
+  const [quickExtendingEmail, setQuickExtendingEmail] = useState<string | null>(
+    null
+  );
+  const [localSubOverrides, setLocalSubOverrides] = useState<
+    Record<
+      string,
+      {
+        subscriptionTier: "PRO" | "Free";
+        proStartedAt: string | null;
+        proExpiresAt: string | null;
+        proPackageName: string | null;
+      }
+    >
+  >({});
 
   // Manual Points Adjustment State
   const [adjustPointsTarget, setAdjustPointsTarget] = useState<DirectoryMember | null>(null);
@@ -153,225 +216,401 @@ export function AdminLearnersDirectory({
       payment_method: string;
       buyer_contact: string;
       proof_url?: string | null;
+      status?: string | null;
       created_at: string;
     }>
   >([]);
+  const [allProRequests, setAllProRequests] = useState<
+    InsightsProRequestRecord[]
+  >([]);
+  const [insightsModalOpen, setInsightsModalOpen] = useState(false);
 
-  // Fetch registered learners & pending PRO upgrade requests (Staff-only via hardened RLS)
+  const courseSectionsRef = useRef(courseSections);
+  courseSectionsRef.current = courseSections;
+  const assignedCountRef = useRef(learnerAssignedItems.length);
+  assignedCountRef.current = learnerAssignedItems.length;
+  const lastDirFetchAtRef = useRef<number>(0);
+  const [isRefreshingDir, setIsRefreshingDir] = useState(false);
+
+  // Fetch registered learners & pending PRO upgrade requests (Event-driven + Realtime, zero 3s polling)
+  const loadSupabaseDirectory = useCallback(async (showSpinner = false) => {
+    if (!isSupabaseConfigured) return;
+    if (showSpinner) setIsRefreshingDir(true);
+    try {
+      lastDirFetchAtRef.current = Date.now();
+
+      const fetchProfilesWithFallback = async () => {
+        if (dirProfilesHasSubDateCols) {
+          const res = await supabase
+            .from("profiles")
+            .select(
+              "id, full_name, email, avatar_url, role, job_title, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, total_points, created_at"
+            )
+            .order("created_at", { ascending: false });
+          if (!res.error) return res;
+          if (isMissingSubDateColumnError(res.error)) {
+            dirProfilesHasSubDateCols = false;
+          } else {
+            return res;
+          }
+        }
+        return supabase
+          .from("profiles")
+          .select(
+            "id, full_name, email, avatar_url, role, job_title, subscription_tier, total_points, created_at"
+          )
+          .order("created_at", { ascending: false });
+      };
+
+      const [
+        profilesRes,
+        userProfilesRes,
+        userSubsRes,
+        enrollmentsRes,
+        submissionsRes,
+        proReqRes,
+      ] = await Promise.all([
+        fetchProfilesWithFallback(),
+        supabase
+          .from("user_profiles")
+          .select(
+            "user_id, username, name, full_name, email, role, job_title, avatar_url, perks, updated_at"
+          )
+          .order("updated_at", { ascending: false }),
+        supabase
+          .from("user_subscriptions")
+          .select("username, plan_tier, status, started_at, due_at, renewal_status, updated_at"),
+        supabase
+          .from("enrollments")
+          .select("learner_id, content_id, completed_chapter_ids, progress_percent"),
+        supabase
+          .from("submissions")
+          .select("learner_id, score_percent"),
+        supabase
+          .from("pro_upgrade_requests")
+          .select("id, user_email, user_name, package_name, price_label, payment_method, buyer_contact, proof_url, status, created_at")
+          .order("created_at", { ascending: false })
+          .limit(200),
+      ]);
+
+      if (Array.isArray(proReqRes.data)) {
+        const allReqs = proReqRes.data as typeof pendingProRequests;
+        setAllProRequests(allReqs);
+        setPendingProRequests(
+          allReqs.filter(
+            (r) => !r.status || String(r.status).toLowerCase() === "pending"
+          )
+        );
+      }
+
+      const subByUsername = new Map<string, any>();
+      if (Array.isArray(userSubsRes?.data)) {
+        userSubsRes.data.forEach((sub: any) => {
+          if (!sub?.username) return;
+          subByUsername.set(String(sub.username).toLowerCase().trim(), sub);
+        });
+      }
+
+      const userProfByEmail = new Map<string, any>();
+      const subByEmail = new Map<string, any>();
+      if (Array.isArray(userProfilesRes.data)) {
+        userProfilesRes.data.forEach((up: any) => {
+          if (!up?.email) return;
+          const eKey = String(up.email).toLowerCase().trim();
+          if (!userProfByEmail.has(eKey)) {
+            userProfByEmail.set(eKey, up);
+          }
+          if (up.username && !subByEmail.has(eKey)) {
+            const matchedSub = subByUsername.get(
+              String(up.username).toLowerCase().trim()
+            );
+            if (matchedSub) {
+              subByEmail.set(eKey, matchedSub);
+            }
+          }
+        });
+      }
+
+      const nextEnrollMap: Record<
+        string,
+        { contentId: string; completedCount: number; progressPercent: number }[]
+      > = {};
+      if (Array.isArray(enrollmentsRes.data)) {
+        enrollmentsRes.data.forEach((row: any) => {
+          if (!row?.learner_id || !row?.content_id) return;
+          const list = nextEnrollMap[row.learner_id] || [];
+          list.push({
+            contentId: row.content_id,
+            completedCount: Array.isArray(row.completed_chapter_ids)
+              ? row.completed_chapter_ids.length
+              : 0,
+            progressPercent: Number(row.progress_percent || 0),
+          });
+          nextEnrollMap[row.learner_id] = list;
+        });
+      }
+      setUserEnrollmentsMap(nextEnrollMap);
+
+      const merged: DirectoryMember[] = [];
+      const totalChCount = courseSectionsRef.current.flatMap((s) => s.chapters).length;
+      const nextProMap: Record<string, "PRO" | "Free"> = {};
+
+      if (Array.isArray(profilesRes.data)) {
+        profilesRes.data.forEach((p: any, idx: number) => {
+          if (!p.email) return;
+          const emailLower = String(p.email).toLowerCase().trim();
+          const upMatch = userProfByEmail.get(emailLower);
+          const subMatch = subByEmail.get(emailLower);
+          const isProProfile =
+            String(p.subscription_tier || "").toLowerCase() === "pro" ||
+            Boolean(upMatch?.perks?.is_pro) ||
+            (String(subMatch?.plan_tier || "").toUpperCase() === "PRO" &&
+              String(subMatch?.status || "aktif").toLowerCase() === "aktif");
+
+          const name = p.full_name || p.email.split("@")[0];
+          const tierVal: "PRO" | "Free" = isProProfile ? "PRO" : "Free";
+          nextProMap[emailLower] = tierVal;
+          if (name) {
+            nextProMap[name] = tierVal;
+            nextProMap[name.toLowerCase()] = tierVal;
+          }
+
+          const isOwner =
+            emailLower.includes("dinur") ||
+            emailLower === "admin@ruangsosmed.id";
+          if (isOwner) return;
+
+          const initials =
+            name
+              .split(" ")
+              .filter(Boolean)
+              .map((w: string) => w[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase() || "LN";
+
+          const rawDbRole: "Admin" | "Mentor" | "Learner" =
+            p.role === "admin"
+              ? "Admin"
+              : p.role === "mentor"
+              ? "Mentor"
+              : "Learner";
+
+          const userEnrollments = Array.isArray(enrollmentsRes.data)
+            ? enrollmentsRes.data.filter((e: any) => e.learner_id === p.id)
+            : [];
+          const userSubmissions = Array.isArray(submissionsRes.data)
+            ? submissionsRes.data.filter((s: any) => s.learner_id === p.id)
+            : [];
+
+          let completedCh = 0;
+          userEnrollments.forEach((e: any) => {
+            if (Array.isArray(e.completed_chapter_ids)) {
+              completedCh += e.completed_chapter_ids.length;
+            }
+          });
+
+          let avgQuiz = 0;
+          if (userSubmissions.length > 0) {
+            const totalScore = userSubmissions.reduce(
+              (acc: number, curr: any) =>
+                acc + (Number(curr.score_percent) || 0),
+              0
+            );
+            avgQuiz = Math.round(totalScore / userSubmissions.length);
+          }
+
+          const resolvedStartedAt =
+            p.pro_started_at ??
+            upMatch?.perks?.pro_started_at ??
+            subMatch?.started_at ??
+            (isProProfile ? p.created_at ?? null : null);
+          const resolvedExpiresAt =
+            p.pro_expires_at ??
+            upMatch?.perks?.pro_expires_at ??
+            subMatch?.due_at ??
+            null;
+          const resolvedPackageName =
+            p.pro_package_name ??
+            upMatch?.perks?.pro_package_name ??
+            (isProProfile ? "Learner PRO Monthly" : null);
+
+          merged.push({
+            id: p.id || `sb-prof-${idx}`,
+            name,
+            email: p.email,
+            initials,
+            avatarUrl:
+              typeof p.avatar_url === "string" && p.avatar_url.trim()
+                ? p.avatar_url.trim()
+                : undefined,
+            avatarBg: "#EEF2FF",
+            avatarText: "#4F39F6",
+            jobTitle: p.job_title || (rawDbRole === "Admin" ? "Admin Collaborator" : rawDbRole === "Mentor" ? "Mentor Collaborator" : "Social Media Specialist"),
+            cohort: "Batch Oktober 2026",
+            accessRole: rawDbRole,
+            assignedCount: assignedCountRef.current,
+            completedChapters: completedCh,
+            totalChapters: totalChCount,
+            avgQuizScore: avgQuiz,
+            points: Number(p.total_points || 0),
+            credentialId: `RS2-2026-850${idx + 1}`,
+            subscriptionTier: tierVal,
+            proStartedAt: resolvedStartedAt,
+            proExpiresAt: resolvedExpiresAt,
+            proPackageName: resolvedPackageName,
+            createdAt: p.created_at ?? null,
+            paymentMethod: subMatch?.payment_method ?? null,
+          });
+        });
+      }
+
+      if (Array.isArray(userProfilesRes.data)) {
+        userProfilesRes.data.forEach((up: any, idx: number) => {
+          if (!up.email) return;
+          const emailLower = String(up.email).toLowerCase().trim();
+          const subMatch = up.username
+            ? subByUsername.get(String(up.username).toLowerCase().trim())
+            : undefined;
+          const name = up.name || up.username || up.email.split("@")[0];
+          const isProUp =
+            Boolean(up.perks?.is_pro) ||
+            (String(subMatch?.plan_tier || "").toUpperCase() === "PRO" &&
+              String(subMatch?.status || "aktif").toLowerCase() === "aktif");
+          const existingProf = merged.find(
+            (m) => m.email.toLowerCase() === emailLower
+          );
+          const tierVal: "PRO" | "Free" = existingProf
+            ? existingProf.subscriptionTier || (isProUp ? "PRO" : "Free")
+            : isProUp
+            ? "PRO"
+            : "Free";
+
+          nextProMap[name] = tierVal;
+          nextProMap[name.toLowerCase()] = tierVal;
+          nextProMap[emailLower] = tierVal;
+
+          const isOwner =
+            up.username === "dinur" ||
+            up.username === "admin" ||
+            emailLower.includes("dinur") ||
+            emailLower === "admin@ruangsosmed.id";
+          if (isOwner) return;
+
+          if (existingProf) {
+            return;
+          }
+
+          const initials =
+            name
+              .split(" ")
+              .filter(Boolean)
+              .map((w: string) => w[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase() || "LN";
+
+          const rawUpRole: "Admin" | "Mentor" | "Learner" =
+            up.role === "admin"
+              ? "Admin"
+              : up.role === "mentor"
+              ? "Mentor"
+              : "Learner";
+
+          merged.push({
+            id: up.user_id || `sb-uprof-${up.username || idx}`,
+            name,
+            email: up.email,
+            initials,
+            avatarUrl:
+              typeof up.avatar_url === "string" && up.avatar_url.trim()
+                ? up.avatar_url.trim()
+                : undefined,
+            avatarBg: "#EEF2FF",
+            avatarText: "#4F39F6",
+            jobTitle: up.job_title || (rawUpRole === "Admin" ? "Admin Collaborator" : rawUpRole === "Mentor" ? "Mentor Collaborator" : "Social Media Specialist"),
+            cohort: "Batch Oktober 2026",
+            accessRole: rawUpRole,
+            assignedCount: assignedCountRef.current,
+            completedChapters: 0,
+            totalChapters: totalChCount,
+            avgQuizScore: 0,
+            points: 0,
+            credentialId: `RS2-2026-860${idx + 1}`,
+            subscriptionTier: tierVal,
+            proStartedAt: up.perks?.pro_started_at ?? subMatch?.started_at ?? null,
+            proExpiresAt: up.perks?.pro_expires_at ?? subMatch?.due_at ?? null,
+            proPackageName:
+              up.perks?.pro_package_name ?? (isProUp ? "Learner PRO Monthly" : null),
+            createdAt: up.updated_at ?? null,
+            paymentMethod: subMatch?.payment_method ?? null,
+          });
+        });
+      }
+
+      setSupabaseProMap(nextProMap);
+      setSupabaseMembers(merged);
+      if (dirProfilesHasSubDateCols) {
+        setLocalSubOverrides({});
+      }
+    } catch {
+      // Ignore fetch errors
+    } finally {
+      if (showSpinner) setIsRefreshingDir(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
-    const loadSupabaseDirectory = async () => {
-      try {
-        const [
-          profilesRes,
-          userProfilesRes,
-          enrollmentsRes,
-          submissionsRes,
-          proReqRes,
-        ] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("*")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("user_profiles")
-            .select("*")
-            .order("updated_at", { ascending: false }),
-          supabase
-            .from("enrollments")
-            .select("learner_id, content_id, completed_chapter_ids, progress_percent"),
-          supabase
-            .from("submissions")
-            .select("learner_id, score_percent"),
-          supabase
-            .from("pro_upgrade_requests")
-            .select("id, user_email, user_name, package_name, price_label, payment_method, buyer_contact, proof_url, created_at")
-            .eq("status", "pending")
-            .order("created_at", { ascending: false }),
-        ]);
-
-        if (Array.isArray(proReqRes.data)) {
-          setPendingProRequests(proReqRes.data as typeof pendingProRequests);
-        }
-
-        const nextEnrollMap: Record<
-          string,
-          { contentId: string; completedCount: number; progressPercent: number }[]
-        > = {};
-        if (Array.isArray(enrollmentsRes.data)) {
-          enrollmentsRes.data.forEach((row: any) => {
-            if (!row?.learner_id || !row?.content_id) return;
-            const list = nextEnrollMap[row.learner_id] || [];
-            list.push({
-              contentId: row.content_id,
-              completedCount: Array.isArray(row.completed_chapter_ids)
-                ? row.completed_chapter_ids.length
-                : 0,
-              progressPercent: Number(row.progress_percent || 0),
-            });
-            nextEnrollMap[row.learner_id] = list;
-          });
-        }
-        setUserEnrollmentsMap(nextEnrollMap);
-
-        const merged: DirectoryMember[] = [];
-        const totalChCount = courseSections.flatMap((s) => s.chapters).length;
-
-        if (Array.isArray(profilesRes.data)) {
-          profilesRes.data.forEach((p: any, idx: number) => {
-            if (!p.email) return;
-            const isOwner =
-              p.email.toLowerCase().includes("dinur") ||
-              p.email.toLowerCase() === "admin@ruangsosmed.id";
-            if (isOwner) return;
-
-            const name = p.full_name || p.email.split("@")[0];
-            const initials =
-              name
-                .split(" ")
-                .filter(Boolean)
-                .map((w: string) => w[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase() || "LN";
-
-            const rawDbRole: "Admin" | "Mentor" | "Learner" =
-              p.role === "admin"
-                ? "Admin"
-                : p.role === "mentor"
-                ? "Mentor"
-                : "Learner";
-
-            const userEnrollments = Array.isArray(enrollmentsRes.data)
-              ? enrollmentsRes.data.filter((e: any) => e.learner_id === p.id)
-              : [];
-            const userSubmissions = Array.isArray(submissionsRes.data)
-              ? submissionsRes.data.filter((s: any) => s.learner_id === p.id)
-              : [];
-
-            let completedCh = 0;
-            userEnrollments.forEach((e: any) => {
-              if (Array.isArray(e.completed_chapter_ids)) {
-                completedCh += e.completed_chapter_ids.length;
-              }
-            });
-
-            let avgQuiz = 0;
-            if (userSubmissions.length > 0) {
-              const totalScore = userSubmissions.reduce(
-                (acc: number, curr: any) =>
-                  acc + (Number(curr.score_percent) || 0),
-                0
-              );
-              avgQuiz = Math.round(totalScore / userSubmissions.length);
-            }
-
-            merged.push({
-              id: p.id || `sb-prof-${idx}`,
-              name,
-              email: p.email,
-              initials,
-              avatarUrl:
-                typeof p.avatar_url === "string" && p.avatar_url.trim()
-                  ? p.avatar_url.trim()
-                  : undefined,
-              avatarBg: "#EEF2FF",
-              avatarText: "#4F39F6",
-              jobTitle: p.job_title || (rawDbRole === "Admin" ? "Admin Collaborator" : rawDbRole === "Mentor" ? "Mentor Collaborator" : "Social Media Specialist"),
-              cohort: "Batch Oktober 2026",
-              accessRole: rawDbRole,
-              assignedCount: learnerAssignedItems.length,
-              completedChapters: completedCh,
-              totalChapters: totalChCount,
-              avgQuizScore: avgQuiz,
-              points: Number(p.total_points || 0),
-              credentialId: `RS2-2026-850${idx + 1}`,
-            });
-          });
-        }
-
-        if (Array.isArray(userProfilesRes.data)) {
-          const nextProMap: Record<string, "PRO" | "Free"> = {};
-          userProfilesRes.data.forEach((up: any, idx: number) => {
-            if (!up.email) return;
-            const name = up.name || up.username || up.email.split("@")[0];
-            const tierVal: "PRO" | "Free" = up.perks?.is_pro ? "PRO" : "Free";
-            nextProMap[name] = tierVal;
-            nextProMap[name.toLowerCase()] = tierVal;
-            nextProMap[up.email.toLowerCase()] = tierVal;
-            const isOwner =
-              up.username === "dinur" ||
-              up.username === "admin" ||
-              up.email.toLowerCase().includes("dinur") ||
-              up.email.toLowerCase() === "admin@ruangsosmed.id";
-            if (isOwner) return;
-
-            if (
-              merged.some(
-                (m) => m.email.toLowerCase() === up.email.toLowerCase()
-              )
-            ) {
-              return;
-            }
-
-            const initials =
-              name
-                .split(" ")
-                .filter(Boolean)
-                .map((w: string) => w[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase() || "LN";
-
-            const rawUpRole: "Admin" | "Mentor" | "Learner" =
-              up.role === "admin"
-                ? "Admin"
-                : up.role === "mentor"
-                ? "Mentor"
-                : "Learner";
-
-            merged.push({
-              id: `sb-uprof-${up.username || idx}`,
-              name,
-              email: up.email,
-              initials,
-              avatarUrl:
-                typeof up.avatar_url === "string" && up.avatar_url.trim()
-                  ? up.avatar_url.trim()
-                  : undefined,
-              avatarBg: "#EEF2FF",
-              avatarText: "#4F39F6",
-              jobTitle: up.job_title || (rawUpRole === "Admin" ? "Admin Collaborator" : rawUpRole === "Mentor" ? "Mentor Collaborator" : "Social Media Specialist"),
-              cohort: "Batch Oktober 2026",
-              accessRole: rawUpRole,
-              assignedCount: learnerAssignedItems.length,
-              completedChapters: 0,
-              totalChapters: totalChCount,
-              avgQuizScore: 0,
-              points: 0,
-              credentialId: `RS2-2026-860${idx + 1}`,
-            });
-          });
-          setSupabaseProMap(nextProMap);
-        }
-
-        setSupabaseMembers(merged);
-      } catch {
-        // Ignore fetch errors
-      }
-    };
-
     void loadSupabaseDirectory();
 
-    const intervalId = window.setInterval(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        void loadSupabaseDirectory();
+      }, 1000);
+    };
+
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (Date.now() - lastDirFetchAtRef.current < 30_000) return;
       void loadSupabaseDirectory();
-    }, 3000);
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    const dirChannel = supabase
+      .channel("admin-learners-directory-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_profiles" },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_subscriptions" },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pro_upgrade_requests" },
+        scheduleRefresh
+      )
+      .subscribe();
 
     return () => {
-      window.clearInterval(intervalId);
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      void supabase.removeChannel(dirChannel);
     };
-  }, [courseSections, learnerAssignedItems.length]);
+  }, [loadSupabaseDirectory]);
 
   // Invite Modal state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -750,6 +989,12 @@ export function AdminLearnersDirectory({
       avgQuizScore: 0,
       points: lbMatch?.points ?? sbMatch?.points ?? 0,
       credentialId: `RS2-2026-849${idx + 2}`,
+      subscriptionTier: sbMatch?.subscriptionTier,
+      proStartedAt: sbMatch?.proStartedAt,
+      proExpiresAt: sbMatch?.proExpiresAt,
+      proPackageName: sbMatch?.proPackageName,
+      createdAt: sbMatch?.createdAt,
+      paymentMethod: sbMatch?.paymentMethod,
     };
   });
 
@@ -919,28 +1164,392 @@ export function AdminLearnersDirectory({
       avgQuizScore: sbMatch && sbMatch.avgQuizScore > 0
         ? sbMatch.avgQuizScore
         : Math.max(existing.avgQuizScore || 0, m.avgQuizScore || 0),
+      subscriptionTier:
+        sbMatch?.subscriptionTier ?? m.subscriptionTier ?? existing.subscriptionTier,
+      proStartedAt:
+        sbMatch?.proStartedAt ?? m.proStartedAt ?? existing.proStartedAt,
+      proExpiresAt:
+        sbMatch?.proExpiresAt ?? m.proExpiresAt ?? existing.proExpiresAt,
+      proPackageName:
+        sbMatch?.proPackageName ?? m.proPackageName ?? existing.proPackageName,
+      createdAt:
+        sbMatch?.createdAt ?? m.createdAt ?? existing.createdAt,
+      paymentMethod:
+        sbMatch?.paymentMethod ?? m.paymentMethod ?? existing.paymentMethod,
     });
   });
 
-  const allDirectoryMembers = Array.from(mergedByEmail.values());
-
-  const filteredMembers = allDirectoryMembers.filter((m) => {
-    if (cohortFilter !== "All Cohorts" && m.cohort !== cohortFilter) {
-      return false;
-    }
-    if (roleFilter !== "All Roles" && m.accessRole !== roleFilter) {
-      return false;
-    }
-    if (
-      searchQuery.trim() &&
-      !m.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !m.email.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !m.cohort.toLowerCase().includes(searchQuery.toLowerCase())
-    ) {
-      return false;
-    }
-    return true;
+  const allDirectoryMembers = Array.from(mergedByEmail.values()).map((member) => {
+    const emailLower = (member.email || "").toLowerCase().trim();
+    const override = localSubOverrides[emailLower];
+    if (!override) return member;
+    return {
+      ...member,
+      subscriptionTier: override.subscriptionTier,
+      proStartedAt: override.proStartedAt,
+      proExpiresAt: override.proExpiresAt,
+      proPackageName: override.proPackageName,
+    };
   });
+
+  const getMemberSubInfo = (
+    member: DirectoryMember
+  ): SubscriptionStatusInfo | null => {
+    if (member.accessRole !== "Learner") return null;
+    const emailKey = (member.email || "").toLowerCase().trim();
+    const nameKey = (member.name || "").toLowerCase().trim();
+    const explicitTier =
+      member.subscriptionTier ??
+      supabaseProMap[emailKey] ??
+      supabaseProMap[member.name] ??
+      supabaseProMap[nameKey] ??
+      learnerSubscriptions?.[emailKey] ??
+      learnerSubscriptions?.[member.name] ??
+      learnerSubscriptions?.[nameKey] ??
+      "Free";
+    return getSubscriptionStatusInfo({
+      isProTier: explicitTier === "PRO",
+      startedAt: member.proStartedAt,
+      expiresAt: member.proExpiresAt,
+      warningDays: 7,
+    });
+  };
+
+  const tabCounts = useMemo(() => {
+    let proActive = 0;
+    let expiringOrExpired = 0;
+    let overdueCount = 0;
+    allDirectoryMembers.forEach((m) => {
+      if (m.accessRole !== "Learner") return;
+      const emailKey = (m.email || "").toLowerCase().trim();
+      const nameKey = (m.name || "").toLowerCase().trim();
+      const tier =
+        m.subscriptionTier ??
+        supabaseProMap[emailKey] ??
+        supabaseProMap[m.name] ??
+        supabaseProMap[nameKey] ??
+        learnerSubscriptions?.[emailKey] ??
+        learnerSubscriptions?.[m.name] ??
+        learnerSubscriptions?.[nameKey] ??
+        "Free";
+      const info = getSubscriptionStatusInfo({
+        isProTier: tier === "PRO",
+        startedAt: m.proStartedAt,
+        expiresAt: m.proExpiresAt,
+        warningDays: 7,
+      });
+      if (info.status === "active" || info.status === "expiring_soon") {
+        proActive += 1;
+      }
+      if (info.status === "expiring_soon" || info.status === "expired") {
+        expiringOrExpired += 1;
+      }
+      if (info.status === "expired") {
+        overdueCount += 1;
+      }
+    });
+    return {
+      all: allDirectoryMembers.length,
+      proActive,
+      expiring: expiringOrExpired,
+      overdue: overdueCount,
+    };
+  }, [allDirectoryMembers, supabaseProMap, learnerSubscriptions]);
+
+  const filteredMembers = allDirectoryMembers
+    .filter((m) => {
+      if (subscriptionTab !== "all") {
+        const subInfo = getMemberSubInfo(m);
+        if (!subInfo) return false;
+        if (
+          subscriptionTab === "pro_active" &&
+          subInfo.status !== "active" &&
+          subInfo.status !== "expiring_soon"
+        ) {
+          return false;
+        }
+        if (
+          subscriptionTab === "expiring" &&
+          subInfo.status !== "expiring_soon" &&
+          subInfo.status !== "expired"
+        ) {
+          return false;
+        }
+      }
+      if (cohortFilter !== "All Cohorts" && m.cohort !== cohortFilter) {
+        return false;
+      }
+      if (roleFilter !== "All Roles" && m.accessRole !== roleFilter) {
+        return false;
+      }
+      if (
+        searchQuery.trim() &&
+        !m.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+        !m.email.toLowerCase().includes(searchQuery.toLowerCase()) &&
+        !m.cohort.toLowerCase().includes(searchQuery.toLowerCase())
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (subscriptionTab !== "expiring") return 0;
+      const da = getMemberSubInfo(a)?.daysRemaining ?? 9999;
+      const db = getMemberSubInfo(b)?.daysRemaining ?? 9999;
+      return da - db;
+    });
+
+  const applyLocalSubscriptionUpdate = (
+    member: { name: string; email: string },
+    tier: "PRO" | "Free",
+    startedAt: string | null,
+    expiresAt: string | null,
+    packageName: string | null
+  ) => {
+    const emailLower = (member.email || "").toLowerCase().trim();
+    const nameLower = (member.name || "").toLowerCase().trim();
+
+    setLocalSubOverrides((prev) => ({
+      ...prev,
+      [emailLower]: {
+        subscriptionTier: tier,
+        proStartedAt: startedAt,
+        proExpiresAt: expiresAt,
+        proPackageName: packageName,
+      },
+    }));
+
+    setSupabaseMembers((prev) =>
+      prev.map((m) =>
+        m.email.toLowerCase().trim() === emailLower
+          ? {
+              ...m,
+              subscriptionTier: tier,
+              proStartedAt: startedAt,
+              proExpiresAt: expiresAt,
+              proPackageName: packageName,
+            }
+          : m
+      )
+    );
+
+    setSupabaseProMap((prev) => ({
+      ...prev,
+      ...(emailLower ? { [emailLower]: tier } : {}),
+      ...(member.name ? { [member.name]: tier } : {}),
+      ...(nameLower ? { [nameLower]: tier } : {}),
+    }));
+
+    setStudentProTierLocal(member.name, member.email, tier);
+
+    setInspectedMember((prev) =>
+      prev && prev.email.toLowerCase().trim() === emailLower
+        ? {
+            ...prev,
+            subscriptionTier: tier,
+            proStartedAt: startedAt,
+            proExpiresAt: expiresAt,
+            proPackageName: packageName,
+          }
+        : prev
+    );
+  };
+
+  const openRenewModal = (member: DirectoryMember) => {
+    const todayIso = getTodayIsoDate();
+    const info = getMemberSubInfo(member);
+    const hasActiveFutureDue =
+      Boolean(info?.dueDateIso) &&
+      (info?.status === "active" || info?.status === "expiring_soon") &&
+      (info?.dueDateIso || "") >= todayIso;
+
+    const initialStart =
+      hasActiveFutureDue && info?.startedDateIso ? info.startedDateIso : todayIso;
+    const initialDue = hasActiveFutureDue && info?.dueDateIso
+      ? addDaysToIsoDate(info.dueDateIso, 30)
+      : addDaysToIsoDate(todayIso, 30);
+
+    setRenewModalMember(member);
+    setRenewStartDate(initialStart);
+    setRenewDueDate(initialDue);
+    setRenewPackageName(member.proPackageName || "Learner PRO Monthly");
+  };
+
+  const persistManualProDates = async (params: {
+    member: DirectoryMember;
+    startDateIso: string;
+    dueDateIso: string;
+    packageName: string;
+  }) => {
+    const cleanEmail = (params.member.email || "").trim().toLowerCase();
+    const cleanName = (params.member.name || cleanEmail).trim();
+    const pkg = params.packageName.trim() || "Learner PRO Monthly";
+
+    if (!isSupabaseConfigured || !cleanEmail) {
+      applyLocalSubscriptionUpdate(
+        params.member,
+        "PRO",
+        params.startDateIso,
+        params.dueDateIso,
+        pkg
+      );
+      return { ok: true, usedFallback: false };
+    }
+
+    const { data, error } = await supabase.rpc("admin_extend_learner_pro", {
+      p_target_email: cleanEmail,
+      p_target_name: cleanName,
+      p_started_at: params.startDateIso,
+      p_due_at: params.dueDateIso,
+      p_package_name: pkg,
+    });
+
+    if (error) {
+      const msg = String(error.message || "").toLowerCase();
+      const missingRpc =
+        error.code === "PGRST202" || msg.includes("admin_extend_learner_pro");
+      if (missingRpc) {
+        const { error: legacyErr } = await supabase.rpc(
+          "admin_set_learner_pro",
+          {
+            p_target_email: cleanEmail,
+            p_target_name: cleanName,
+            p_is_pro: true,
+            p_package_name: pkg,
+          }
+        );
+        if (legacyErr) {
+          throw new Error(legacyErr.message);
+        }
+        applyLocalSubscriptionUpdate(
+          params.member,
+          "PRO",
+          params.startDateIso,
+          params.dueDateIso,
+          pkg
+        );
+        return { ok: true, usedFallback: true };
+      }
+      throw new Error(error.message);
+    }
+
+    const returnedStart = (data as any)?.pro_started_at || params.startDateIso;
+    const returnedDue = (data as any)?.pro_expires_at || params.dueDateIso;
+    applyLocalSubscriptionUpdate(
+      params.member,
+      "PRO",
+      returnedStart,
+      returnedDue,
+      pkg
+    );
+    return { ok: true, usedFallback: false };
+  };
+
+  const handleSaveRenewal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renewModalMember) return;
+    if (renewDueDate < renewStartDate) {
+      onShowToast(
+        "Tanggal jatuh tempo tidak boleh lebih awal dari tanggal mulai berlangganan."
+      );
+      return;
+    }
+
+    setIsSavingRenewal(true);
+    try {
+      const target = renewModalMember;
+      const result = await persistManualProDates({
+        member: target,
+        startDateIso: renewStartDate,
+        dueDateIso: renewDueDate,
+        packageName: renewPackageName,
+      });
+
+      setRenewModalMember(null);
+      if (result.usedFallback) {
+        onShowToast(
+          `✅ PRO ${target.name} diaktifkan di tampilan (jalankan migrasi 013 SQL agar tanggal jatuh tempo tersimpan permanen).`
+        );
+      } else {
+        onShowToast(
+          `⚡ Langganan PRO ${target.name} aktif s/d ${formatIndoDate(renewDueDate)}.`
+        );
+      }
+    } catch (err: any) {
+      onShowToast(
+        `Gagal memperpanjang PRO: ${err?.message || "Pastikan Anda login sebagai Admin."}`
+      );
+    } finally {
+      setIsSavingRenewal(false);
+    }
+  };
+
+  const handleQuickExtend30Days = async (member: DirectoryMember) => {
+    const emailKey = (member.email || "").toLowerCase().trim();
+    if (!emailKey) return;
+    setQuickExtendingEmail(emailKey);
+    try {
+      const todayIso = getTodayIsoDate();
+      const info = getMemberSubInfo(member);
+      const isActiveFuture =
+        Boolean(info?.dueDateIso) &&
+        (info?.status === "active" || info?.status === "expiring_soon") &&
+        (info?.dueDateIso || "") >= todayIso;
+      const startIso =
+        isActiveFuture && info?.startedDateIso ? info.startedDateIso : todayIso;
+      const nextDueIso = addDaysToIsoDate(
+        isActiveFuture && info?.dueDateIso ? info.dueDateIso : todayIso,
+        30
+      );
+
+      const res = await persistManualProDates({
+        member,
+        startDateIso: startIso,
+        dueDateIso: nextDueIso,
+        packageName: member.proPackageName || "Learner PRO Monthly",
+      });
+
+      if (res.usedFallback) {
+        onShowToast(
+          `✅ ${member.name} diperpanjang +30 hari (jalankan migrasi 013 SQL untuk simpan tanggal permanen).`
+        );
+      } else {
+        onShowToast(
+          `🔄 ${member.name} diperpanjang +30 hari (Jatuh tempo baru: ${formatIndoDate(nextDueIso)}).`
+        );
+      }
+    } catch (err: any) {
+      onShowToast(`Gagal perpanjangan cepat: ${err?.message || "Akses ditolak"}`);
+    } finally {
+      setQuickExtendingEmail(null);
+    }
+  };
+
+  const handleRevokeToFree = async (member: DirectoryMember) => {
+    setIsSavingRenewal(true);
+    try {
+      const cleanEmail = (member.email || "").trim().toLowerCase();
+      if (isSupabaseConfigured && cleanEmail) {
+        const { error } = await supabase.rpc("admin_set_learner_pro", {
+          p_target_email: cleanEmail,
+          p_target_name: member.name,
+          p_is_pro: false,
+          p_package_name: member.proPackageName || "Learner PRO Monthly",
+        });
+        if (error) {
+          throw new Error(error.message);
+        }
+      }
+
+      applyLocalSubscriptionUpdate(member, "Free", member.proStartedAt ?? null, null, null);
+      setRenewModalMember(null);
+      onShowToast(`Status langganan ${member.name} dikembalikan ke Free Plan.`);
+    } catch (err: any) {
+      onShowToast(`Gagal mengubah ke Free: ${err?.message || "Akses ditolak"}`);
+    } finally {
+      setIsSavingRenewal(false);
+    }
+  };
 
   const handleRoleChange = async (
     member: DirectoryMember,
@@ -1130,6 +1739,37 @@ export function AdminLearnersDirectory({
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
+            onClick={() => setInsightsModalOpen(true)}
+            title="Buka Insight Grafik User, Langganan & Pemasukan Paket PRO"
+            aria-label="Buka Insight Grafik User, Langganan & Pemasukan"
+            className="relative inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-[#EEF2FF] hover:bg-[#E0E7FF] px-2.5 text-xs font-bold text-[#4F39F6] border border-[#C7D2FE] transition-colors cursor-pointer"
+          >
+            <BarChart3 size={14} className="shrink-0" />
+            <span className="hidden sm:inline">Insight</span>
+            {tabCounts.expiring > 0 && (
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 rounded-full bg-[#F59E0B] ring-2 ring-white"
+              />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void loadSupabaseDirectory(true)}
+            disabled={isRefreshingDir}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#F8F9FB] px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer disabled:opacity-60"
+            title="Muat ulang daftar akun & verifikasi PRO terbaru"
+          >
+            <RefreshCw
+              size={14}
+              className={`text-[#4F39F6] ${isRefreshingDir ? "animate-spin" : ""}`}
+            />
+            <span>Refresh</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setInviteModalOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#F8F9FB] px-3.5 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
           >
@@ -1250,6 +1890,8 @@ export function AdminLearnersDirectory({
                   <button
                     type="button"
                     onClick={async () => {
+                      const todayIso = getTodayIsoDate();
+                      const dueIso = addDaysToIsoDate(todayIso, 30);
                       const { error } = await supabase.rpc("admin_set_learner_pro", {
                         p_target_email: req.user_email,
                         p_target_name: req.user_name,
@@ -1261,14 +1903,18 @@ export function AdminLearnersDirectory({
                         onShowToast(`Gagal mengaktifkan PRO: ${error.message}`);
                         return;
                       }
-                      toggleStudentProByAdmin(req.user_name, req.user_email);
-                      setSupabaseProMap((prev) => ({
-                        ...prev,
-                        [req.user_email.toLowerCase()]: "PRO",
-                        [req.user_name.toLowerCase()]: "PRO",
-                      }));
+                      applyLocalSubscriptionUpdate(
+                        { name: req.user_name, email: req.user_email },
+                        "PRO",
+                        todayIso,
+                        dueIso,
+                        req.package_name || "Learner PRO Monthly"
+                      );
                       setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
-                      onShowToast(`✅ Pembayaran diverifikasi! ${req.user_name} resmi aktif PRO.`);
+                      void loadSupabaseDirectory();
+                      onShowToast(
+                        `✅ Pembayaran diverifikasi! ${req.user_name} resmi aktif PRO s/d ${formatIndoDate(dueIso)}.`
+                      );
                     }}
                     className="rounded-lg bg-[#10B981] hover:bg-[#059669] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
                   >
@@ -1302,305 +1948,550 @@ export function AdminLearnersDirectory({
         </section>
       )}
 
-      {/* Filter & Search Toolbar + Responsive Learners Directory Table */}
+      {/* Subscription Lifecycle Tabs + Filter & Search Toolbar + Responsive Learners Directory Table */}
       <section className="rounded-xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative w-full sm:w-80">
-            <Search
-              size={14}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
-            />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search student name, email, or cohort..."
-              aria-label="Search learners directory"
-              className="w-full rounded-lg bg-[#F8F9FB] pl-8 pr-3 py-2 text-xs text-[#121215] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] focus:outline-none"
-            />
-          </div>
+        {(() => {
+          const tabsConfig = [
+            {
+              key: "all" as const,
+              id: "dir-sub-tab-all",
+              label: "Semua Member",
+              count: tabCounts.all,
+              accent: "#4F39F6",
+              badgeBg: "bg-[#EEF2FF] text-[#4F39F6]",
+            },
+            {
+              key: "pro_active" as const,
+              id: "dir-sub-tab-pro",
+              label: "PRO Aktif",
+              count: tabCounts.proActive,
+              accent: "#10B981",
+              badgeBg: "bg-[#ECFDF5] text-[#059669]",
+            },
+            {
+              key: "expiring" as const,
+              id: "dir-sub-tab-expiring",
+              label: "Mau Habis / Jatuh Tempo",
+              count: tabCounts.expiring,
+              accent: tabCounts.overdue > 0 ? "#EF4444" : "#F59E0B",
+              badgeBg:
+                tabCounts.overdue > 0
+                  ? "bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]"
+                  : tabCounts.expiring > 0
+                  ? "bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]"
+                  : "bg-[#F8F9FB] text-[#64748B]",
+            },
+          ];
+          const activeTabObj =
+            tabsConfig.find((t) => t.key === subscriptionTab) || tabsConfig[0];
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-[#5E5E5E]">
-              Access Role:
-            </span>
-            {(["All Roles", "Learner", "Mentor", "Admin"] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRoleFilter(r)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                  roleFilter === r
-                    ? "bg-[#4F39F6] text-white"
-                    : "bg-[#F8F9FB] text-[#5E5E5E] hover:text-[#121215] border border-[#EAECEF]"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Responsive Table per modern-web-guidance */}
-        <div
-          tabIndex={0}
-          role="region"
-          aria-label="Ruang Sosmed 2.0 Learners Directory"
-          className="table-wrapper"
-        >
-          <table
-            style={
-              {
-                "--label-2": '"Cohort Batch"',
-                "--label-3": '"Assigned Progress"',
-                "--label-4": '"Points & Quiz Avg"',
-                "--label-5": '"Access Role"',
-                "--label-6": '"Portfolio"',
-              } as React.CSSProperties
+          const handleTabKeyDown = (
+            e: React.KeyboardEvent<HTMLButtonElement>,
+            idx: number
+          ) => {
+            let nextIdx: number | null = null;
+            if (e.key === "ArrowRight") {
+              nextIdx = (idx + 1) % tabsConfig.length;
+            } else if (e.key === "ArrowLeft") {
+              nextIdx = (idx - 1 + tabsConfig.length) % tabsConfig.length;
+            } else if (e.key === "Home") {
+              nextIdx = 0;
+            } else if (e.key === "End") {
+              nextIdx = tabsConfig.length - 1;
             }
-          >
-            <thead>
-              <tr className="border-b border-[#EAECEF] bg-[#F8F9FB] text-left text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                <th className="py-3 px-4 rounded-tl-lg">Student / Member</th>
-                <th className="py-3 px-4">Cohort Batch</th>
-                <th className="py-3 px-4">Assigned Progress</th>
-                <th className="py-3 px-4">Points &amp; Quiz Avg</th>
-                <th className="py-3 px-4">Access Role</th>
-                <th className="py-3 px-4 text-right rounded-tr-lg">
-                  Portfolio &amp; Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#EAECEF] text-xs">
-              {filteredMembers.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="py-10 px-4 text-center text-xs text-[#5E5E5E]"
-                  >
-                    <div className="space-y-2">
-                      <p className="font-bold text-[#121215]">
-                        No learners match your current search or cohort filter.
-                      </p>
+            if (nextIdx !== null) {
+              e.preventDefault();
+              const nextTab = tabsConfig[nextIdx];
+              setSubscriptionTab(nextTab.key);
+              const targetEl = tabRefs.current[nextIdx];
+              targetEl?.focus();
+              targetEl?.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }
+          };
+
+          return (
+            <>
+              <div className="border-b border-[#EAECEF] -mx-1 px-1">
+                <div
+                  role="tablist"
+                  aria-label="Filter status langganan member"
+                  className="directory-tablist"
+                >
+                  {tabsConfig.map((tab, idx) => {
+                    const isSelected = subscriptionTab === tab.key;
+                    return (
                       <button
-                        type="button"
-                        onClick={() => {
-                          setCohortFilter("All Cohorts");
-                          setRoleFilter("All Roles");
-                          setSearchQuery("");
+                        key={tab.key}
+                        ref={(el) => {
+                          tabRefs.current[idx] = el;
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/60 px-3 py-1.5 text-xs font-semibold text-[#4F39F6] border border-[#EAECEF] cursor-pointer"
+                        id={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isSelected}
+                        tabIndex={isSelected ? 0 : -1}
+                        onClick={(e) => {
+                          setSubscriptionTab(tab.key);
+                          e.currentTarget.scrollIntoView({
+                            block: "nearest",
+                            inline: "nearest",
+                          });
+                        }}
+                        onKeyDown={(e) => handleTabKeyDown(e, idx)}
+                        style={
+                          {
+                            "--tab-accent": tab.accent,
+                          } as React.CSSProperties
+                        }
+                        className={`directory-tab inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                          isSelected
+                            ? "text-[#121215]"
+                            : "text-[#5E5E5E] hover:text-[#121215]"
+                        }`}
                       >
-                        Reset Directory Filters
+                        {tab.key === "expiring" && (
+                          <AlertTriangle
+                            size={13}
+                            className={
+                              tab.count > 0 ? "text-[#F59E0B]" : "text-[#9CA3AF]"
+                            }
+                          />
+                        )}
+                        {tab.key === "pro_active" && (
+                          <Zap
+                            size={13}
+                            className={
+                              isSelected ? "text-[#10B981]" : "text-[#9CA3AF]"
+                            }
+                          />
+                        )}
+                        {tab.key === "all" && (
+                          <Users
+                            size={13}
+                            className={
+                              isSelected ? "text-[#4F39F6]" : "text-[#9CA3AF]"
+                            }
+                          />
+                        )}
+                        <span>{tab.label}</span>
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${tab.badgeBg}`}
+                        >
+                          {tab.count}
+                        </span>
                       </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div
+                role="tabpanel"
+                aria-labelledby={activeTabObj.id}
+                className="space-y-4"
+              >
+                {subscriptionTab === "expiring" && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#FFFBEB] px-4 py-3 border border-[#F59E0B]/30">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <Clock
+                        size={15}
+                        className="text-[#B45309] shrink-0 mt-0.5"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-[#92400E]">
+                          Monitoring Member Mau Habis (≤ 7 Hari) &amp; Jatuh Tempo
+                        </p>
+                        <p className="text-[11px] text-[#78350F] mt-0.5">
+                          Diurutkan dari yang paling mendesak atau sudah lewat jatuh tempo. Gunakan tombol{" "}
+                          <strong>+30 Hr</strong> atau <strong>Perpanjang</strong> untuk mengaktifkan kembali masa PRO secara manual.
+                        </p>
+                      </div>
                     </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredMembers.map((member) => {
-                const pct =
-                  member.totalChapters > 0
-                    ? Math.round(
-                        (member.completedChapters / member.totalChapters) * 100
-                      )
-                    : 0;
-                return (
-                  <tr
-                    key={member.id}
-                    onClick={() => {
-                      setInspectedMember(member);
-                      setProfileTab("activity");
-                      setResetPasswordInput("");
-                      setShowResetPassword(false);
-                    }}
-                    title={`Klik baris untuk membuka profil, progress belajar, sisa koin & reset password ${member.name}`}
-                    className="group transition-colors cursor-pointer"
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="relative w-full sm:w-80">
+                    <Search
+                      size={14}
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
+                    />
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search student name, email, or cohort..."
+                      aria-label="Search learners directory"
+                      className="w-full rounded-lg bg-[#F8F9FB] pl-8 pr-3 py-2 text-xs text-[#121215] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-[#5E5E5E]">
+                      Access Role:
+                    </span>
+                    {(["All Roles", "Learner", "Mentor", "Admin"] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setRoleFilter(r)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                          roleFilter === r
+                            ? "bg-[#4F39F6] text-white"
+                            : "bg-[#F8F9FB] text-[#5E5E5E] hover:text-[#121215] border border-[#EAECEF]"
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Responsive Table per modern-web-guidance */}
+                <div
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Ruang Sosmed 2.0 Learners Directory"
+                  className="table-wrapper"
+                >
+                  <table
+                    style={
+                      {
+                        "--label-2": '"Cohort Batch"',
+                        "--label-3": '"Langganan & Jatuh Tempo"',
+                        "--label-4": '"Assigned Progress"',
+                        "--label-5": '"Points & Quiz Avg"',
+                        "--label-6": '"Access Role"',
+                        "--label-7": '"Portfolio & Actions"',
+                      } as React.CSSProperties
+                    }
                   >
-                    <th
-                      scope="row"
-                      className="py-3.5 px-4 font-semibold text-[#121215] text-left transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        {(() => {
-                          const memberAvatar =
-                            resolveUserAvatar(member.email, member.name, member.id) ||
-                            member.avatarUrl;
-                          if (memberAvatar) {
-                            return (
-                              <img
-                                src={memberAvatar}
-                                alt={member.name}
-                                className="h-8 w-8 shrink-0 rounded-full object-cover border border-[#E2E8F0]"
-                              />
-                            );
-                          }
+                    <thead>
+                      <tr className="border-b border-[#EAECEF] bg-[#F8F9FB] text-left text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                        <th className="py-3 px-4 rounded-tl-lg">Student / Member</th>
+                        <th className="py-3 px-4">Cohort Batch</th>
+                        <th className="py-3 px-4">Langganan &amp; Jatuh Tempo</th>
+                        <th className="py-3 px-4">Assigned Progress</th>
+                        <th className="py-3 px-4">Points &amp; Quiz Avg</th>
+                        <th className="py-3 px-4">Access Role</th>
+                        <th className="py-3 px-4 text-right rounded-tr-lg">
+                          Portfolio &amp; Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#EAECEF] text-xs">
+                      {filteredMembers.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={7}
+                            className="py-10 px-4 text-center text-xs text-[#5E5E5E]"
+                          >
+                            <div className="space-y-2">
+                              <p className="font-bold text-[#121215]">
+                                {subscriptionTab === "expiring"
+                                  ? "Tidak ada member PRO yang mendekati habis atau jatuh tempo saat ini."
+                                  : subscriptionTab === "pro_active"
+                                  ? "Belum ada member PRO aktif sesuai filter saat ini."
+                                  : "No learners match your current search or cohort filter."}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSubscriptionTab("all");
+                                  setCohortFilter("All Cohorts");
+                                  setRoleFilter("All Roles");
+                                  setSearchQuery("");
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/60 px-3 py-1.5 text-xs font-semibold text-[#4F39F6] border border-[#EAECEF] cursor-pointer"
+                              >
+                                Reset Directory Filters
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredMembers.map((member) => {
+                          const pct =
+                            member.totalChapters > 0
+                              ? Math.round(
+                                  (member.completedChapters / member.totalChapters) * 100
+                                )
+                              : 0;
+                          const subInfo = getMemberSubInfo(member);
+                          const emailKey = (member.email || "").toLowerCase().trim();
+                          const isQuickBusy = quickExtendingEmail === emailKey;
+
                           return (
-                            <span
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                              style={{
-                                backgroundColor: member.avatarBg,
-                                color: member.avatarText,
-                              }}
-                            >
-                              {member.initials}
-                            </span>
-                          );
-                        })()}
-                        <div>
-                          <p className="font-bold text-[#121215] group-hover:text-[#4F39F6] transition-colors">
-                            {member.name}
-                          </p>
-                          <p className="text-[11px] font-normal text-[#5E5E5E]">
-                            {member.email} • {member.jobTitle}
-                          </p>
-                        </div>
-                      </div>
-                    </th>
-
-                    <td className="py-3.5 px-4 transition-colors">
-                      <span className="rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-1 text-[11px] font-semibold text-[#121215]">
-                        {member.cohort}
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 transition-colors">
-                      <div className="flex items-center gap-2 min-w-[140px]">
-                        <div className="flex-1 h-2 rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-[#4F39F6]"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="font-semibold text-[#121215] tabular-nums">
-                          {member.completedChapters}/{member.totalChapters} ({pct}
-                          %)
-                        </span>
-                      </div>
-                    </td>
-
-                    <td
-                      className="py-3.5 px-4 transition-colors"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAdjustPointsTarget(member);
-                            setAdjustPointsMode("add");
-                            setAdjustPointsValue(100);
-                            setAdjustPointsReason("Bonus Keaktifan");
-                          }}
-                          title={`Klik untuk ubah / tambah koin manual untuk ${member.name}`}
-                          className="group/pts inline-flex items-center gap-1 font-bold text-[#B45309] bg-[#FEF3C7]/60 hover:bg-[#FEF3C7] border border-[#F59E0B]/30 hover:border-[#F59E0B]/60 px-2 py-0.5 rounded-md transition-all cursor-pointer shadow-2xs"
-                        >
-                          <Star
-                            size={12}
-                            className="text-[#F59E0B]"
-                            fill="#F59E0B"
-                          />
-                          <span className="tabular-nums">{member.points.toLocaleString()}</span>
-                          <Edit3
-                            size={10}
-                            className="text-[#B45309] opacity-40 group-hover/pts:opacity-100 transition-opacity ml-0.5"
-                          />
-                        </button>
-                        <span className="text-[#9CA3AF]">•</span>
-                        <span className="font-semibold text-[#059669]">
-                          {member.avgQuizScore}% avg
-                        </span>
-                      </div>
-                    </td>
-
-                    <td
-                      className="py-3.5 px-4 transition-colors"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="inline-flex items-center gap-1.5">
-                        <Shield size={12} className="text-[#4F39F6]" />
-                        <select
-                          aria-label={`Access role for ${member.name}`}
-                          value={member.accessRole}
-                          onChange={(e) =>
-                            handleRoleChange(
-                              member,
-                              e.target.value as "Learner" | "Mentor" | "Admin"
-                            )
-                          }
-                          className="rounded-md bg-[#F8F9FB] px-2 py-1 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none cursor-pointer"
-                        >
-                          <option value="Learner">Learner</option>
-                          <option value="Mentor">Mentor</option>
-                          <option value="Admin">Admin</option>
-                        </select>
-                      </div>
-                    </td>
-
-                    <td
-                      className="py-3.5 px-4 text-right transition-colors"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="inline-flex items-center gap-2">
-                        {member.accessRole === "Learner" && (() => {
-                          const emailKey = member.email.toLowerCase();
-                          const resolvedTier =
-                            learnerSubscriptions?.[emailKey] ??
-                            learnerSubscriptions?.[member.name] ??
-                            supabaseProMap[emailKey] ??
-                            supabaseProMap[member.name] ??
-                            "Free";
-                          const isMemberPro = resolvedTier === "PRO";
-                          return (
-                            <button
-                              type="button"
+                            <tr
+                              key={member.id}
                               onClick={() => {
-                                toggleStudentProByAdmin(member.name, member.email);
-                                setSupabaseProMap((prev) => ({
-                                  ...prev,
-                                  [member.name]: isMemberPro ? "Free" : "PRO",
-                                  [emailKey]: isMemberPro ? "Free" : "PRO",
-                                }));
-                                onShowToast(
-                                  `Updated ${member.name} subscription to ${
-                                    isMemberPro ? "Free Tier" : "Learner PRO"
-                                  }.`
-                                );
+                                setInspectedMember(member);
+                                setProfileTab("activity");
+                                setResetPasswordInput("");
+                                setShowResetPassword(false);
                               }}
-                              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold border transition-colors cursor-pointer ${
-                                isMemberPro
-                                  ? "bg-[#FEF3C7] text-[#B45309] border-[#F59E0B]/40 hover:bg-[#FDE68A]"
-                                  : "bg-[#FFFFFF] text-[#5E5E5E] border-[#EAECEF] hover:border-[#F59E0B] hover:text-[#B45309]"
-                              }`}
+                              title={`Klik baris untuk membuka profil, progress belajar, sisa koin & reset password ${member.name}`}
+                              className="group transition-colors cursor-pointer"
                             >
-                              <Zap size={12} fill="currentColor" />
-                              <span>
-                                {isMemberPro ? "PRO Member" : "Free • Set PRO"}
-                              </span>
-                            </button>
+                              <th
+                                scope="row"
+                                className="py-3.5 px-4 font-semibold text-[#121215] text-left transition-colors"
+                              >
+                                <div className="flex items-center gap-3">
+                                  {(() => {
+                                    const memberAvatar =
+                                      resolveUserAvatar(member.email, member.name, member.id) ||
+                                      member.avatarUrl;
+                                    if (memberAvatar) {
+                                      return (
+                                        <img
+                                          src={memberAvatar}
+                                          alt={member.name}
+                                          className="h-8 w-8 shrink-0 rounded-full object-cover border border-[#E2E8F0]"
+                                        />
+                                      );
+                                    }
+                                    return (
+                                      <span
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                                        style={{
+                                          backgroundColor: member.avatarBg,
+                                          color: member.avatarText,
+                                        }}
+                                      >
+                                        {member.initials}
+                                      </span>
+                                    );
+                                  })()}
+                                  <div>
+                                    <p className="font-bold text-[#121215] group-hover:text-[#4F39F6] transition-colors">
+                                      {member.name}
+                                    </p>
+                                    <p className="text-[11px] font-normal text-[#5E5E5E]">
+                                      {member.email} • {member.jobTitle}
+                                    </p>
+                                  </div>
+                                </div>
+                              </th>
+
+                              <td className="py-3.5 px-4 transition-colors">
+                                <span className="rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-1 text-[11px] font-semibold text-[#121215] whitespace-nowrap">
+                                  {member.cohort}
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4 transition-colors">
+                                {member.accessRole !== "Learner" ? (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-[#EEF2FF] border border-[#4F39F6]/20 px-2 py-0.5 text-[10px] font-bold text-[#4F39F6]">
+                                      <ShieldCheck size={10} />
+                                      <span>Akses Staf</span>
+                                    </span>
+                                    <p className="text-[10px] text-[#64748B]">
+                                      Tanpa jatuh tempo
+                                    </p>
+                                  </div>
+                                ) : subInfo ? (
+                                  <div className="space-y-1 min-w-[165px]">
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold border ${
+                                        subInfo.status === "expired"
+                                          ? "bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]"
+                                          : subInfo.status === "expiring_soon"
+                                          ? "bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]"
+                                          : subInfo.status === "active"
+                                          ? "bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]"
+                                          : "bg-[#F8F9FB] text-[#64748B] border-[#EAECEF]"
+                                      }`}
+                                    >
+                                      {subInfo.status === "expired" ? (
+                                        <AlertTriangle size={10} />
+                                      ) : subInfo.status === "expiring_soon" ? (
+                                        <Clock size={10} />
+                                      ) : subInfo.status === "active" ? (
+                                        <Zap size={10} fill="currentColor" />
+                                      ) : null}
+                                      <span>{subInfo.badgeLabel}</span>
+                                    </span>
+                                    {subInfo.status !== "free" ? (
+                                      <div className="text-[10px] leading-tight space-y-0.5 text-[#5E5E5E] tabular-nums">
+                                        <p>
+                                          Mulai:{" "}
+                                          <strong className="font-semibold text-[#121215]">
+                                            {subInfo.startedLabel}
+                                          </strong>
+                                        </p>
+                                        <p>
+                                          Tempo:{" "}
+                                          <strong
+                                            className={`font-semibold ${
+                                              subInfo.status === "expired"
+                                                ? "text-[#DC2626]"
+                                                : subInfo.status === "expiring_soon"
+                                                ? "text-[#B45309]"
+                                                : "text-[#121215]"
+                                            }`}
+                                          >
+                                            {subInfo.dueLabel}
+                                          </strong>
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <p className="text-[10px] text-[#9CA3AF]">
+                                        Belum berlangganan PRO
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </td>
+
+                              <td className="py-3.5 px-4 transition-colors">
+                                <div className="flex items-center gap-2 min-w-[130px]">
+                                  <div className="flex-1 h-2 rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full bg-[#4F39F6]"
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-semibold text-[#121215] tabular-nums whitespace-nowrap">
+                                    {member.completedChapters}/{member.totalChapters} ({pct}
+                                    %)
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td
+                                className="py-3.5 px-4 transition-colors"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="flex items-center gap-2 whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAdjustPointsTarget(member);
+                                      setAdjustPointsMode("add");
+                                      setAdjustPointsValue(100);
+                                      setAdjustPointsReason("Bonus Keaktifan");
+                                    }}
+                                    title={`Klik untuk ubah / tambah koin manual untuk ${member.name}`}
+                                    className="group/pts inline-flex items-center gap-1 font-bold text-[#B45309] bg-[#FEF3C7]/60 hover:bg-[#FEF3C7] border border-[#F59E0B]/30 hover:border-[#F59E0B]/60 px-2 py-0.5 rounded-md transition-all cursor-pointer shadow-2xs"
+                                  >
+                                    <Star
+                                      size={12}
+                                      className="text-[#F59E0B]"
+                                      fill="#F59E0B"
+                                    />
+                                    <span className="tabular-nums">{member.points.toLocaleString()}</span>
+                                    <Edit3
+                                      size={10}
+                                      className="text-[#B45309] opacity-40 group-hover/pts:opacity-100 transition-opacity ml-0.5"
+                                    />
+                                  </button>
+                                  <span className="text-[#9CA3AF]">•</span>
+                                  <span className="font-semibold text-[#059669]">
+                                    {member.avgQuizScore}% avg
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td
+                                className="py-3.5 px-4 transition-colors"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="inline-flex items-center gap-1.5">
+                                  <Shield size={12} className="text-[#4F39F6]" />
+                                  <select
+                                    aria-label={`Access role for ${member.name}`}
+                                    value={member.accessRole}
+                                    onChange={(e) =>
+                                      handleRoleChange(
+                                        member,
+                                        e.target.value as "Learner" | "Mentor" | "Admin"
+                                      )
+                                    }
+                                    className="rounded-md bg-[#F8F9FB] px-2 py-1 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none cursor-pointer"
+                                  >
+                                    <option value="Learner">Learner</option>
+                                    <option value="Mentor">Mentor</option>
+                                    <option value="Admin">Admin</option>
+                                  </select>
+                                </div>
+                              </td>
+
+                              <td
+                                className="py-3.5 px-4 text-right transition-colors"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+                                  {member.accessRole === "Learner" && subInfo && (
+                                    <>
+                                      {(subInfo.status === "expiring_soon" ||
+                                        subInfo.status === "expired") && (
+                                        <button
+                                          type="button"
+                                          disabled={isQuickBusy}
+                                          onClick={() => void handleQuickExtend30Days(member)}
+                                          title={`Perpanjang langsung +30 hari untuk ${member.name}`}
+                                          className="inline-flex items-center gap-1 rounded-lg bg-[#10B981] hover:bg-[#059669] disabled:opacity-60 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors cursor-pointer"
+                                        >
+                                          <RotateCw
+                                            size={11}
+                                            className={isQuickBusy ? "animate-spin" : ""}
+                                          />
+                                          <span>+30 Hr</span>
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => openRenewModal(member)}
+                                        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold border transition-colors cursor-pointer ${
+                                          subInfo.status === "expired"
+                                            ? "bg-[#FEF2F2] text-[#DC2626] border-[#FECACA] hover:bg-[#FEE2E2]"
+                                            : subInfo.status === "expiring_soon"
+                                            ? "bg-[#FEF3C7] text-[#B45309] border-[#F59E0B]/40 hover:bg-[#FDE68A]"
+                                            : subInfo.status === "active"
+                                            ? "bg-[#FEF3C7]/70 text-[#B45309] border-[#F59E0B]/40 hover:bg-[#FEF3C7]"
+                                            : "bg-[#FFFFFF] text-[#5E5E5E] border-[#EAECEF] hover:border-[#F59E0B] hover:text-[#B45309]"
+                                        }`}
+                                      >
+                                        <Calendar size={11} />
+                                        <span>
+                                          {subInfo.status === "expiring_soon" ||
+                                          subInfo.status === "expired"
+                                            ? "Perpanjang"
+                                            : subInfo.status === "active"
+                                            ? "Atur PRO"
+                                            : "Aktifkan PRO"}
+                                        </span>
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setInspectedMember(member);
+                                      setProfileTab("activity");
+                                      setResetPasswordInput("");
+                                      setShowResetPassword(false);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#4F39F6] hover:text-white px-2.5 py-1.5 text-[11px] font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
+                                  >
+                                    <Eye size={12} />
+                                    <span>Lihat Profil</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
                           );
-                        })()}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setInspectedMember(member);
-                            setProfileTab("activity");
-                            setResetPasswordInput("");
-                            setShowResetPassword(false);
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#4F39F6] hover:text-white px-3 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
-                        >
-                          <Eye size={13} />
-                          <span>Lihat Profil</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          );
+        })()}
       </section>
 
       {/* Modal 1: Invite Student via Email / CSV Upload */}
@@ -1847,16 +2738,7 @@ export function AdminLearnersDirectory({
                 m.email.toLowerCase() === inspectedMember.email.toLowerCase() ||
                 m.id === inspectedMember.id
             ) || inspectedMember;
-          const emailKey = activeMember.email.toLowerCase().trim();
-          const resolvedTier =
-            activeMember.accessRole === "Admin"
-              ? "PRO"
-              : learnerSubscriptions?.[emailKey] ??
-                learnerSubscriptions?.[activeMember.name] ??
-                supabaseProMap[emailKey] ??
-                supabaseProMap[activeMember.name] ??
-                "Free";
-          const isMemberPro = resolvedTier === "PRO";
+          const activeSubInfo = getMemberSubInfo(activeMember);
           const overallPct =
             activeMember.totalChapters > 0
               ? Math.min(
@@ -1915,16 +2797,27 @@ export function AdminLearnersDirectory({
                       <span className="rounded-md bg-[#EEF2FF] border border-[#4F39F6]/20 px-2 py-0.5 text-[10px] font-bold text-[#4F39F6]">
                         {activeMember.accessRole}
                       </span>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold border ${
-                          isMemberPro
-                            ? "bg-[#FEF3C7] text-[#B45309] border-[#F59E0B]/40"
-                            : "bg-[#FFFFFF] text-[#5E5E5E] border-[#EAECEF]"
-                        }`}
-                      >
-                        <Zap size={10} fill="currentColor" />
-                        <span>{isMemberPro ? "PRO Member" : "Free Tier"}</span>
-                      </span>
+                      {activeMember.accessRole !== "Learner" ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-[#FEF3C7] text-[#B45309] border border-[#F59E0B]/40 px-2 py-0.5 text-[10px] font-bold">
+                          <Zap size={10} fill="currentColor" />
+                          <span>Unlimited Staf</span>
+                        </span>
+                      ) : activeSubInfo ? (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold border ${
+                            activeSubInfo.status === "expired"
+                              ? "bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]"
+                              : activeSubInfo.status === "expiring_soon"
+                              ? "bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]"
+                              : activeSubInfo.status === "active"
+                              ? "bg-[#ECFDF5] text-[#059669] border-[#A7F3D0]"
+                              : "bg-[#FFFFFF] text-[#5E5E5E] border-[#EAECEF]"
+                          }`}
+                        >
+                          <Zap size={10} fill="currentColor" />
+                          <span>{activeSubInfo.badgeLabel}</span>
+                        </span>
+                      ) : null}
                     </div>
                     <p className="text-xs text-[#64748B] truncate mt-0.5">
                       {activeMember.email} • {activeMember.jobTitle} •{" "}
@@ -1937,26 +2830,15 @@ export function AdminLearnersDirectory({
                   {activeMember.accessRole === "Learner" && (
                     <button
                       type="button"
-                      onClick={() => {
-                        toggleStudentProByAdmin(
-                          activeMember.name,
-                          activeMember.email
-                        );
-                        setSupabaseProMap((prev) => ({
-                          ...prev,
-                          [activeMember.name]: isMemberPro ? "Free" : "PRO",
-                          [emailKey]: isMemberPro ? "Free" : "PRO",
-                        }));
-                        onShowToast(
-                          `Status paket ${activeMember.name} diubah ke ${
-                            isMemberPro ? "Free Tier" : "Learner PRO"
-                          }.`
-                        );
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#FFFFFF] hover:bg-[#F8F9FB] px-2.5 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
+                      onClick={() => openRenewModal(activeMember)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#F8F9FB] px-2.5 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
                     >
-                      <Zap size={12} className="text-[#F59E0B]" />
-                      <span>{isMemberPro ? "Ubah ke Free" : "Set PRO"}</span>
+                      <Calendar size={12} className="text-[#F59E0B]" />
+                      <span>
+                        {activeSubInfo?.status === "free"
+                          ? "Aktifkan PRO"
+                          : "Perpanjang / Atur PRO"}
+                      </span>
                     </button>
                   )}
                   <button
@@ -1969,6 +2851,92 @@ export function AdminLearnersDirectory({
                   </button>
                 </div>
               </div>
+
+              {activeMember.accessRole === "Learner" && activeSubInfo && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#FFFFFF] px-4 py-3 border border-[#EAECEF]">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1 min-w-[260px] text-xs">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">
+                        Paket Langganan
+                      </p>
+                      <p className="font-bold text-[#121215] mt-0.5 truncate">
+                        {activeMember.proPackageName ||
+                          (activeSubInfo.status === "free"
+                            ? "Free Tier"
+                            : "Learner PRO Monthly")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">
+                        Tgl Berlangganan
+                      </p>
+                      <p className="font-bold text-[#121215] mt-0.5 tabular-nums">
+                        {activeSubInfo.status === "free"
+                          ? "—"
+                          : activeSubInfo.startedLabel}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">
+                        Jatuh Tempo
+                      </p>
+                      <p
+                        className={`font-bold mt-0.5 tabular-nums ${
+                          activeSubInfo.status === "expired"
+                            ? "text-[#DC2626]"
+                            : activeSubInfo.status === "expiring_soon"
+                            ? "text-[#B45309]"
+                            : "text-[#121215]"
+                        }`}
+                      >
+                        {activeSubInfo.status === "free"
+                          ? "—"
+                          : activeSubInfo.dueLabel}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-[#9CA3AF]">
+                        Status Masa Aktif
+                      </p>
+                      <p
+                        className={`font-bold mt-0.5 ${
+                          activeSubInfo.status === "expired"
+                            ? "text-[#DC2626]"
+                            : activeSubInfo.status === "expiring_soon"
+                            ? "text-[#B45309]"
+                            : activeSubInfo.status === "active"
+                            ? "text-[#059669]"
+                            : "text-[#64748B]"
+                        }`}
+                      >
+                        {activeSubInfo.badgeLabel}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => void handleQuickExtend30Days(activeMember)}
+                      disabled={
+                        quickExtendingEmail ===
+                        (activeMember.email || "").toLowerCase().trim()
+                      }
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#10B981] hover:bg-[#059669] disabled:opacity-60 px-3 py-1.5 text-xs font-bold text-white cursor-pointer"
+                    >
+                      <RotateCw size={12} />
+                      <span>+30 Hari</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openRenewModal(activeMember)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/70 px-3 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] cursor-pointer"
+                    >
+                      <Calendar size={12} className="text-[#4F39F6]" />
+                      <span>Atur Tanggal</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* 4 Summary Metric Cards: Sisa Koin, Progress Belajar, Skor Kuis, Status Password */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -2753,6 +3721,257 @@ export function AdminLearnersDirectory({
           </form>
         )}
       </ModalDialog>
+
+      {/* Modal 4: Manual PRO Activation & Subscription Renewal */}
+      <ModalDialog
+        open={Boolean(renewModalMember)}
+        onClose={() => !isSavingRenewal && setRenewModalMember(null)}
+        titleId="manual-pro-renewal-modal-title"
+        title={
+          renewModalMember
+            ? `Atur & Perpanjang PRO — ${renewModalMember.name}`
+            : "Atur Langganan PRO"
+        }
+        subtitle={
+          renewModalMember
+            ? `${renewModalMember.email} • Atur tanggal berlangganan, jatuh tempo, atau perpanjang manual`
+            : ""
+        }
+        maxWidthClass="max-w-lg"
+      >
+        {renewModalMember && (() => {
+          const todayIso = getTodayIsoDate();
+          const currentSub = getMemberSubInfo(renewModalMember);
+          const hasActiveFutureDue =
+            Boolean(currentSub?.dueDateIso) &&
+            (currentSub?.status === "active" ||
+              currentSub?.status === "expiring_soon") &&
+            (currentSub?.dueDateIso || "") >= todayIso;
+          const basePresetAnchor =
+            hasActiveFutureDue && currentSub?.dueDateIso
+              ? currentSub.dueDateIso
+              : renewStartDate || todayIso;
+          const totalDurationDays =
+            renewStartDate && renewDueDate
+              ? Math.max(0, diffCalendarDays(renewStartDate, renewDueDate))
+              : 0;
+
+          return (
+            <form onSubmit={handleSaveRenewal} className="space-y-4">
+              {/* Current Subscription Summary */}
+              <div className="rounded-xl bg-[#F8F9FB] p-3.5 border border-[#EAECEF] flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
+                    Status Saat Ini
+                  </p>
+                  <p className="text-xs font-bold text-[#121215] mt-0.5">
+                    {currentSub?.badgeLabel || "Free Plan"}
+                  </p>
+                  {currentSub && currentSub.status !== "free" && (
+                    <p className="text-[11px] text-[#5E5E5E] mt-0.5 tabular-nums">
+                      Mulai: {currentSub.startedLabel} • Tempo:{" "}
+                      <strong className="text-[#121215]">{currentSub.dueLabel}</strong>
+                    </p>
+                  )}
+                </div>
+                {renewModalMember.proPackageName && (
+                  <span className="rounded-md bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-bold text-[#4F39F6]">
+                    {renewModalMember.proPackageName}
+                  </span>
+                )}
+              </div>
+
+              {/* Quick Extension Presets */}
+              <div>
+                <p className="text-xs font-semibold text-[#121215] mb-1">
+                  Pilihan Cepat Perpanjangan
+                </p>
+                <p className="text-[11px] text-[#64748B] mb-2">
+                  {hasActiveFutureDue && currentSub?.dueDateIso
+                    ? `Ditambahkan otomatis dari jatuh tempo aktif (${formatIndoDate(
+                        currentSub.dueDateIso
+                      )}):`
+                    : "Dihitung mulai dari Tanggal Berlangganan di bawah:"}
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { label: "+30 Hari", days: 30, pkg: "Learner PRO Monthly" },
+                    { label: "+90 Hari", days: 90, pkg: "Learner PRO Quarterly" },
+                    { label: "+180 Hari", days: 180, pkg: "Learner PRO 6 Months" },
+                    { label: "+1 Tahun", days: 365, pkg: "Learner PRO Yearly" },
+                  ].map((preset) => {
+                    const targetDue = addDaysToIsoDate(basePresetAnchor, preset.days);
+                    const isSelectedPreset = renewDueDate === targetDue;
+                    return (
+                      <button
+                        key={preset.days}
+                        type="button"
+                        onClick={() => {
+                          if (!hasActiveFutureDue && !renewStartDate) {
+                            setRenewStartDate(todayIso);
+                          }
+                          setRenewDueDate(targetDue);
+                          setRenewPackageName(preset.pkg);
+                        }}
+                        className={`rounded-lg px-2.5 py-2 text-xs font-bold border transition-colors cursor-pointer ${
+                          isSelectedPreset
+                            ? "bg-[#4F39F6] text-white border-[#4F39F6]"
+                            : "bg-[#FFFFFF] text-[#121215] border-[#EAECEF] hover:border-[#4F39F6] hover:text-[#4F39F6]"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Date Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label
+                    htmlFor="renew-pro-start-date"
+                    className="block text-xs font-semibold text-[#121215] mb-1"
+                  >
+                    Tanggal Berlangganan (Mulai)
+                  </label>
+                  <input
+                    id="renew-pro-start-date"
+                    type="date"
+                    required
+                    value={renewStartDate}
+                    onChange={(e) => {
+                      const nextStart = e.target.value;
+                      setRenewStartDate(nextStart);
+                      if (nextStart && renewDueDate && renewDueDate < nextStart) {
+                        setRenewDueDate(addDaysToIsoDate(nextStart, 30));
+                      }
+                    }}
+                    className="w-full rounded-lg bg-[#F8F9FB] px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="renew-pro-due-date"
+                    className="block text-xs font-semibold text-[#121215] mb-1"
+                  >
+                    Tanggal Jatuh Tempo
+                  </label>
+                  <input
+                    id="renew-pro-due-date"
+                    type="date"
+                    required
+                    min={renewStartDate || undefined}
+                    value={renewDueDate}
+                    onChange={(e) => setRenewDueDate(e.target.value)}
+                    className="w-full rounded-lg bg-[#F8F9FB] px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Package Name */}
+              <div>
+                <label
+                  htmlFor="renew-pro-package-name"
+                  className="block text-xs font-semibold text-[#121215] mb-1"
+                >
+                  Nama Paket PRO
+                </label>
+                <input
+                  id="renew-pro-package-name"
+                  type="text"
+                  required
+                  value={renewPackageName}
+                  onChange={(e) => setRenewPackageName(e.target.value)}
+                  placeholder="Contoh: Learner PRO Monthly"
+                  className="w-full rounded-lg bg-[#F8F9FB] px-3 py-2 text-xs text-[#121215] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] focus:outline-none"
+                />
+              </div>
+
+              {/* Live Summary Preview */}
+              <div className="rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-[#065F46]">
+                  Periode Aktif: {formatIndoDate(renewStartDate)} →{" "}
+                  {formatIndoDate(renewDueDate)}
+                </span>
+                <span className="font-bold text-[#059669] tabular-nums">
+                  Total {totalDurationDays} Hari
+                </span>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#EAECEF]">
+                {currentSub && currentSub.status !== "free" ? (
+                  <button
+                    type="button"
+                    disabled={isSavingRenewal}
+                    onClick={() => void handleRevokeToFree(renewModalMember)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] disabled:opacity-50 px-3 py-2 text-xs font-bold text-[#DC2626] border border-[#FECACA] cursor-pointer"
+                  >
+                    <XCircle size={13} />
+                    <span>Cabut ke Free</span>
+                  </button>
+                ) : (
+                  <span />
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isSavingRenewal}
+                    onClick={() => setRenewModalMember(null)}
+                    className="rounded-lg px-3.5 py-2 text-xs font-semibold text-[#5E5E5E] hover:text-[#121215] cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingRenewal}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] disabled:opacity-50 px-4 py-2 text-xs font-bold text-white shadow-xs cursor-pointer transition-colors"
+                  >
+                    <Zap size={13} fill="currentColor" />
+                    <span>
+                      {isSavingRenewal
+                        ? "Menyimpan..."
+                        : "Simpan & Aktifkan PRO"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          );
+        })()}
+      </ModalDialog>
+
+      {/* Modal 5: Near-Fullscreen Executive Insights Dashboard */}
+      <AdminDirectoryInsightsModal
+        open={insightsModalOpen}
+        onClose={() => setInsightsModalOpen(false)}
+        members={allDirectoryMembers}
+        getMemberSubInfo={getMemberSubInfo}
+        proRequests={allProRequests}
+        configuredPackages={getNormalizedProPackages(learnerProConfig).map((p) => ({
+          id: p.id,
+          name: p.name,
+          priceLabel: p.priceLabel,
+          periodLabel: p.periodLabel,
+        }))}
+        cohortNames={(cohortProjects || []).map((c) => c.name)}
+        totalCoinsRedeemed={(claimedRewards || []).reduce(
+          (sum, r) => sum + (Number(r.pointsSpent) || 0),
+          0
+        )}
+        totalRewardsClaimedCount={(claimedRewards || []).length}
+        onQuickExtend30Days={(member) => void handleQuickExtend30Days(member)}
+        onOpenRenewModal={(member) => openRenewModal(member)}
+        onInspectMember={(member) => {
+          setInspectedMember(member);
+          setProfileTab("activity");
+          setResetPasswordInput("");
+          setShowResetPassword(false);
+        }}
+        quickExtendingEmail={quickExtendingEmail}
+      />
     </div>
   );
 }

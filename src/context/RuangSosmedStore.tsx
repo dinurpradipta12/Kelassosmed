@@ -67,10 +67,16 @@ import {
 } from "@/lib/certificate-tokens";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
+  isProSubscriptionActive,
+  isMissingSubDateColumnError,
+} from "@/lib/subscription-utils";
+import {
   INITIAL_REWARDS_CATALOG,
   type RewardItem,
   type ClaimedRewardRecord,
 } from "@/lib/rewards-data";
+
+let profilesHasSubDateCols = true;
 
 export interface ContentStatusSegment {
   label: string;
@@ -1571,6 +1577,11 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     proofUrl?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   toggleStudentProByAdmin: (studentName: string, studentEmail?: string) => void;
+  setStudentProTierLocal: (
+    studentName: string,
+    studentEmail: string | undefined,
+    tier: "PRO" | "Free"
+  ) => void;
   registerLearnerProfile: (profile: {
     name: string;
     email: string;
@@ -1722,6 +1733,10 @@ export function RuangSosmedProvider({
   >(new Map());
   const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
   const adminNotifHydratedRef = useRef(false);
+  const lastSyncAtRef = useRef<number>(0);
+  const lastWatermarkRef = useRef<string>("");
+  const syncInFlightRef = useRef<boolean>(false);
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Hydrate from localStorage on mount
   useEffect(() => {
@@ -2346,8 +2361,39 @@ export function RuangSosmedProvider({
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
-    const syncRegisteredLearners = async () => {
+    const syncRegisteredLearners = async (options?: { force?: boolean }) => {
+      if (syncInFlightRef.current) return;
+      if (!options?.force && typeof document !== "undefined" && document.hidden) {
+        return;
+      }
+
+      syncInFlightRef.current = true;
+      let latestWmSerialized = "";
       try {
+        if (!options?.force) {
+          const { data: wmData, error: wmErr } = await supabase.rpc(
+            "get_workspace_sync_watermark"
+          );
+          if (!wmErr && wmData !== null && wmData !== undefined) {
+            latestWmSerialized = JSON.stringify(wmData);
+            if (
+              latestWmSerialized !== "" &&
+              latestWmSerialized === lastWatermarkRef.current
+            ) {
+              return;
+            }
+          } else if (Date.now() - lastSyncAtRef.current < 60_000) {
+            return;
+          }
+        } else {
+          const { data: wmData, error: wmErr } = await supabase.rpc(
+            "get_workspace_sync_watermark"
+          );
+          if (!wmErr && wmData !== null && wmData !== undefined) {
+            latestWmSerialized = JSON.stringify(wmData);
+          }
+        }
+
         const { data: sessionData } = await supabase.auth.getSession();
         const authUser = sessionData?.session?.user || null;
         const authUserId = authUser?.id || null;
@@ -2356,11 +2402,31 @@ export function RuangSosmedProvider({
         let isStaffSession = false;
 
         if (authUserId) {
-          const { data: ownProf } = await supabase
-            .from("profiles")
-            .select("id, role, full_name, email, avatar_url, subscription_tier, total_points, job_title")
-            .eq("id", authUserId)
-            .maybeSingle();
+          let ownProf: any = null;
+          if (profilesHasSubDateCols) {
+            const res = await supabase
+              .from("profiles")
+              .select(
+                "id, role, full_name, email, avatar_url, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, total_points, job_title"
+              )
+              .eq("id", authUserId)
+              .maybeSingle();
+            if (!res.error) {
+              ownProf = res.data;
+            } else if (isMissingSubDateColumnError(res.error)) {
+              profilesHasSubDateCols = false;
+            } else {
+              ownProf = res.data;
+            }
+          }
+          if (!profilesHasSubDateCols) {
+            const fallbackRes = await supabase
+              .from("profiles")
+              .select("id, role, full_name, email, avatar_url, subscription_tier, total_points, job_title")
+              .eq("id", authUserId)
+              .maybeSingle();
+            ownProf = fallbackRes.data;
+          }
 
           ownProfile = ownProf;
           const rawDbRole = String(ownProf?.role || "learner").toLowerCase();
@@ -2369,7 +2435,9 @@ export function RuangSosmedProvider({
 
         const contentsRes = await supabase
           .from("contents")
-          .select("*")
+          .select(
+            "id, project_id, type, title, description, thumbnail_url, category_tags, urgency, estimated_minutes, points_reward, is_pro_only, status, settings_json, author_id, folder_name, folder_id, access_code, cohort, sort_order, created_at, updated_at"
+          )
           .in("status", ["published", "archived"])
           .order("created_at", { ascending: true });
 
@@ -2404,25 +2472,56 @@ export function RuangSosmedProvider({
           ] = await Promise.all([
             supabase
               .from("mentor_inbox_threads")
-              .select("*")
+              .select(
+                "id, chapter_badge, title, excerpt, replies_count, views_count, last_reply_label, participants, replies, created_at, updated_at"
+              )
               .order("updated_at", { ascending: false }),
             supabase
               .from("mentor_reported_issues")
-              .select("*")
+              .select(
+                "id, chapter, title, reporter, reported_at, status, category, created_at"
+              )
               .order("created_at", { ascending: false }),
             supabase
               .from("learner_pro_settings")
-              .select("*")
+              .select(
+                "id, price_label, period_label, qr_code_url, merchant_name, bank_name, account_number, account_holder, whatsapp_number, packages, config, updated_at"
+              )
               .eq("id", "default")
               .maybeSingle(),
             isStaffSession
-              ? supabase.from("profiles").select("*")
+              ? (async () => {
+                  if (profilesHasSubDateCols) {
+                    const res = await supabase
+                      .from("profiles")
+                      .select(
+                        "id, full_name, email, avatar_url, role, job_title, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, total_points, created_at"
+                      );
+                    if (!res.error) return res;
+                    if (isMissingSubDateColumnError(res.error)) {
+                      profilesHasSubDateCols = false;
+                    } else {
+                      return res;
+                    }
+                  }
+                  return supabase
+                    .from("profiles")
+                    .select(
+                      "id, full_name, email, avatar_url, role, job_title, subscription_tier, total_points, created_at"
+                    );
+                })()
               : Promise.resolve({ data: ownProfile ? [ownProfile] : [], error: null }),
             isStaffSession
-              ? supabase.from("user_profiles").select("*")
+              ? supabase
+                  .from("user_profiles")
+                  .select(
+                    "user_id, username, name, full_name, email, role, job_title, avatar_url, perks, updated_at"
+                  )
               : supabase
                   .from("user_profiles")
-                  .select("*")
+                  .select(
+                    "user_id, username, name, full_name, email, role, job_title, avatar_url, perks, updated_at"
+                  )
                   .or(
                     `user_id.eq.${authUserId}${
                       authUser?.email ? `,email.ilike.${authUser.email}` : ""
@@ -2439,6 +2538,11 @@ export function RuangSosmedProvider({
           try {
             window.localStorage.removeItem(ADMIN_NOTIFS_STORAGE_KEY);
           } catch {}
+        }
+
+        lastSyncAtRef.current = Date.now();
+        if (latestWmSerialized) {
+          lastWatermarkRef.current = latestWmSerialized;
         }
 
         const justPushedIds = new Set<string>();
@@ -2494,6 +2598,9 @@ export function RuangSosmedProvider({
         }[] = [];
 
         const dbAvatarsFromTables: Record<string, string> = {};
+        const proMapFromDb: Record<string, "PRO" | "Free"> = {};
+        const expiredProfileEmails = new Set<string>();
+        const activeProEmailsFromProfiles = new Set<string>();
 
         if (Array.isArray(profilesRes.data)) {
           profilesRes.data.forEach((p: any) => {
@@ -2510,9 +2617,33 @@ export function RuangSosmedProvider({
               });
             }
             if (p.email) {
+              const pName = p.full_name || p.email.split("@")[0];
+              const pEmailLower = String(p.email).toLowerCase().trim();
+              const pRoleLower = String(p.role || "learner").toLowerCase();
+              const pIsStaff = pRoleLower === "admin" || pRoleLower === "mentor";
+              const pActivePro =
+                pIsStaff ||
+                isProSubscriptionActive(p.subscription_tier, p.pro_expires_at);
+              const pExpired =
+                !pIsStaff &&
+                Boolean(p.pro_expires_at) &&
+                !isProSubscriptionActive(p.subscription_tier, p.pro_expires_at);
+              if (pExpired) {
+                expiredProfileEmails.add(pEmailLower);
+              }
+              if (pActivePro) {
+                activeProEmailsFromProfiles.add(pEmailLower);
+              }
+              const pTier: "PRO" | "Free" = pActivePro ? "PRO" : "Free";
+              proMapFromDb[pEmailLower] = pTier;
+              if (pName) {
+                proMapFromDb[pName] = pTier;
+                proMapFromDb[pName.toLowerCase()] = pTier;
+              }
+
               combinedLearners.push({
                 id: p.id || `prof-${p.email}`,
-                name: p.full_name || p.email.split("@")[0],
+                name: pName,
                 email: p.email,
                 role: p.role || "learner",
                 jobTitle: p.job_title || "Social Media Specialist",
@@ -2522,8 +2653,6 @@ export function RuangSosmedProvider({
             }
           });
         }
-
-        const proMapFromDb: Record<string, "PRO" | "Free"> = {};
 
         if (Array.isArray(userProfilesRes.data)) {
           userProfilesRes.data.forEach((up: any) => {
@@ -2539,7 +2668,18 @@ export function RuangSosmedProvider({
                 dbAvatarsFromTables[k] = rawUpAvatar;
               });
             }
-            const isProInDb = Boolean(up.perks?.is_pro);
+            const upEmailLower = String(up.email || "").toLowerCase().trim();
+            const isExpiredProfile = upEmailLower
+              ? expiredProfileEmails.has(upEmailLower)
+              : false;
+            const isActiveFromProfiles = upEmailLower
+              ? activeProEmailsFromProfiles.has(upEmailLower)
+              : false;
+            const isProInDb =
+              isActiveFromProfiles ||
+              (!isExpiredProfile &&
+                Boolean(up.perks?.is_pro) &&
+                isProSubscriptionActive("pro", up.perks?.pro_expires_at));
             const tierValue: "PRO" | "Free" = isProInDb ? "PRO" : "Free";
             const resolvedName =
               up.full_name ||
@@ -2550,8 +2690,8 @@ export function RuangSosmedProvider({
               proMapFromDb[resolvedName] = tierValue;
               proMapFromDb[resolvedName.toLowerCase()] = tierValue;
             }
-            if (up.email) {
-              proMapFromDb[up.email.toLowerCase()] = tierValue;
+            if (upEmailLower) {
+              proMapFromDb[upEmailLower] = tierValue;
             }
             if (
               up.email &&
@@ -2601,18 +2741,34 @@ export function RuangSosmedProvider({
 
           if (authUserId && ownProfile) {
             activeUserPoints = Number(ownProfile.total_points || 0);
+            const ownExplicitlyExpired =
+              Boolean(ownProfile.pro_expires_at) &&
+              !isProSubscriptionActive(
+                ownProfile.subscription_tier,
+                ownProfile.pro_expires_at
+              );
             activeUserPro =
               isStaffSession ||
-              String(ownProfile.subscription_tier || "").toLowerCase() === "pro";
+              isProSubscriptionActive(
+                ownProfile.subscription_tier,
+                ownProfile.pro_expires_at
+              );
 
-            if (!activeUserPro && Array.isArray(userProfilesRes.data)) {
+            if (
+              !activeUserPro &&
+              !ownExplicitlyExpired &&
+              Array.isArray(userProfilesRes.data)
+            ) {
               const ownUp = userProfilesRes.data.find(
                 (up: any) =>
                   up.user_id === authUserId ||
                   (activeLearnerEmail &&
                     String(up.email || "").toLowerCase().trim() === activeLearnerEmail)
               );
-              if (ownUp?.perks?.is_pro) {
+              if (
+                ownUp?.perks?.is_pro &&
+                isProSubscriptionActive("pro", ownUp?.perks?.pro_expires_at)
+              ) {
                 activeUserPro = true;
               }
             }
@@ -3688,57 +3844,101 @@ export function RuangSosmedProvider({
         });
       } catch {
         // Ignore network errors
+      } finally {
+        syncInFlightRef.current = false;
       }
     };
 
-    void syncRegisteredLearners();
-
-    // Real-time subscription + lightweight 3s polling & window focus sync so Admin <-> Learner tier changes sync automatically
-    const intervalId = window.setInterval(() => {
-      void syncRegisteredLearners();
-    }, 3000);
-
-    const handleWindowFocus = () => {
-      void syncRegisteredLearners();
+    const scheduleRealtimeSync = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current);
+      }
+      realtimeDebounceRef.current = setTimeout(() => {
+        void syncRegisteredLearners({ force: true });
+      }, 1200);
     };
-    window.addEventListener("focus", handleWindowFocus);
+
+    void syncRegisteredLearners({ force: true });
+
+    // Low-egress sync: rely primarily on Supabase Realtime + lightweight watermark check every 60s (never when hidden)
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      void syncRegisteredLearners({ force: false });
+    }, 60_000);
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (Date.now() - lastSyncAtRef.current < 15_000) return;
+      void syncRegisteredLearners({ force: false });
+    };
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
 
     const handlePointsAwarded = () => {
-      void syncRegisteredLearners();
+      void syncRegisteredLearners({ force: true });
     };
     window.addEventListener("ruang_sosmed_points_awarded", handlePointsAwarded);
     window.addEventListener("ruang_sosmed_profile_updated", handlePointsAwarded);
+
+    const {
+      data: { subscription: authSub },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+        lastWatermarkRef.current = "";
+        void syncRegisteredLearners({ force: true });
+      }
+    });
 
     const realtimeChannel = supabase
       .channel("realtime-user-profiles-pro")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "user_profiles" },
-        () => {
-          void syncRegisteredLearners();
-        }
+        () => scheduleRealtimeSync()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "profiles" },
-        () => {
-          void syncRegisteredLearners();
-        }
+        () => scheduleRealtimeSync()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "contents" },
-        () => {
-          void syncRegisteredLearners();
-        }
+        () => scheduleRealtimeSync()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "pro_upgrade_requests" },
+        () => scheduleRealtimeSync()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "mentor_inbox_threads" },
+        () => scheduleRealtimeSync()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "mentor_reported_issues" },
+        () => scheduleRealtimeSync()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "learner_pro_settings" },
+        () => scheduleRealtimeSync()
       )
       .subscribe();
 
     return () => {
+      if (realtimeDebounceRef.current) {
+        window.clearTimeout(realtimeDebounceRef.current);
+      }
       window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
       window.removeEventListener("ruang_sosmed_points_awarded", handlePointsAwarded);
       window.removeEventListener("ruang_sosmed_profile_updated", handlePointsAwarded);
+      authSub.unsubscribe();
       void supabase.removeChannel(realtimeChannel);
     };
   }, []);
@@ -6471,6 +6671,33 @@ export function RuangSosmedProvider({
     [persistProTierToSupabase]
   );
 
+  const setStudentProTierLocal = useCallback(
+    (
+      studentName: string,
+      studentEmail: string | undefined,
+      tier: "PRO" | "Free"
+    ) => {
+      setState((prev) => {
+        const currentMap = prev.learnerSubscriptions ?? {};
+        const emailKey = studentEmail?.trim().toLowerCase();
+        const nameKeyLower = studentName.trim().toLowerCase();
+        const nextMap: Record<string, "PRO" | "Free"> = {
+          ...currentMap,
+          [studentName]: tier,
+          [nameKeyLower]: tier,
+        };
+        if (emailKey) {
+          nextMap[emailKey] = tier;
+        }
+        return {
+          ...prev,
+          learnerSubscriptions: nextMap,
+        };
+      });
+    },
+    []
+  );
+
   const registerLearnerProfile = useCallback(
     (profile: {
       name: string;
@@ -7427,6 +7654,7 @@ export function RuangSosmedProvider({
     setLearnerProStatus,
     submitProUpgradeRequest,
     toggleStudentProByAdmin,
+    setStudentProTierLocal,
     registerLearnerProfile,
     updateMemberAccessRole,
     createReward,

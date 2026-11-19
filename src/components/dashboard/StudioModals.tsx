@@ -30,6 +30,8 @@ import {
   getNormalizedProPackages,
   type LearnerProPackageItem,
 } from "@/context/RuangSosmedStore";
+import { supabase, STORAGE_BUCKETS } from "@/lib/supabase/client";
+import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
 
 interface QuickCreateModalProps {
   open: boolean;
@@ -335,17 +337,23 @@ export function UpgradePlanModal({
     setTimeout(() => setCopiedAcc(false), 1800);
   };
 
-  const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setProofPreview(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData?.session?.user?.id || "proofs";
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.ATTACHMENTS,
+        folderPath: `${uid}/pro-proofs`,
+        fileName: file.name,
+        maxWidth: 1000,
+        maxHeight: 1400,
+        quality: 0.8,
+      });
+      setProofPreview(url);
+    } catch {}
   };
 
   const handleWhatsAppConfirm = () => {

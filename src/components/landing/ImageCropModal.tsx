@@ -3,6 +3,8 @@
 import React, { useRef, useState } from "react";
 import { Upload, X, ZoomIn, Check, Image as ImageIcon } from "lucide-react";
 import { Button, Card } from "@/components/ui/SaasUI";
+import { STORAGE_BUCKETS } from "@/lib/supabase/client";
+import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
 
 interface ImageUploadProps {
   label: string;
@@ -145,8 +147,25 @@ export function CropModal({
       const dy = (targetH - drawH) / 2 + (offsetY / 100) * targetH * 0.4;
 
       ctx.drawImage(img, dx, dy, drawW, drawH);
-      const pngDataUrl = canvas.toDataURL("image/png", 0.9);
-      onConfirm(pngDataUrl);
+      canvas.toBlob(
+        async (blob) => {
+          if (!blob) {
+            onConfirm(canvas.toDataURL("image/webp", 0.84));
+            return;
+          }
+          const { url } = await uploadOptimizedImageToStorage(blob, {
+            bucket: STORAGE_BUCKETS.MEDIA,
+            folderPath: "landing",
+            fileName: `landing-${aspect === "16:9" ? "cover" : "avatar"}.webp`,
+            maxWidth: targetW,
+            maxHeight: targetH,
+            quality: 0.84,
+          });
+          onConfirm(url);
+        },
+        "image/webp",
+        0.84
+      );
     };
     img.src = src;
   };

@@ -50,38 +50,44 @@ export function ModalDialog({
       onClose();
     };
 
-    // Close when clicking anywhere on the dialog backdrop (outside modal card)
-    const handleBackdropClick = (event: MouseEvent) => {
-      if (event.target !== dialog) return;
-      const rect = dialog.getBoundingClientRect();
-      const isInside =
-        rect.top <= event.clientY &&
-        event.clientY <= rect.top + rect.height &&
-        rect.left <= event.clientX &&
-        event.clientX <= rect.left + rect.width;
-
-      if (!isInside) {
-        onClose();
-      }
-    };
-
-    // Close when Esc key is pressed anywhere
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-
     dialog.addEventListener("close", handleClose);
     dialog.addEventListener("cancel", handleCancel);
-    dialog.addEventListener("click", handleBackdropClick);
-    window.addEventListener("keydown", handleKeyDown);
+
+    // Light-dismiss fallback when `closedby="any"` is unsupported:
+    // require BOTH pointerdown and pointerup outside dialog box so text-selection drags don't dismiss
+    let cleanupOutsideDismiss: (() => void) | undefined;
+    if (!("closedBy" in HTMLDialogElement.prototype)) {
+      const isOutside = (e: PointerEvent) => {
+        const rect = dialog.getBoundingClientRect();
+        return (
+          e.clientX < rect.left ||
+          e.clientX > rect.right ||
+          e.clientY < rect.top ||
+          e.clientY > rect.bottom
+        );
+      };
+      let pressedOutside = false;
+      const onPointerDown = (e: PointerEvent) => {
+        pressedOutside = isOutside(e);
+      };
+      const onPointerUp = (e: PointerEvent) => {
+        if (pressedOutside && isOutside(e)) {
+          onClose();
+        }
+        pressedOutside = false;
+      };
+      dialog.addEventListener("pointerdown", onPointerDown);
+      dialog.addEventListener("pointerup", onPointerUp);
+      cleanupOutsideDismiss = () => {
+        dialog.removeEventListener("pointerdown", onPointerDown);
+        dialog.removeEventListener("pointerup", onPointerUp);
+      };
+    }
+
     return () => {
       dialog.removeEventListener("close", handleClose);
       dialog.removeEventListener("cancel", handleCancel);
-      dialog.removeEventListener("click", handleBackdropClick);
-      window.removeEventListener("keydown", handleKeyDown);
+      cleanupOutsideDismiss?.();
     };
   }, [onClose]);
 
@@ -89,6 +95,7 @@ export function ModalDialog({
     <dialog
       ref={dialogRef}
       aria-labelledby={titleId}
+      {...({ closedby: "any" } as any)}
       className={`m-auto w-[calc(100%-2rem)] ${maxWidthClass} rounded-xl bg-[#FFFFFF] p-0 text-[#121215] border border-[#EAECEF] shadow-[0_12px_36px_rgba(16,15,17,0.12)] open:animate-in open:fade-in open:zoom-in-95 duration-150 backdrop:bg-black/50 backdrop:backdrop-blur-xs`}
     >
       <div className="p-6">

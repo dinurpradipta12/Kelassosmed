@@ -23,6 +23,12 @@ import {
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
 import {
+  isProSubscriptionActive,
+  isMissingSubDateColumnError,
+} from "@/lib/subscription-utils";
+
+let pageProfilesHasSubDateCols = true;
+import {
   AdminLeftRail,
   type AdminNavId,
   type SecondaryNavLinkId,
@@ -419,13 +425,29 @@ function RuangSosmedStudioInner() {
       let dbUsername: string | null = null;
       let dbAvatarUrl: string | null = null;
       let dbSubTier = "free";
+      let dbProExpiresAt: string | null = null;
       try {
-        const [{ data: prof }, userProfRes] = await Promise.all([
-          supabase
+        const fetchOwnProfile = async () => {
+          if (pageProfilesHasSubDateCols) {
+            const res = await supabase
+              .from("profiles")
+              .select("role, full_name, avatar_url, subscription_tier, pro_expires_at")
+              .eq("id", sessionUser.id)
+              .maybeSingle();
+            if (!res.error) return res;
+            if (isMissingSubDateColumnError(res.error)) {
+              pageProfilesHasSubDateCols = false;
+            }
+          }
+          return supabase
             .from("profiles")
             .select("role, full_name, avatar_url, subscription_tier")
             .eq("id", sessionUser.id)
-            .maybeSingle(),
+            .maybeSingle();
+        };
+
+        const [{ data: prof }, userProfRes] = await Promise.all([
+          fetchOwnProfile(),
           email
             ? supabase
                 .from("user_profiles")
@@ -446,12 +468,15 @@ function RuangSosmedStudioInner() {
         if (prof?.subscription_tier) {
           dbSubTier = String(prof.subscription_tier).toLowerCase();
         }
+        if ((prof as any)?.pro_expires_at) {
+          dbProExpiresAt = String((prof as any).pro_expires_at);
+        }
         if (userProf?.username) dbUsername = userProf.username;
       } catch {}
 
       const isUserAdmin = dbRole === "admin" || dbRole === "mentor";
       const role: "admin" | "learner" = isUserAdmin ? "admin" : "learner";
-      const isPro = isUserAdmin || dbSubTier === "pro";
+      const isPro = isUserAdmin || isProSubscriptionActive(dbSubTier, dbProExpiresAt);
 
       const resolvedName =
         dbFullName ||
@@ -622,56 +647,94 @@ function RuangSosmedStudioInner() {
     };
   }, []);
 
-  // Live cross-browser sync: Periodically poll verified Supabase session user's `profiles` row
+  // Event-driven cross-browser role sync: Supabase Realtime + visibility check (60s cooldown, zero polling)
   useEffect(() => {
     if (!currentUser?.email) return;
-    const interval = setInterval(async () => {
+
+    let cancelled = false;
+    let lastCheckedAt = Date.now();
+    let roleChannel: ReturnType<typeof supabase.channel> | null = null;
+
+    const applyDbRole = (rawRole?: string | null) => {
+      if (!rawRole || cancelled) return;
+      const dbRole = String(rawRole).toLowerCase();
+      const nextRole: "admin" | "learner" =
+        dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
+
+      if (currentUser.role !== nextRole) {
+        const updated: AuthenticatedUser = {
+          ...currentUser,
+          role: nextRole,
+        };
+        setCurrentUser(updated);
+        setRoleMode(nextRole);
+        try {
+          window.localStorage.setItem(
+            "ruang_sosmed_session_user_v1",
+            JSON.stringify(updated)
+          );
+          window.localStorage.setItem("ruang_sosmed_role_mode_v1", nextRole);
+        } catch {}
+        window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
+        window.dispatchEvent(new Event("ruang_sosmed_role_mode_changed"));
+        triggerToast(
+          nextRole === "admin"
+            ? "🎉 Hak akses Admin Studio telah disinkronkan dari database!"
+            : "ℹ️ Status akun disinkronkan ke Siswa Learner dari database."
+        );
+      }
+    };
+
+    const checkOwnRoleOnce = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (Date.now() - lastCheckedAt < 60_000) return;
+      lastCheckedAt = Date.now();
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const uid = sessionData?.session?.user?.id;
-        if (!uid) return;
-
+        if (!uid || cancelled) return;
         const { data: prof } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", uid)
           .maybeSingle();
-
-        if (prof?.role) {
-          const dbRole = String(prof.role).toLowerCase();
-          const nextRole: "admin" | "learner" =
-            dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
-
-          if (currentUser.role !== nextRole) {
-            const updated: AuthenticatedUser = {
-              ...currentUser,
-              role: nextRole,
-            };
-            setCurrentUser(updated);
-            setRoleMode(nextRole);
-            try {
-              window.localStorage.setItem(
-                "ruang_sosmed_session_user_v1",
-                JSON.stringify(updated)
-              );
-              window.localStorage.setItem(
-                "ruang_sosmed_role_mode_v1",
-                nextRole
-              );
-            } catch {}
-            window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
-            window.dispatchEvent(new Event("ruang_sosmed_role_mode_changed"));
-            triggerToast(
-              nextRole === "admin"
-                ? "🎉 Hak akses Admin Studio telah disinkronkan dari database!"
-                : "ℹ️ Status akun disinkronkan ke Siswa Learner dari database."
-            );
-          }
-        }
+        applyDbRole(prof?.role);
       } catch {}
-    }, 2500);
+    };
 
-    return () => clearInterval(interval);
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        const uid = session?.user?.id;
+        if (!uid || cancelled) return;
+        roleChannel = supabase
+          .channel(`profile-role-sync-${uid}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "profiles",
+              filter: `id=eq.${uid}`,
+            },
+            (payload) => {
+              const next = (payload.new as { role?: string } | undefined)?.role;
+              applyDbRole(next);
+            }
+          )
+          .subscribe();
+      })
+      .catch(() => {});
+
+    document.addEventListener("visibilitychange", checkOwnRoleOnce);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", checkOwnRoleOnce);
+      if (roleChannel) {
+        void supabase.removeChannel(roleChannel);
+      }
+    };
   }, [currentUser]);
 
   // Listen to cross-tab / live broadcast notifications

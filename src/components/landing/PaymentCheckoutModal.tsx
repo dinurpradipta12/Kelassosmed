@@ -14,6 +14,11 @@ import {
   Upload,
 } from "lucide-react";
 import type { LandingPaymentConfig, PricingTierItem } from "@/types/landing";
+import { supabase, STORAGE_BUCKETS } from "@/lib/supabase/client";
+import {
+  compressImageToBlob,
+  uploadOptimizedImageToStorage,
+} from "@/lib/supabase/media-upload";
 
 export interface CheckoutItem {
   name: string;
@@ -85,16 +90,32 @@ export function PaymentCheckoutModal({
     setTimeout(() => setCopiedAcc(false), 2000);
   };
 
-  const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setProofUrl(reader.result);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData?.session?.user?.id;
+      if (uid) {
+        const { url } = await uploadOptimizedImageToStorage(file, {
+          bucket: STORAGE_BUCKETS.ATTACHMENTS,
+          folderPath: `${uid}/checkout-proofs`,
+          fileName: file.name,
+          maxWidth: 1000,
+          maxHeight: 1400,
+          quality: 0.8,
+        });
+        setProofUrl(url);
+      } else {
+        const compressed = await compressImageToBlob(file, {
+          maxWidth: 1000,
+          maxHeight: 1400,
+          quality: 0.8,
+        });
+        setProofUrl(compressed.previewDataUrl);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch {}
   };
 
   const handleConfirmWhatsApp = () => {

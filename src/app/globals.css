@@ -118,8 +118,14 @@ dialog,
   }
 }
 
-/* Native dialog light-dismiss backdrop per modern-web-guidance */
+/* Native dialog scroll containment & light-dismiss backdrop per modern-web-guidance */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
 dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
   background-color: rgba(18, 18, 21, 0.45);
   backdrop-filter: blur(2px);
 }
@@ -198,6 +204,7 @@ dialog::backdrop {
     --label-4: "Action";
     --label-5: "Score";
     --label-6: "Manage";
+    --label-7: "Actions";
   }
 
   .table-wrapper td {
@@ -237,6 +244,13 @@ dialog::backdrop {
 
   .table-wrapper td:nth-child(6)::before {
     content: var(--label-6) ": ";
+    font-weight: 500;
+    color: #5E5E5E;
+    font-size: 0.75rem;
+  }
+
+  .table-wrapper td:nth-child(7)::before {
+    content: var(--label-7) ": ";
     font-weight: 500;
     color: #5E5E5E;
     font-size: 0.75rem;
@@ -727,4 +741,31 @@ html[data-theme-active="true"] .shadow-\[0_4px_16px_rgba\(16\,15\,17\,0\.08\)\] 
     transition: none;
     transform: none;
   }
+}
+
+/* Single-row accessible directory tablist per modern-web-guidance (tabs) */
+.directory-tablist {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 0.25rem;
+  scrollbar-width: none;
+  scroll-snap-type: inline proximity;
+}
+
+.directory-tablist::-webkit-scrollbar {
+  display: none;
+}
+
+.directory-tab {
+  position: relative;
+  flex: none;
+  scroll-snap-align: start;
+}
+
+.directory-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  border-block-end: 3px solid var(--tab-accent, #4F39F6);
 }

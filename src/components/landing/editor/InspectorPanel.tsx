@@ -41,6 +41,8 @@ import {
   DEFAULT_PAYMENT_CONFIG,
   DEFAULT_FOOTER_CONFIG,
 } from "@/types/landing";
+import { STORAGE_BUCKETS } from "@/lib/supabase/client";
+import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
 
 export type GlobalInspectorTab = "general" | "header" | "payment" | "theme";
 
@@ -141,20 +143,24 @@ export function InspectorPanel({
     });
   };
 
-  const handleImageFileRead = (
+  const handleImageFileRead = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    onResult: (dataUrl: string) => void
+    onResult: (imageUrl: string) => void
   ) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        onResult(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+    try {
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.MEDIA,
+        folderPath: "landing",
+        fileName: file.name,
+        maxWidth: 1440,
+        maxHeight: 900,
+        quality: 0.82,
+      });
+      onResult(url);
+    } catch {}
   };
 
   const renderBlockStyleEditor = () => {

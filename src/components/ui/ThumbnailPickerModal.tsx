@@ -16,6 +16,8 @@ import {
   SIMPLE_ILLUSTRATION_PRESETS,
   type DefaultThumbnailItem,
 } from "@/lib/thumbnail-library";
+import { STORAGE_BUCKETS } from "@/lib/supabase/client";
+import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
 
 export interface SelectedThumbnailValue {
   type: "image" | "gradient" | "color";
@@ -150,7 +152,7 @@ export function ThumbnailPickerModal({
 
   if (!open) return null;
 
-  const processUploadedFile = (file: File) => {
+  const processUploadedFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       const msg = "Format file harus berupa gambar (PNG, JPG, WebP).";
       setUploadError(msg);
@@ -165,84 +167,38 @@ export function ThumbnailPickerModal({
     }
 
     setUploadError(null);
-    setUploadProgress(35);
+    setUploadProgress(40);
 
-    const reader = new FileReader();
-    reader.onerror = () => {
+    try {
+      const { url } = await uploadOptimizedImageToStorage(file, {
+        bucket: STORAGE_BUCKETS.MEDIA,
+        folderPath: "thumbnails",
+        fileName: file.name,
+        maxWidth: 1280,
+        maxHeight: 720,
+        quality: 0.82,
+      });
+
+      setUploadProgress(100);
+      setUploadedPreview({ dataUrl: url, fileName: file.name });
+      setPendingSelection({
+        type: "image",
+        value: url,
+        label: file.name,
+      });
+
+      window.setTimeout(() => {
+        setUploadProgress(null);
+        onShowToast?.(
+          `Preview cover "${file.name}" siap. Klik Save untuk menerapkan.`
+        );
+      }, 200);
+    } catch {
       setUploadProgress(null);
-      const msg = "Gagal membaca file gambar. Silakan coba file lain.";
+      const msg = "Gagal memproses file gambar. Silakan coba file lain.";
       setUploadError(msg);
       onShowToast?.(msg);
-    };
-    reader.onload = () => {
-      const rawDataUrl =
-        typeof reader.result === "string" ? reader.result : "";
-      if (!rawDataUrl) {
-        setUploadProgress(null);
-        setUploadError("File gambar kosong atau rusak.");
-        return;
-      }
-
-      setUploadProgress(70);
-      const img = new window.Image();
-      img.onerror = () => {
-        // Fallback: gunakan hasil data URL langsung bila browser tidak merender canvas
-        setUploadedPreview({ dataUrl: rawDataUrl, fileName: file.name });
-        setPendingSelection({
-          type: "image",
-          value: rawDataUrl,
-          label: file.name,
-        });
-        setUploadProgress(100);
-        window.setTimeout(() => {
-          setUploadProgress(null);
-          onShowToast?.(
-            `Preview cover "${file.name}" siap. Klik Save untuk menerapkan.`
-          );
-        }, 250);
-      };
-      img.onload = () => {
-        let optimizedUrl = rawDataUrl;
-        try {
-          const maxW = 1280;
-          const maxH = 720;
-          let targetW = img.naturalWidth || img.width || maxW;
-          let targetH = img.naturalHeight || img.height || maxH;
-          if (targetW > maxW || targetH > maxH) {
-            const ratio = Math.min(maxW / targetW, maxH / targetH);
-            targetW = Math.max(1, Math.round(targetW * ratio));
-            targetH = Math.max(1, Math.round(targetH * ratio));
-          }
-          const canvas = document.createElement("canvas");
-          canvas.width = targetW;
-          canvas.height = targetH;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, targetW, targetH);
-            optimizedUrl = canvas.toDataURL("image/jpeg", 0.86);
-          }
-        } catch {
-          optimizedUrl = rawDataUrl;
-        }
-
-        setUploadProgress(100);
-        setUploadedPreview({ dataUrl: optimizedUrl, fileName: file.name });
-        setPendingSelection({
-          type: "image",
-          value: optimizedUrl,
-          label: file.name,
-        });
-
-        window.setTimeout(() => {
-          setUploadProgress(null);
-          onShowToast?.(
-            `Preview cover "${file.name}" siap. Klik Save untuk menerapkan.`
-          );
-        }, 250);
-      };
-      img.src = rawDataUrl;
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
