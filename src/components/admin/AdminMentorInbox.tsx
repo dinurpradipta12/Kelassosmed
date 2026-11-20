@@ -44,7 +44,6 @@ export function AdminMentorInbox({
     deleteDiscussionReply,
     reportedIssues,
     toggleReportedIssueStatus,
-    addLearnerNotification,
     resolveUserAvatar,
   } = useRuangSosmedStore();
 
@@ -133,13 +132,6 @@ export function AdminMentorInbox({
       avatarBg: "#FEF3C7",
       avatarText: "#92400E",
       message: trimmed,
-    });
-
-    addLearnerNotification({
-      title: `Balasan Mentor: ${activeThread.chapterBadge}`,
-      body: trimmed,
-      time: "Baru saja",
-      unread: true,
     });
 
     setReplyText("");

@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   Search,
   Bell,
+  BellRing,
   Star,
   CheckCheck,
   Home,
@@ -22,9 +24,175 @@ import {
   Check,
   CheckCircle2,
   ArrowRight,
+  Crown,
+  MessageSquare,
+  Trash2,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
-import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import {
+  useRuangSosmedStore,
+  inferLearnerNotifEventType,
+} from "@/context/RuangSosmedStore";
+import {
+  type LearnerNotification,
+  type LearnerNotificationEventType,
+} from "@/lib/phase5-data";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
+
+const LEARNER_SEEN_POPUP_IDS_KEY = "ruang_sosmed_learner_seen_popup_ids_v1";
+const LEARNER_NOTIF_MUTED_KEY = "ruang_sosmed_learner_notif_muted_v1";
+const MAX_LEARNER_POPUPS = 3;
+const LEARNER_AUTO_DISMISS_MS = 8000;
+
+let sharedLearnerAudioCtx: AudioContext | null = null;
+
+function getOrUnlockAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!sharedLearnerAudioCtx || sharedLearnerAudioCtx.state === "closed") {
+      sharedLearnerAudioCtx = new AudioCtx();
+    }
+    if (sharedLearnerAudioCtx.state === "suspended") {
+      void sharedLearnerAudioCtx.resume().catch(() => {});
+    }
+    return sharedLearnerAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
+function playLearnerNotifChime(eventType: LearnerNotificationEventType): void {
+  const ctx = getOrUnlockAudioContext();
+  if (!ctx) return;
+
+  const scheduleNotes = () => {
+    try {
+      const now = ctx.currentTime;
+      const freqs =
+        eventType === "pro_activated"
+          ? [659.25, 880, 1046.5]
+          : eventType === "material_added"
+          ? [523.25, 659.25, 783.99]
+          : [587.33, 880];
+
+      freqs.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + idx * 0.085);
+        gain.gain.setValueAtTime(0.0001, now + idx * 0.085);
+        gain.gain.exponentialRampToValueAtTime(
+          0.06,
+          now + idx * 0.085 + 0.02
+        );
+        gain.gain.exponentialRampToValueAtTime(
+          0.0001,
+          now + idx * 0.085 + 0.24
+        );
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.085);
+        osc.stop(now + idx * 0.085 + 0.26);
+      });
+    } catch {}
+  };
+
+  if (ctx.state === "suspended") {
+    void ctx
+      .resume()
+      .then(() => scheduleNotes())
+      .catch(() => {});
+  } else {
+    scheduleNotes();
+  }
+}
+
+function readLearnerSeenPopupIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(LEARNER_SEEN_POPUP_IDS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.map(String)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function writeLearnerSeenPopupIds(ids: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    const list = Array.from(ids).slice(-120);
+    window.localStorage.setItem(LEARNER_SEEN_POPUP_IDS_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+function formatLearnerNotifTime(notif: LearnerNotification): string {
+  if (!notif.createdAt) return notif.time || "Baru saja";
+  const ts = Date.parse(notif.createdAt);
+  if (Number.isNaN(ts)) return notif.time || "Baru saja";
+  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diffSec < 45) return "Baru saja";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} mnt lalu`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} jam lalu`;
+  return new Date(ts).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getLearnerNotifCategoryMeta(eventType: LearnerNotificationEventType) {
+  switch (eventType) {
+    case "pro_activated":
+      return {
+        gradient: "linear-gradient(90deg, #F59E0B 0%, #EC4899 100%)",
+        iconBg: "bg-[#FEF3C7] text-[#B45309] border-[#FDE68A]",
+        badgeClass: "bg-[#FEF3C7] text-[#92400E]",
+        badgeLabel: "PRO Aktif",
+        headline: "Yuhuu! ⚡ PRO Aktif",
+        actionLabel: "Lihat Benefit PRO",
+        Icon: Crown,
+      };
+    case "material_added":
+      return {
+        gradient: "linear-gradient(90deg, #4F39F6 0%, #10B981 100%)",
+        iconBg: "bg-[#EEF2FF] text-[#4F39F6] border-[#C7D2FE]",
+        badgeClass: "bg-[#ECFDF5] text-[#059669]",
+        badgeLabel: "Materi Baru",
+        headline: "Materi Baru! 📚",
+        actionLabel: "Mulai Belajar",
+        Icon: BookOpen,
+      };
+    case "mentor_reply":
+      return {
+        gradient: "linear-gradient(90deg, #6366F1 0%, #0EA5E9 100%)",
+        iconBg: "bg-[#EFF6FF] text-[#0284C7] border-[#BAE6FD]",
+        badgeClass: "bg-[#E0F2FE] text-[#0369A1]",
+        badgeLabel: "Balasan Mentor",
+        headline: "Balasan Baru! 💬",
+        actionLabel: "Lihat Diskusi",
+        Icon: MessageSquare,
+      };
+    default:
+      return {
+        gradient: "linear-gradient(90deg, #4F39F6 0%, #8B5CF6 100%)",
+        iconBg: "bg-[#EEF2FF] text-[#4F39F6] border-[#C7D2FE]",
+        badgeClass: "bg-[#EEF2FF] text-[#4F39F6]",
+        badgeLabel: "Info Belajar",
+        headline: "Pembaruan Akun ✨",
+        actionLabel: "Buka Belajar",
+        Icon: Sparkles,
+      };
+  }
+}
 
 export type LearnerNavTabId =
   | "home"
@@ -62,15 +230,64 @@ export function LearnerTopNavbar({
   const {
     learnerNotifications,
     markAllNotificationsRead,
-    acceptCollaboratorInvitation,
+    markLearnerNotificationRead,
+    clearLearnerNotifications,
     learnerIsPro,
     certificateUnlocked,
     learnerAssignedItems,
     wikiResources,
     resolveUserAvatar,
   } = useRuangSosmedStore();
+  const [mounted, setMounted] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const notifContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const [filterTab, setFilterTab] = useState<
+    "all" | "pro_activated" | "material_added" | "mentor_reply"
+  >("all");
+  const [activePopups, setActivePopups] = useState<LearnerNotification[]>([]);
+  const [isPopupPaused, setIsPopupPaused] = useState(false);
+  const [liveAnnouncement, setLiveAnnouncement] = useState("");
+  const [isMuted, setIsMuted] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(LEARNER_NOTIF_MUTED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const notifContainerRef = useRef<HTMLDivElement | null>(null);
+  const triggerBtnRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const closeBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const deferredPopupsRef = useRef<LearnerNotification[]>([]);
+  const isMutedRef = useRef(isMuted);
+  isMutedRef.current = isMuted;
+
+  useEffect(() => {
+    setMounted(true);
+    const unlock = () => {
+      getOrUnlockAudioContext();
+    };
+    window.addEventListener("pointerdown", unlock, { once: true, passive: true });
+    window.addEventListener("keydown", unlock, { once: true, passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  const toggleMuted = () => {
+    getOrUnlockAudioContext();
+    setIsMuted((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(LEARNER_NOTIF_MUTED_KEY, String(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
 
   React.useEffect(() => {
     if (!notifOpen) return;
@@ -202,19 +419,218 @@ export function LearnerTopNavbar({
       .slice(0, 2)
       .toUpperCase() || "L";
 
-  const uniqueNotifications = React.useMemo(() => {
+  const matchesCurrentLearner = useCallback(
+    (n: LearnerNotification): boolean => {
+      if (!n?.targetLearner) return true;
+      if (currentUser?.role === "admin") {
+        return true;
+      }
+      const target = n.targetLearner.trim().toLowerCase();
+      if (!target) return true;
+      const candidates = [
+        currentUser?.email,
+        currentUser?.name,
+        currentUser?.username,
+        effectiveDisplayName,
+      ]
+        .filter(Boolean)
+        .map((s) => String(s).trim().toLowerCase());
+      return candidates.some((c) => c === target || target.includes(c) || c.includes(target));
+    },
+    [currentUser?.email, currentUser?.name, currentUser?.username, currentUser?.role, effectiveDisplayName]
+  );
+
+  const uniqueNotifications = useMemo(() => {
     const seen = new Set<string>();
-    const result: typeof learnerNotifications = [];
+    const result: LearnerNotification[] = [];
     for (const n of learnerNotifications) {
-      if (n && n.id && !seen.has(n.id)) {
+      if (n && n.id && !seen.has(n.id) && matchesCurrentLearner(n)) {
         seen.add(n.id);
-        result.push(n);
+        result.push({
+          ...n,
+          eventType: inferLearnerNotifEventType(n),
+        });
       }
     }
     return result;
-  }, [learnerNotifications]);
+  }, [learnerNotifications, matchesCurrentLearner]);
 
   const unreadCount = uniqueNotifications.filter((n) => n.unread).length;
+
+  const filteredNotifications = useMemo(() => {
+    if (filterTab === "all") return uniqueNotifications;
+    return uniqueNotifications.filter(
+      (n) => inferLearnerNotifEventType(n) === filterTab
+    );
+  }, [uniqueNotifications, filterTab]);
+
+  const showPopupCard = useCallback((notif: LearnerNotification) => {
+    const evType = inferLearnerNotifEventType(notif);
+    setActivePopups((prev) => {
+      if (prev.some((p) => p.id === notif.id)) return prev;
+      return [{ ...notif, eventType: evType }, ...prev].slice(
+        0,
+        MAX_LEARNER_POPUPS
+      );
+    });
+
+    const announceText = `${notif.title}: ${notif.body}`;
+    setLiveAnnouncement(announceText);
+    if (typeof document !== "undefined") {
+      const docWithNotify = document as unknown as {
+        ariaNotify?: (text: string) => void;
+      };
+      if (typeof docWithNotify.ariaNotify === "function") {
+        try {
+          docWithNotify.ariaNotify(announceText);
+        } catch {}
+      }
+    }
+
+    if (!isMutedRef.current) {
+      playLearnerNotifChime(evType);
+    }
+  }, []);
+
+  const hasBlockingModal = () =>
+    typeof document !== "undefined" &&
+    Boolean(
+      document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')
+    );
+
+  const enqueueFloatingPopup = useCallback(
+    (notif: LearnerNotification) => {
+      if (!notif?.id || !matchesCurrentLearner(notif)) return;
+      const seen = readLearnerSeenPopupIds();
+      if (seen.has(notif.id)) return;
+      seen.add(notif.id);
+      writeLearnerSeenPopupIds(seen);
+
+      if (hasBlockingModal()) {
+        if (!deferredPopupsRef.current.some((d) => d.id === notif.id)) {
+          deferredPopupsRef.current.push(notif);
+        }
+        return;
+      }
+
+      showPopupCard(notif);
+    },
+    [matchesCurrentLearner, showPopupCard]
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const observer = new MutationObserver(() => {
+      if (deferredPopupsRef.current.length === 0) return;
+      if (hasBlockingModal()) return;
+      const toFlush = deferredPopupsRef.current.splice(0);
+      toFlush.forEach((n) => showPopupCard(n));
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["open", "aria-modal"],
+    });
+    return () => observer.disconnect();
+  }, [showPopupCard]);
+
+  useEffect(() => {
+    const handleEvent = (e: Event) => {
+      const custom = e as CustomEvent<LearnerNotification>;
+      if (custom.detail) {
+        enqueueFloatingPopup(custom.detail);
+      }
+    };
+    window.addEventListener("ruang_sosmed_learner_notif", handleEvent);
+    return () => {
+      window.removeEventListener("ruang_sosmed_learner_notif", handleEvent);
+    };
+  }, [enqueueFloatingPopup]);
+
+  useEffect(() => {
+    const fresh = (learnerNotifications || []).filter((n) => {
+      if (!n || !n.unread || !matchesCurrentLearner(n)) return false;
+      const createdMs = n.createdAt ? Date.parse(n.createdAt) : NaN;
+      return !Number.isNaN(createdMs) && Date.now() - createdMs <= 60_000;
+    });
+    fresh.forEach((n) => enqueueFloatingPopup(n));
+  }, [learnerNotifications, enqueueFloatingPopup, matchesCurrentLearner]);
+
+  const dismissPopup = useCallback((id: string) => {
+    setActivePopups((prev) => {
+      const idx = prev.findIndex((p) => p.id === id);
+      if (idx === -1) return prev;
+      const remaining = prev.filter((p) => p.id !== id);
+      const closingBtn = closeBtnRefs.current.get(id);
+      const wasFocused =
+        typeof document !== "undefined" &&
+        closingBtn &&
+        document.activeElement === closingBtn;
+
+      if (wasFocused) {
+        window.requestAnimationFrame(() => {
+          const nextPopup = remaining[Math.min(idx, remaining.length - 1)];
+          const nextClose = nextPopup
+            ? closeBtnRefs.current.get(nextPopup.id)
+            : null;
+          if (nextClose) {
+            nextClose.focus();
+          } else {
+            triggerBtnRef.current?.focus();
+          }
+        });
+      }
+      return remaining;
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = popoverRef.current as
+      | (HTMLDivElement & {
+          showPopover?: () => void;
+          hidePopover?: () => void;
+        })
+      | null;
+    if (!el || typeof el.showPopover !== "function") return;
+    try {
+      const shouldShow = activePopups.length > 0 && !notifOpen;
+      const isOpen = el.matches(":popover-open");
+      if (shouldShow && !isOpen) {
+        el.showPopover();
+      } else if (!shouldShow && isOpen) {
+        el.hidePopover?.();
+      }
+    } catch {}
+  }, [activePopups.length, notifOpen, mounted]);
+
+  useEffect(() => {
+    if (activePopups.length === 0 || isPopupPaused || notifOpen) return;
+    const oldest = activePopups[activePopups.length - 1];
+    const timer = window.setTimeout(() => {
+      dismissPopup(oldest.id);
+    }, LEARNER_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [activePopups, isPopupPaused, notifOpen, dismissPopup]);
+
+  const handleNotifNavigate = useCallback(
+    (notif: LearnerNotification) => {
+      const evType = inferLearnerNotifEventType(notif);
+      markLearnerNotificationRead(notif.id);
+      dismissPopup(notif.id);
+      setNotifOpen(false);
+      if (evType === "pro_activated") {
+        if (onOpenUpgradeModal) {
+          onOpenUpgradeModal();
+        } else {
+          onSelectTab("home");
+        }
+      } else {
+        onSelectTab("my-learning");
+      }
+    },
+    [markLearnerNotificationRead, dismissPopup, onOpenUpgradeModal, onSelectTab]
+  );
 
   const navTabs: {
     id: LearnerNavTabId;
@@ -332,19 +748,46 @@ export function LearnerTopNavbar({
             </span>
           </button>
 
-          {/* Notification Bell Popover */}
+          {/* Notification Bell Popover (Matching Admin Notification Experience + Sound Chimes) */}
           <div className="relative" ref={notifContainerRef}>
+            {unreadCount > 0 && !notifOpen && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-0.5 rounded-lg bg-[#4F39F6]/20 animate-ping"
+                style={{ animationDuration: "2.4s" }}
+              />
+            )}
             <button
+              ref={triggerBtnRef}
               type="button"
-              onClick={() => setNotifOpen((prev) => !prev)}
-              aria-label="Learner notifications"
+              onClick={() => {
+                getOrUnlockAudioContext();
+                setNotifOpen((prev) => !prev);
+              }}
+              aria-label={
+                unreadCount > 0
+                  ? `Notifikasi Belajar (${unreadCount} belum dibaca)`
+                  : "Notifikasi Belajar"
+              }
               aria-expanded={notifOpen}
-              className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#F8F9FB] text-[#5E5E5E] border border-[#EAECEF] hover:text-[#121215] transition-colors cursor-pointer"
+              aria-haspopup="dialog"
+              title="Notifikasi Status PRO, Materi Baru & Balasan Diskusi"
+              className={`relative inline-flex h-8 items-center gap-1 rounded-lg border px-2 text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                notifOpen
+                  ? "bg-[#4F39F6] text-white border-[#4F39F6] shadow-2xs"
+                  : unreadCount > 0
+                  ? "bg-[#EEF2FF] text-[#4F39F6] border-[#C7D2FE] hover:bg-[#E0E7FF]"
+                  : "bg-[#F8F9FB] text-[#5E5E5E] border-[#EAECEF] hover:bg-[#EAECEF]/70 hover:text-[#121215]"
+              }`}
             >
-              <Bell size={15} />
+              {unreadCount > 0 && !notifOpen ? (
+                <BellRing size={14} className="shrink-0 text-[#4F39F6]" />
+              ) : (
+                <Bell size={14} className="shrink-0" />
+              )}
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EF4444] px-1 text-[9px] font-bold text-white">
-                  {unreadCount}
+                <span className="inline-flex min-w-[16px] h-4 px-1 items-center justify-center rounded-full bg-[#EF4444] text-white text-[9px] font-extrabold leading-none tabular-nums">
+                  {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
             </button>
@@ -352,36 +795,126 @@ export function LearnerTopNavbar({
             {notifOpen && (
               <div
                 role="dialog"
-                aria-label="Notifications Popover"
-                className="absolute right-0 mt-2 w-88 rounded-xl bg-[#FFFFFF] p-3.5 border border-[#EAECEF] shadow-[0_12px_32px_rgba(16,15,17,0.12)] z-40"
+                aria-modal="false"
+                aria-label="Riwayat Notifikasi Learner"
+                className="absolute right-0 mt-2 w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_18px_48px_rgba(16,15,17,0.16)] overflow-hidden z-50"
               >
-                <div className="flex items-center justify-between pb-2.5 border-b border-[#EAECEF]">
-                  <span className="text-xs font-bold text-[#121215]">
-                    Notifications ({unreadCount} unread)
-                  </span>
-                  <button
-                    type="button"
-                    onClick={markAllNotificationsRead}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#4F39F6] hover:underline cursor-pointer"
-                  >
-                    <CheckCheck size={12} />
-                    <span>Mark as read</span>
-                  </button>
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-[#EAECEF] flex items-center justify-between gap-2 bg-[#F8F9FB]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <BellRing size={15} className="text-[#4F39F6] shrink-0" />
+                    <div className="min-w-0">
+                      <h2 className="text-xs font-extrabold text-[#121215] truncate">
+                        Notifikasi Belajar &amp; Akun
+                      </h2>
+                      <p className="text-[10px] text-[#64748B]">
+                        Status PRO, materi baru &amp; balasan diskusi mentor
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={toggleMuted}
+                      title={
+                        isMuted ? "Aktifkan suara notifikasi" : "Bisukan suara"
+                      }
+                      aria-label={
+                        isMuted ? "Aktifkan suara notifikasi" : "Bisukan suara"
+                      }
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-[#5E5E5E] hover:bg-white hover:text-[#121215] cursor-pointer"
+                    >
+                      {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                    </button>
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={markAllNotificationsRead}
+                        title="Tandai semua dibaca"
+                        aria-label="Tandai semua dibaca"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-[#4F39F6] hover:bg-white cursor-pointer"
+                      >
+                        <CheckCheck size={14} />
+                      </button>
+                    )}
+                    {uniqueNotifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearLearnerNotifications}
+                        title="Hapus semua notifikasi"
+                        aria-label="Hapus semua notifikasi"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-[#9CA3AF] hover:bg-white hover:text-[#EF4444] cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNotifOpen(false);
+                        triggerBtnRef.current?.focus();
+                      }}
+                      aria-label="Tutup panel notifikasi"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-[#5E5E5E] hover:bg-white hover:text-[#121215] cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="mt-2.5 space-y-3 max-h-80 overflow-y-auto">
-                  {uniqueNotifications.length === 0 && !certificateUnlocked ? (
-                    <div className="py-6 text-center text-xs text-[#9CA3AF]">
-                      Belum ada notifikasi baru.
+                {/* Filter Tabs */}
+                <div className="px-3 py-2 border-b border-[#EAECEF] flex items-center gap-1 bg-white overflow-x-auto no-scrollbar">
+                  {(
+                    [
+                      { id: "all", label: "Semua" },
+                      { id: "pro_activated", label: "PRO Aktif" },
+                      { id: "material_added", label: "Materi Baru" },
+                      { id: "mentor_reply", label: "Balasan Mentor" },
+                    ] as const
+                  ).map((tab) => {
+                    const active = filterTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setFilterTab(tab.id)}
+                        className={`rounded-lg px-2.5 py-1 text-[11px] font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                          active
+                            ? "bg-[#4F39F6] text-white"
+                            : "bg-[#F8F9FB] text-[#5E5E5E] hover:text-[#121215]"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Scrollable List */}
+                <div className="max-h-[380px] overflow-y-auto overscroll-contain divide-y divide-[#F1F5F9]">
+                  {filteredNotifications.length === 0 && !certificateUnlocked ? (
+                    <div className="py-10 px-4 text-center space-y-2">
+                      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#F8F9FB] border border-[#EAECEF] text-[#9CA3AF]">
+                        <Bell size={18} />
+                      </div>
+                      <p className="text-xs font-bold text-[#121215]">
+                        Belum Ada Notifikasi Baru
+                      </p>
+                      <p className="text-[11px] text-[#64748B] max-w-[260px] mx-auto leading-relaxed">
+                        Notifikasi otomatis berbunyi &amp; muncul di sini saat PRO aktif, ada materi baru, atau mentor membalas diskusi Anda.
+                      </p>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {uniqueNotifications.map((n, idx) => {
+                    <>
+                      {filteredNotifications.map((n, idx) => {
+                        const evType = inferLearnerNotifEventType(n);
+                        const meta = getLearnerNotifCategoryMeta(evType);
+                        const CategoryIcon = meta.Icon;
                         const isInvitation =
                           n.title.toLowerCase().includes("undangan") ||
                           n.title.toLowerCase().includes("kolaborasi") ||
                           n.title.toLowerCase().includes("resmi bergabung");
-
                         const isAccepted =
                           n.title.toLowerCase().includes("resmi bergabung") ||
                           n.body.toLowerCase().includes("resmi menjadi") ||
@@ -390,96 +923,113 @@ export function LearnerTopNavbar({
                         return (
                           <div
                             key={`${n.id}-${idx}`}
-                            onClick={() => {
-                              markAllNotificationsRead();
-                              setNotifOpen(false);
-                            }}
-                            className={`rounded-lg p-2.5 border text-left transition-colors cursor-pointer ${
+                            onClick={() => handleNotifNavigate(n)}
+                            className={`w-full text-left p-3.5 flex items-start gap-3 transition-colors cursor-pointer ${
                               n.unread
-                                ? isInvitation
-                                  ? "bg-[#EEF2FF] border-[#4F39F6]/40 shadow-xs"
-                                  : "bg-[#EEF2FF]/60 border-[#4F39F6]/35"
+                                ? "bg-[#EEF2FF]/35 hover:bg-[#EEF2FF]/60"
                                 : isAccepted
-                                ? "bg-[#ECFDF5] border-[#10B981]/30"
-                                : "bg-[#F8F9FB] border-[#EAECEF]"
+                                ? "bg-[#ECFDF5]/50 hover:bg-[#ECFDF5]"
+                                : "bg-white hover:bg-[#F8F9FB]"
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                {isAccepted ? (
-                                  <CheckCircle2
-                                    size={13}
-                                    className="text-[#10B981] shrink-0"
-                                  />
-                                ) : isInvitation ? (
-                                  <UserPlus
-                                    size={13}
-                                    className="text-[#4F39F6] shrink-0"
-                                  />
-                                ) : null}
-                                <p className="text-xs font-bold text-[#121215] truncate">
-                                  {n.title}
-                                </p>
-                              </div>
-                              <span className="text-[10px] text-[#64748B] shrink-0">
-                                {n.time}
-                              </span>
+                            <div
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${
+                                isAccepted
+                                  ? "bg-[#ECFDF5] text-[#10B981] border-[#A7F3D0]"
+                                  : isInvitation
+                                  ? "bg-[#EEF2FF] text-[#4F39F6] border-[#C7D2FE]"
+                                  : meta.iconBg
+                              }`}
+                            >
+                              {isAccepted ? (
+                                <CheckCircle2 size={15} />
+                              ) : isInvitation ? (
+                                <UserPlus size={15} />
+                              ) : (
+                                <CategoryIcon size={15} />
+                              )}
                             </div>
-                            <p className="mt-1 text-[11px] text-[#5E5E5E] leading-snug">
-                              {n.body}
-                            </p>
 
-                            {isInvitation && (
-                              <div className="mt-2.5 pt-2 border-t border-[#EAECEF] flex items-center justify-between">
-                                {isAccepted && currentUser?.role === "admin" ? (
-                                  <>
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#059669]">
-                                      <CheckCircle2 size={11} />
-                                      Aktif sebagai Admin
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setNotifOpen(false);
-                                        if (onSwitchToAdmin) {
-                                          onSwitchToAdmin();
-                                        }
-                                      }}
-                                      className="inline-flex items-center gap-1 rounded-md bg-[#059669] hover:bg-[#047857] px-2.5 py-1 text-[11px] font-bold text-white transition-colors cursor-pointer shadow-xs"
-                                    >
-                                      <span>Buka Admin Studio</span>
-                                      <ArrowRight size={11} />
-                                    </button>
-                                  </>
-                                ) : isAccepted ? (
-                                  <span className="text-[10px] font-medium text-[#5E5E5E]">
-                                    Peran Akun: Siswa Learner
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#4F39F6]">
-                                    {n.unread ? "• Belum Dibaca" : "✓ Telah Dilihat"}
-                                  </span>
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-extrabold text-[#121215] truncate">
+                                  {n.title}
+                                </span>
+                                {n.unread && (
+                                  <span className="h-2 w-2 rounded-full bg-[#4F39F6] shrink-0" />
                                 )}
                               </div>
-                            )}
+
+                              <p className="text-[11px] text-[#475569] leading-relaxed">
+                                {n.body}
+                              </p>
+
+                              <div className="flex items-center justify-between gap-2 text-[10px] text-[#9CA3AF]">
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-bold ${meta.badgeClass}`}
+                                >
+                                  {meta.badgeLabel}
+                                </span>
+                                <span className="shrink-0">
+                                  {formatLearnerNotifTime(n)}
+                                </span>
+                              </div>
+
+                              {isInvitation && (
+                                <div className="mt-2 pt-2 border-t border-[#EAECEF] flex items-center justify-between">
+                                  {isAccepted && currentUser?.role === "admin" ? (
+                                    <>
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#059669]">
+                                        <CheckCircle2 size={11} />
+                                        Aktif sebagai Admin
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setNotifOpen(false);
+                                          if (onSwitchToAdmin) {
+                                            onSwitchToAdmin();
+                                          }
+                                        }}
+                                        className="inline-flex items-center gap-1 rounded-md bg-[#059669] hover:bg-[#047857] px-2.5 py-1 text-[11px] font-bold text-white transition-colors cursor-pointer shadow-xs"
+                                      >
+                                        <span>Buka Admin Studio</span>
+                                        <ArrowRight size={11} />
+                                      </button>
+                                    </>
+                                  ) : isAccepted ? (
+                                    <span className="text-[10px] font-medium text-[#5E5E5E]">
+                                      Peran Akun: Siswa Learner
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#4F39F6]">
+                                      {n.unread ? "• Belum Dibaca" : "✓ Telah Dilihat"}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
 
-                      {certificateUnlocked && (
-                        <div className="rounded-lg bg-[#ECFDF5] border border-[#10B981]/30 p-2.5 space-y-2">
+                      {certificateUnlocked && filterTab === "all" && (
+                        <div className="p-3 bg-[#ECFDF5]/60 space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-bold text-[#059669]">
                               🎉 E-Certificate Issued (+100 pts)
                             </span>
-                            <span className="text-[10px] text-[#059669]">
+                            <span className="text-[10px] font-bold text-[#059669]">
                               Verified
                             </span>
                           </div>
                           <div className="flex items-center justify-between rounded-md bg-[#FFFFFF] p-2 border border-[#EAECEF]">
                             <div className="flex items-center gap-2 min-w-0">
-                              <FileText size={14} className="text-[#EF4444] shrink-0" />
+                              <FileText
+                                size={14}
+                                className="text-[#EF4444] shrink-0"
+                              />
                               <div className="min-w-0">
                                 <p className="text-[11px] font-bold text-[#121215] truncate">
                                   E-Certificate-Ruang-Sosmed.pdf
@@ -501,12 +1051,126 @@ export function LearnerTopNavbar({
                           </div>
                         </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
               </div>
             )}
           </div>
+
+          {mounted &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <>
+                <div aria-live="assertive" className="sr-only">
+                  {liveAnnouncement}
+                </div>
+
+                {/* Live Floating Popup Notifications (Top Layer manual popover directly below bell button) */}
+                <div
+                  ref={popoverRef}
+                  role="region"
+                  aria-label="Notifikasi Aktivitas Learner"
+                  {...({ popover: "manual" } as Record<string, string>)}
+                  onMouseEnter={() => setIsPopupPaused(true)}
+                  onMouseLeave={() => setIsPopupPaused(false)}
+                  onFocusCapture={() => setIsPopupPaused(true)}
+                  onBlurCapture={(e) => {
+                    if (
+                      !popoverRef.current?.contains(
+                        e.relatedTarget as Node | null
+                      )
+                    ) {
+                      setIsPopupPaused(false);
+                    }
+                  }}
+                  className={`learner-notif-popover w-[min(360px,calc(100vw-2rem))] space-y-2.5 ${
+                    activePopups.length > 0 && !notifOpen ? "is-open" : ""
+                  }`}
+                >
+                  {activePopups.map((popup) => {
+                    const evType = inferLearnerNotifEventType(popup);
+                    const meta = getLearnerNotifCategoryMeta(evType);
+                    const PopupIcon = meta.Icon;
+
+                    return (
+                      <article
+                        key={popup.id}
+                        className="relative overflow-hidden rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_14px_38px_rgba(16,15,17,0.16)]"
+                      >
+                        <div
+                          className="h-1.5 w-full"
+                          style={{ background: meta.gradient }}
+                        />
+
+                        <div className="p-3.5 flex items-start gap-3">
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${meta.iconBg}`}
+                          >
+                            <PopupIcon size={17} />
+                          </div>
+
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${meta.badgeClass}`}
+                                >
+                                  {evType === "pro_activated" && (
+                                    <Zap size={10} fill="currentColor" />
+                                  )}
+                                  <span>{meta.badgeLabel}</span>
+                                </span>
+                                <p className="text-xs font-extrabold text-[#121215] mt-1">
+                                  {meta.headline}
+                                </p>
+                              </div>
+
+                              <button
+                                ref={(el) => {
+                                  if (el) closeBtnRefs.current.set(popup.id, el);
+                                  else closeBtnRefs.current.delete(popup.id);
+                                }}
+                                type="button"
+                                onClick={() => dismissPopup(popup.id)}
+                                aria-label="Tutup notifikasi"
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[#9CA3AF] hover:bg-[#F8F9FB] hover:text-[#121215] transition-colors cursor-pointer"
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+
+                            <p className="text-[11px] font-bold text-[#121215]">
+                              {popup.title}
+                            </p>
+
+                            <p className="text-xs text-[#334155] leading-relaxed line-clamp-3">
+                              {popup.body}
+                            </p>
+
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <span className="text-[10px] font-medium text-[#9CA3AF]">
+                                {formatLearnerNotifTime(popup)}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => handleNotifNavigate(popup)}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-[#4F39F6] hover:underline cursor-pointer"
+                              >
+                                <span>{meta.actionLabel}</span>
+                                <ArrowRight size={11} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </>,
+              document.body
+            )}
 
           {/* Learner Profile Dynamic Info (Opens Individual Profile Page) */}
           <button

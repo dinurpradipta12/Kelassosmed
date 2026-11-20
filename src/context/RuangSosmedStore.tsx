@@ -54,6 +54,7 @@ import {
   type CourseSectionAccordion,
   type CourseChapterItem,
   type LearnerNotification,
+  type LearnerNotificationEventType,
 } from "@/lib/phase5-data";
 import {
   RS_LEARNING_26_LESSONS_SEED,
@@ -989,6 +990,119 @@ async function syncCohortProjectsToSupabase(
 }
 
 const ADMIN_NOTIFS_STORAGE_KEY = "ruang_sosmed_admin_notifications_v1";
+const LEARNER_NOTIFS_STORAGE_KEY = "ruang_sosmed_learner_notifications_v1";
+
+export function inferLearnerNotifEventType(
+  n: Partial<LearnerNotification>
+): LearnerNotificationEventType {
+  if (
+    n.eventType === "pro_activated" ||
+    n.eventType === "material_added" ||
+    n.eventType === "mentor_reply" ||
+    n.eventType === "general"
+  ) {
+    return n.eventType;
+  }
+  const haystack = `${n.title || ""} ${n.body || ""}`.toLowerCase();
+  if (/\bpro\b|langganan|membership/.test(haystack)) {
+    return "pro_activated";
+  }
+  if (/balasan|mentor|diskusi|tanggapan/.test(haystack)) {
+    return "mentor_reply";
+  }
+  if (
+    /materi|published|assigned|assignment|modul|kelas|course|quiz|wiki|kode akses|folder/.test(
+      haystack
+    )
+  ) {
+    return "material_added";
+  }
+  return "general";
+}
+
+function normalizeLearnerNotification(
+  raw: Partial<LearnerNotification> & { id?: string }
+): LearnerNotification {
+  const id =
+    raw.id?.trim() ||
+    `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  return {
+    id,
+    title: raw.title || "Notifikasi Ruang Sosmed",
+    body: raw.body || "",
+    time: raw.time || "Baru saja",
+    unread: raw.unread ?? true,
+    eventType: inferLearnerNotifEventType(raw),
+    createdAt: raw.createdAt || new Date().toISOString(),
+    targetLearner: raw.targetLearner,
+    meta: raw.meta,
+  };
+}
+
+function persistLearnerNotificationsLocal(list: LearnerNotification[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      LEARNER_NOTIFS_STORAGE_KEY,
+      JSON.stringify(list.slice(0, 50))
+    );
+  } catch {}
+}
+
+function readLearnerNotificationsLocal(): LearnerNotification[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LEARNER_NOTIFS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((n) => n && typeof n.id === "string")
+      .map((n) => normalizeLearnerNotification(n))
+      .slice(0, 50);
+  } catch {
+    return [];
+  }
+}
+
+async function syncLearnerNotificationsToSupabase(
+  notifications: LearnerNotification[]
+): Promise<void> {
+  if (!isSupabaseConfigured || !Array.isArray(notifications)) return;
+  try {
+    const trimmed = notifications.slice(0, 50);
+    const existing = await getLatestSystemContentRow(
+      "__SYSTEM_LEARNER_NOTIFICATIONS__"
+    );
+    const payload = {
+      notifications: trimmed,
+      updatedAt: new Date().toISOString(),
+    };
+    if (existing?.id) {
+      await supabase
+        .from("contents")
+        .update({
+          settings_json: payload,
+          status: "published",
+        })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("contents").insert({
+        id: newUuid(),
+        title: "__SYSTEM_LEARNER_NOTIFICATIONS__",
+        type: "page",
+        status: "published",
+        description: "System storage for Learner notifications",
+        urgency: "not_urgent",
+        estimated_minutes: 0,
+        points_reward: 0,
+        settings_json: payload,
+      });
+    }
+  } catch {
+    // Ignore when non-staff session cannot write to __SYSTEM_* rows under RLS
+  }
+}
 
 async function syncAdminNotificationsToSupabase(
   notifications: AdminActivityNotification[]
@@ -1844,11 +1958,18 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
   setTodos: React.Dispatch<React.SetStateAction<TodoTask[]>>;
   restoreContentVersion: (versionId: string) => void;
   markAllNotificationsRead: () => void;
+  markLearnerNotificationRead: (id: string) => void;
+  clearLearnerNotifications: () => void;
   addLearnerNotification: (notification: {
+    id?: string;
     title: string;
     body: string;
     time?: string;
     unread?: boolean;
+    eventType?: LearnerNotificationEventType;
+    createdAt?: string;
+    targetLearner?: string;
+    meta?: LearnerNotification["meta"];
   }) => void;
   sendCollaboratorInvitation: (payload: {
     email: string;
@@ -2069,6 +2190,13 @@ export function RuangSosmedProvider({
   const recentLocalReplyPostsRef = useRef<Map<string, number>>(new Map());
   const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
   const adminNotifHydratedRef = useRef(false);
+  const knownLearnerNotifIdsRef = useRef<Set<string>>(new Set());
+  const learnerNotifHydratedRef = useRef(false);
+  const prevSyncedProStatusRef = useRef<boolean | null>(null);
+  const knownSyncedContentIdsRef = useRef<Set<string>>(new Set());
+  const learnerContentSyncInitializedRef = useRef(false);
+  const knownSyncedMentorReplyIdsRef = useRef<Set<string>>(new Set());
+  const learnerReplySyncInitializedRef = useRef(false);
   const lastSyncAtRef = useRef<number>(0);
   const lastWatermarkRef = useRef<string>("");
   const syncInFlightRef = useRef<boolean>(false);
@@ -2480,23 +2608,45 @@ export function RuangSosmedProvider({
             });
           })(),
           learnerNotifications: (() => {
-            const raw = Array.isArray(parsed.learnerNotifications)
+            const legacyExcluded = new Set([
+              "notif-1",
+              "notif-2",
+              "notif-3",
+              "notif-invite-allisha-active",
+            ]);
+            const rawFromParsed = Array.isArray(parsed.learnerNotifications)
               ? parsed.learnerNotifications.filter(
-                  (n) =>
-                    !["notif-1", "notif-2", "notif-3", "notif-invite-allisha-active"].includes(
-                      n.id
-                    )
+                  (n) => n && n.id && !legacyExcluded.has(n.id)
                 )
               : [];
+            const rawFromDedicatedKey = readLearnerNotificationsLocal();
 
-            // Deduplicate by ID to eliminate any prior duplicate keys in storage
-            const dedupedMap = new Map<string, (typeof raw)[0]>();
-            raw.forEach((n) => {
-              if (n && n.id) {
-                dedupedMap.set(n.id, n);
+            const dedupedMap = new Map<string, LearnerNotification>();
+            [...rawFromDedicatedKey, ...rawFromParsed].forEach((n) => {
+              if (!n || !n.id || legacyExcluded.has(n.id)) return;
+              const existing = dedupedMap.get(n.id);
+              const normalized = normalizeLearnerNotification(n);
+              if (existing) {
+                dedupedMap.set(n.id, {
+                  ...existing,
+                  unread: existing.unread && normalized.unread,
+                });
+              } else {
+                dedupedMap.set(n.id, normalized);
               }
             });
-            return Array.from(dedupedMap.values());
+
+            const mergedList = Array.from(dedupedMap.values())
+              .sort((a, b) => {
+                const ta = Date.parse(a.createdAt || "") || 0;
+                const tb = Date.parse(b.createdAt || "") || 0;
+                return tb - ta;
+              })
+              .slice(0, 50);
+
+            mergedList.forEach((n) => knownLearnerNotifIdsRef.current.add(n.id));
+            learnerNotifHydratedRef.current = true;
+            return mergedList;
           })(),
           workspaceCollaborators:
             Array.isArray(parsed.workspaceCollaborators) &&
@@ -2630,6 +2780,12 @@ export function RuangSosmedProvider({
           courseCurriculums: {},
           cohortProjects: INITIAL_COHORT_PROJECTS,
           workspaceCollaborators: INITIAL_WORKSPACE_COLLABORATORS,
+          learnerNotifications: (() => {
+            const localNotifs = readLearnerNotificationsLocal();
+            localNotifs.forEach((n) => knownLearnerNotifIdsRef.current.add(n.id));
+            learnerNotifHydratedRef.current = true;
+            return localNotifs;
+          })(),
           certificateConfig:
             typeof window !== "undefined"
               ? (() => {
@@ -2767,6 +2923,24 @@ export function RuangSosmedProvider({
             delReplies
           ),
         }));
+      } else if (e.key === LEARNER_NOTIFS_STORAGE_KEY && e.newValue) {
+        const nextList = readLearnerNotificationsLocal();
+        const newlySeen: LearnerNotification[] = [];
+        nextList.forEach((n) => {
+          if (!knownLearnerNotifIdsRef.current.has(n.id)) {
+            knownLearnerNotifIdsRef.current.add(n.id);
+            if (n.unread) newlySeen.push(n);
+          }
+        });
+        setState((prev) => ({
+          ...prev,
+          learnerNotifications: nextList,
+        }));
+        newlySeen.forEach((n) => {
+          window.dispatchEvent(
+            new CustomEvent("ruang_sosmed_learner_notif", { detail: n })
+          );
+        });
       }
     };
     window.addEventListener("storage", handleStorageSync);
@@ -2885,6 +3059,36 @@ export function RuangSosmedProvider({
                   detail: incoming,
                 })
               );
+            }
+          } else if (
+            event.data?.type === "LEARNER_NOTIFICATION_NEW" &&
+            event.data.notification
+          ) {
+            const incoming = normalizeLearnerNotification(
+              event.data.notification as Partial<LearnerNotification>
+            );
+            if (incoming?.id) {
+              const alreadyKnown = knownLearnerNotifIdsRef.current.has(
+                incoming.id
+              );
+              knownLearnerNotifIdsRef.current.add(incoming.id);
+              setState((prev) => {
+                const existing = prev.learnerNotifications || [];
+                if (existing.some((n) => n.id === incoming.id)) return prev;
+                const nextList = [incoming, ...existing].slice(0, 50);
+                persistLearnerNotificationsLocal(nextList);
+                return {
+                  ...prev,
+                  learnerNotifications: nextList,
+                };
+              });
+              if (!alreadyKnown) {
+                window.dispatchEvent(
+                  new CustomEvent("ruang_sosmed_learner_notif", {
+                    detail: incoming,
+                  })
+                );
+              }
             }
           } else if (
             event.data?.type === "DISCUSSION_DELETED" &&
@@ -3493,25 +3697,49 @@ export function RuangSosmedProvider({
           }
 
           const pointsChanged = prev.learnerPoints !== activeUserPoints;
-          let nextNotifications = [...(prev.learnerNotifications ?? [])];
+          let nextNotifications = (prev.learnerNotifications ?? []).map((n) =>
+            normalizeLearnerNotification(n)
+          );
+          const freshlyArrivedLearnerNotifs: LearnerNotification[] = [];
+          const enqueueSyncedLearnerNotif = (
+            raw: Partial<LearnerNotification> & { title: string; body: string }
+          ) => {
+            const normalized = normalizeLearnerNotification(raw);
+            if (
+              !nextNotifications.some(
+                (n) =>
+                  n.id === normalized.id ||
+                  (n.title === normalized.title && n.unread)
+              )
+            ) {
+              nextNotifications = [normalized, ...nextNotifications].slice(
+                0,
+                50
+              );
+              if (
+                !freshlyArrivedLearnerNotifs.some(
+                  (f) => f.id === normalized.id
+                )
+              ) {
+                freshlyArrivedLearnerNotifs.push(normalized);
+              }
+            }
+          };
+
           if (pointsChanged && activeUserPoints > prev.learnerPoints) {
             const diff = activeUserPoints - prev.learnerPoints;
             const notifId = `pts-award-${Date.now()}-${activeUserPoints}`;
             const notifTitle = `⭐ +${diff} Poin Bintang Diterima!`;
             const notifBody = `Admin telah menambahkan ${diff} ★ pts ke akun Anda. Total saldo poin Anda sekarang ${activeUserPoints.toLocaleString()} pts.`;
 
-            if (!nextNotifications.some((n) => n.id === notifId || (n.title === notifTitle && n.unread))) {
-              nextNotifications = [
-                {
-                  id: notifId,
-                  title: notifTitle,
-                  body: notifBody,
-                  time: "Baru saja",
-                  unread: true,
-                },
-                ...nextNotifications,
-              ];
-            }
+            enqueueSyncedLearnerNotif({
+              id: notifId,
+              title: notifTitle,
+              body: notifBody,
+              time: "Baru saja",
+              unread: true,
+              eventType: "general",
+            });
 
             if (typeof window !== "undefined") {
               window.dispatchEvent(
@@ -3525,6 +3753,53 @@ export function RuangSosmedProvider({
                 })
               );
             }
+          }
+
+          if (authUserId && !isStaffSession && activeUserPro) {
+            const tierStorageKey = activeLearnerEmail
+              ? `ruang_sosmed_last_known_tier_${activeLearnerEmail}`
+              : null;
+            let lastStoredTier: string | null = null;
+            if (tierStorageKey && typeof window !== "undefined") {
+              try {
+                lastStoredTier = window.localStorage.getItem(tierStorageKey);
+              } catch {}
+            }
+            const flippedLive = prevSyncedProStatusRef.current === false;
+            const flippedAcrossReload = lastStoredTier === "Free";
+            if (flippedLive || flippedAcrossReload) {
+              enqueueSyncedLearnerNotif({
+                id: `notif-pro-active-${ownProfile?.id || activeLearnerEmail || "learner"}-${ownProfile?.pro_started_at || "now"}`,
+                title: "⚡ Langganan Learner PRO Aktif!",
+                body: `Selamat${activeLearnerName ? ` ${activeLearnerName}` : ""}! Akun Learner PRO Anda sekarang aktif. Semua modul lanjutan, template, dan sertifikat siap digunakan.`,
+                time: "Baru saja",
+                unread: true,
+                eventType: "pro_activated",
+                targetLearner:
+                  activeLearnerEmail || activeLearnerName || undefined,
+                meta: {
+                  packageName: ownProfile?.pro_package_name || "Learner PRO",
+                },
+              });
+            }
+            if (tierStorageKey && typeof window !== "undefined") {
+              try {
+                window.localStorage.setItem(tierStorageKey, "PRO");
+              } catch {}
+            }
+          } else if (
+            authUserId &&
+            !isStaffSession &&
+            !activeUserPro &&
+            activeLearnerEmail &&
+            typeof window !== "undefined"
+          ) {
+            try {
+              window.localStorage.setItem(
+                `ruang_sosmed_last_known_tier_${activeLearnerEmail}`,
+                "Free"
+              );
+            } catch {}
           }
 
           learnerOnly.forEach((lrn) => {
@@ -3693,6 +3968,21 @@ export function RuangSosmedProvider({
             ? (systemAdminNotifsRow.settings_json
                 .notifications as AdminActivityNotification[])
             : [];
+
+          const systemLearnerNotifsRow = pickLatestSystemRow(
+            "__SYSTEM_LEARNER_NOTIFICATIONS__"
+          );
+          const remoteLearnerNotifs: LearnerNotification[] = Array.isArray(
+            systemLearnerNotifsRow?.settings_json?.notifications
+          )
+            ? (
+                systemLearnerNotifsRow.settings_json
+                  .notifications as Partial<LearnerNotification>[]
+              ).map((n) => normalizeLearnerNotification(n))
+            : [];
+
+          const newlyObservedContentKeys: string[] = [];
+          const newlyObservedReplyIds: string[] = [];
 
           if (!contentsRes.error && Array.isArray(contentsRes.data)) {
             const dbRows = (contentsRes.data as any[]).filter(
@@ -3979,6 +4269,32 @@ export function RuangSosmedProvider({
               ...localOnly,
               ...dbExplorer,
             ]);
+
+            // Deteksi penambahan materi baru dari server untuk notifikasi Learner
+            dbExplorer.forEach((exp) => {
+              if (!exp?.id) return;
+              const titleKey = (exp.title || "").trim().toLowerCase();
+              newlyObservedContentKeys.push(exp.id);
+              if (titleKey) newlyObservedContentKeys.push(titleKey);
+
+              if (
+                learnerContentSyncInitializedRef.current &&
+                exp.type !== "Folder" &&
+                !exp.isArchived &&
+                !knownSyncedContentIdsRef.current.has(exp.id) &&
+                (!titleKey || !knownSyncedContentIdsRef.current.has(titleKey))
+              ) {
+                enqueueSyncedLearnerNotif({
+                  id: `notif-mat-sync-${exp.id}`,
+                  title: `📚 Materi Baru Tersedia: ${exp.title}`,
+                  body: `Admin/Mentor telah menambahkan materi ${exp.type} "${exp.title}". Yuk cek di katalog atau My Learning!`,
+                  time: "Baru saja",
+                  unread: true,
+                  eventType: "material_added",
+                  meta: { contentTitle: exp.title },
+                });
+              }
+            });
           } else {
             nextExplorer = deduplicateExplorerItems(nextExplorer);
           }
@@ -4461,6 +4777,37 @@ export function RuangSosmedProvider({
                     : localThread?.participants || [],
                 replies: mergedReplies,
               });
+
+              // Track & notify Learner when a new Admin/Mentor reply arrives remotely
+              mergedReplies.forEach((rep: any) => {
+                if (!rep?.id) return;
+                const rid = String(rep.id);
+                newlyObservedReplyIds.push(rid);
+                const roleStr = String(rep.authorRole || "");
+                const isStaffReply = /\b(mentor|admin|coach|instructor)\b/i.test(
+                  roleStr
+                );
+                if (
+                  learnerReplySyncInitializedRef.current &&
+                  isStaffReply &&
+                  !knownSyncedMentorReplyIdsRef.current.has(rid)
+                ) {
+                  const chapTitle =
+                    row.chapter_badge || row.title || "Diskusi Materi";
+                  enqueueSyncedLearnerNotif({
+                    id: `notif-reply-sync-${rid}`,
+                    title: `💬 Balasan ${roleStr || "Mentor"}: ${chapTitle}`,
+                    body: `${rep.authorName || "Mentor"} membalas diskusi: "${String(rep.message || "").slice(0, 140)}"`,
+                    time: "Baru saja",
+                    unread: true,
+                    eventType: "mentor_reply",
+                    meta: {
+                      chapterTitle: chapTitle,
+                      mentorName: rep.authorName || "Mentor",
+                    },
+                  });
+                }
+              });
             });
 
             const candidateThreads = filterDeletedDiscussionThreads(
@@ -4671,6 +5018,77 @@ export function RuangSosmedProvider({
             }, 0);
           }
 
+          // Merge __SYSTEM_LEARNER_NOTIFICATIONS__ jika tersedia + persist + emit events
+          if (remoteLearnerNotifs.length > 0) {
+            const localLearnerNotifMap = new Map<string, LearnerNotification>();
+            nextNotifications.forEach((n) => {
+              if (n?.id) localLearnerNotifMap.set(n.id, n);
+            });
+            remoteLearnerNotifs.forEach((rn) => {
+              if (!rn?.id) return;
+              const existingLocal = localLearnerNotifMap.get(rn.id);
+              const merged = existingLocal
+                ? { ...rn, unread: existingLocal.unread && rn.unread }
+                : rn;
+              localLearnerNotifMap.set(rn.id, merged);
+              if (
+                merged.unread &&
+                !knownLearnerNotifIdsRef.current.has(rn.id) &&
+                learnerNotifHydratedRef.current &&
+                !freshlyArrivedLearnerNotifs.some((f) => f.id === rn.id)
+              ) {
+                freshlyArrivedLearnerNotifs.push(merged);
+              }
+            });
+            nextNotifications = Array.from(localLearnerNotifMap.values())
+              .sort((a, b) => {
+                const ta = Date.parse(a.createdAt || "") || 0;
+                const tb = Date.parse(b.createdAt || "") || 0;
+                return tb - ta;
+              })
+              .slice(0, 50);
+          }
+
+          const learnerNotifsChanged =
+            JSON.stringify(nextNotifications) !==
+            JSON.stringify(prev.learnerNotifications || []);
+
+          if (learnerNotifsChanged && typeof window !== "undefined") {
+            persistLearnerNotificationsLocal(nextNotifications);
+          }
+
+          if (typeof window !== "undefined") {
+            const capturedPro = activeUserPro;
+            const capturedContentKeys = [...newlyObservedContentKeys];
+            const capturedReplyIds = [...newlyObservedReplyIds];
+            const capturedFreshLearner = [...freshlyArrivedLearnerNotifs];
+            window.setTimeout(() => {
+              prevSyncedProStatusRef.current = capturedPro;
+              if (capturedContentKeys.length > 0) {
+                capturedContentKeys.forEach((k) =>
+                  knownSyncedContentIdsRef.current.add(k)
+                );
+                learnerContentSyncInitializedRef.current = true;
+              }
+              if (capturedReplyIds.length > 0) {
+                capturedReplyIds.forEach((rid) =>
+                  knownSyncedMentorReplyIdsRef.current.add(rid)
+                );
+                learnerReplySyncInitializedRef.current = true;
+              }
+              capturedFreshLearner.forEach((notif) => {
+                if (!knownLearnerNotifIdsRef.current.has(notif.id)) {
+                  knownLearnerNotifIdsRef.current.add(notif.id);
+                  window.dispatchEvent(
+                    new CustomEvent("ruang_sosmed_learner_notif", {
+                      detail: notif,
+                    })
+                  );
+                }
+              });
+            }, 0);
+          }
+
           if (
             !proChanged &&
             !subsChanged &&
@@ -4691,7 +5109,8 @@ export function RuangSosmedProvider({
             !issuesChanged &&
             !avatarsChanged &&
             !pointsMapChanged &&
-            !adminNotifsChanged
+            !adminNotifsChanged &&
+            !learnerNotifsChanged
           ) {
             // Data tidak berubah: pertahankan referensi state sebelumnya agar tidak ada glitch / flicker cover
             return prev;
@@ -4911,6 +5330,105 @@ export function RuangSosmedProvider({
     return { segments: withPercentages, total };
   };
 
+  const markAllNotificationsRead = useCallback(() => {
+    setState((prev) => {
+      const nextList = prev.learnerNotifications.map((n) => ({
+        ...n,
+        unread: false,
+      }));
+      persistLearnerNotificationsLocal(nextList);
+      void syncLearnerNotificationsToSupabase(nextList);
+      return {
+        ...prev,
+        learnerNotifications: nextList,
+      };
+    });
+  }, []);
+
+  const markLearnerNotificationRead = useCallback((id: string) => {
+    if (!id) return;
+    setState((prev) => {
+      const nextList = prev.learnerNotifications.map((n) =>
+        n.id === id ? { ...n, unread: false } : n
+      );
+      persistLearnerNotificationsLocal(nextList);
+      void syncLearnerNotificationsToSupabase(nextList);
+      return {
+        ...prev,
+        learnerNotifications: nextList,
+      };
+    });
+  }, []);
+
+  const clearLearnerNotifications = useCallback(() => {
+    persistLearnerNotificationsLocal([]);
+    void syncLearnerNotificationsToSupabase([]);
+    setState((prev) => ({
+      ...prev,
+      learnerNotifications: [],
+    }));
+  }, []);
+
+  const addLearnerNotification = useCallback(
+    (notification: {
+      id?: string;
+      title: string;
+      body: string;
+      time?: string;
+      unread?: boolean;
+      eventType?: LearnerNotificationEventType;
+      createdAt?: string;
+      targetLearner?: string;
+      meta?: LearnerNotification["meta"];
+    }) => {
+      const notif = normalizeLearnerNotification(notification);
+      knownLearnerNotifIdsRef.current.add(notif.id);
+      learnerNotifHydratedRef.current = true;
+
+      const currentList = (stateRef.current.learnerNotifications || []).map(
+        (n) => normalizeLearnerNotification(n)
+      );
+      const deduped = [
+        notif,
+        ...currentList.filter((n) => n.id !== notif.id),
+      ].slice(0, 50);
+
+      setState((prev) => {
+        const existing = prev.learnerNotifications || [];
+        const nextList = [
+          notif,
+          ...existing.filter((n) => n.id !== notif.id),
+        ].slice(0, 50);
+        return {
+          ...prev,
+          learnerNotifications: nextList,
+        };
+      });
+
+      persistLearnerNotificationsLocal(deduped);
+
+      if (typeof window !== "undefined") {
+        if ("BroadcastChannel" in window) {
+          try {
+            const bc = new BroadcastChannel("ruang_sosmed_channel");
+            bc.postMessage({
+              type: "LEARNER_NOTIFICATION_NEW",
+              notification: notif,
+            });
+            bc.close();
+          } catch {}
+        }
+
+        window.dispatchEvent(
+          new CustomEvent("ruang_sosmed_learner_notif", { detail: notif })
+        );
+      }
+
+      void syncLearnerNotificationsToSupabase(deduped);
+    },
+    []
+  );
+
   // WORKFLOW 1: Content Creation -> Admin Explorer + Learner Catalog Sync
   const publishContentToStudioAndCatalog = useCallback(
     (
@@ -5108,20 +5626,26 @@ export function RuangSosmedProvider({
           ],
           contentStatusData: gauge.segments,
           totalContentsGaugeCount: gauge.total,
-          learnerNotifications: [
-            {
-              id: `notif-${nowId}`,
-              title: `New ${type} Published in Catalog`,
-              body: `Mentor published "${title}" in Ruang Sosmed 2.0.`,
-              time: "Just now",
-              unread: true,
-            },
-            ...prev.learnerNotifications,
-          ],
         };
       });
+
+      if (!isFolder) {
+        addLearnerNotification({
+          id: `notif-mat-${nowId}`,
+          eventType: "material_added",
+          title: existingSameTitle
+            ? `📚 Materi Diperbarui: ${title}`
+            : `📚 Materi Baru Tersedia: ${title}`,
+          body: `Admin/Mentor telah ${
+            existingSameTitle ? "memperbarui" : "menambahkan"
+          } materi ${type} "${title}" ke Ruang Sosmed 2.0. Yuk pelajari sekarang!`,
+          time: "Baru saja",
+          unread: true,
+          meta: { contentTitle: title },
+        });
+      }
     },
-    [state.versions.length]
+    [state.versions.length, addLearnerNotification]
   );
 
   const createFolder = useCallback(
@@ -5987,17 +6511,17 @@ export function RuangSosmedProvider({
           assignees: nextAssignees,
           contentStatusData: gauge.segments,
           totalContentsGaugeCount: gauge.total,
-          learnerNotifications: [
-            {
-              id: `notif-assign-${nowId}`,
-              title: `New Assignment: ${contentItem.title}`,
-              body: `Mentor assigned "${contentItem.title}" to you (Not Started • 0% • Due ${dueDate}).`,
-              time: "Just now",
-              unread: true,
-            },
-            ...prev.learnerNotifications,
-          ],
         };
+      });
+
+      addLearnerNotification({
+        id: `notif-assign-${nowId}`,
+        eventType: "material_added",
+        title: `📚 Materi Baru Ditugaskan: ${contentItem.title}`,
+        body: `Admin/Mentor telah menugaskan materi "${contentItem.title}" kepada Anda (Tenggat: ${dueDate}).`,
+        time: "Baru saja",
+        unread: true,
+        meta: { contentTitle: contentItem.title },
       });
 
       itemsToPush.forEach((pushedItem) => {
@@ -6009,7 +6533,7 @@ export function RuangSosmedProvider({
         );
       });
     },
-    []
+    [addLearnerNotification]
   );
 
   const manageAssigneeAction = useCallback(
@@ -6562,21 +7086,22 @@ export function RuangSosmedProvider({
           ...prev,
           assignees: nextAssignees,
           explorerItems: nextExplorer,
-          learnerNotifications: [
-            {
-              id: `notif-code-${Date.now()}`,
-              title: matchedFolder
-                ? `🔓 Akses Folder "${primaryTitle}" Terbuka`
-                : `🔓 Akses Materi "${primaryTitle}" Terbuka`,
-              body: matchedFolder
-                ? `Berhasil bergabung ke seri folder "${primaryTitle}" (${childCourseCount} materi) menggunakan kode ${cleanCode}.`
-                : `Berhasil membuka akses materi "${primaryTitle}" secara otomatis menggunakan kode ${cleanCode}.`,
-              time: "Baru saja",
-              unread: true,
-            },
-            ...prev.learnerNotifications,
-          ],
         };
+      });
+
+      addLearnerNotification({
+        id: `notif-code-${Date.now()}`,
+        eventType: "material_added",
+        title: matchedFolder
+          ? `🔓 Akses Folder "${primaryTitle}" Terbuka`
+          : `🔓 Akses Materi "${primaryTitle}" Terbuka`,
+        body: matchedFolder
+          ? `Berhasil bergabung ke seri folder "${primaryTitle}" (${childCourseCount} materi) menggunakan kode ${cleanCode}.`
+          : `Berhasil membuka akses materi "${primaryTitle}" secara otomatis menggunakan kode ${cleanCode}.`,
+        time: "Baru saja",
+        unread: true,
+        targetLearner: learner.email || learner.name || undefined,
+        meta: { contentTitle: primaryTitle },
       });
 
       if (isSupabaseConfigured && typeof window !== "undefined") {
@@ -6648,7 +7173,7 @@ export function RuangSosmedProvider({
         message: `Berhasil membuka akses materi "${matchedContent!.title}"!`,
       };
     },
-    []
+    [addLearnerNotification]
   );
 
   // WORKFLOW 3: Active Learning & Progress Sync
@@ -7176,8 +7701,26 @@ export function RuangSosmedProvider({
       });
 
       void pushInboxThreadToSupabase(syncedThread);
+
+      const isStaffAuthor = /\b(mentor|admin|coach|instructor)\b/i.test(
+        payload.authorRole || ""
+      );
+      if (isStaffAuthor) {
+        addLearnerNotification({
+          id: `notif-reply-${nowId}`,
+          eventType: "mentor_reply",
+          title: `💬 Balasan ${payload.authorRole}: ${payload.chapterTitle}`,
+          body: `${payload.authorName} membalas diskusi pada "${payload.chapterTitle}": "${payload.message}"`,
+          time: "Baru saja",
+          unread: true,
+          meta: {
+            chapterTitle: payload.chapterTitle,
+            mentorName: payload.authorName,
+          },
+        });
+      }
     },
-    []
+    [addLearnerNotification]
   );
 
   const broadcastDiscussionDeleted = useCallback(
@@ -7331,40 +7874,6 @@ export function RuangSosmedProvider({
       })),
     }));
   }, []);
-
-  const markAllNotificationsRead = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      learnerNotifications: prev.learnerNotifications.map((n) => ({
-        ...n,
-        unread: false,
-      })),
-    }));
-  }, []);
-
-  const addLearnerNotification = useCallback(
-    (notification: {
-      title: string;
-      body: string;
-      time?: string;
-      unread?: boolean;
-    }) => {
-      setState((prev) => ({
-        ...prev,
-        learnerNotifications: [
-          {
-            id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            title: notification.title,
-            body: notification.body,
-            time: notification.time || "Baru saja",
-            unread: notification.unread ?? true,
-          },
-          ...prev.learnerNotifications,
-        ],
-      }));
-    },
-    []
-  );
 
   const sendCollaboratorInvitation = useCallback(
     (payload: {
@@ -7882,6 +8391,17 @@ export function RuangSosmedProvider({
 
   const toggleStudentProByAdmin = useCallback(
     (studentName: string, studentEmail?: string) => {
+      const currentMapSnap = stateRef.current.learnerSubscriptions ?? {};
+      const emailKeySnap = studentEmail?.trim().toLowerCase();
+      const nameKeySnap = studentName.trim().toLowerCase();
+      const currentTierSnap =
+        (emailKeySnap ? currentMapSnap[emailKeySnap] : undefined) ??
+        currentMapSnap[studentName] ??
+        currentMapSnap[nameKeySnap] ??
+        "Free";
+      const nextTierSnap: "PRO" | "Free" =
+        currentTierSnap === "PRO" ? "Free" : "PRO";
+
       setState((prev) => {
         const currentMap = prev.learnerSubscriptions ?? {};
         const emailKey = studentEmail?.trim().toLowerCase();
@@ -7910,8 +8430,21 @@ export function RuangSosmedProvider({
           learnerSubscriptions: nextMap,
         };
       });
+
+      if (nextTierSnap === "PRO") {
+        addLearnerNotification({
+          id: `notif-pro-admin-${Date.now()}-${nameKeySnap.replace(/[^a-z0-9]/g, "")}`,
+          eventType: "pro_activated",
+          targetLearner: studentEmail || studentName,
+          title: "⚡ Langganan Learner PRO Aktif!",
+          body: `Selamat ${studentName}! Akun Learner PRO Anda telah aktif. Seluruh modul lanjutan, template eksklusif, Wiki Agency, dan klaim sertifikat kini sudah terbuka.`,
+          time: "Baru saja",
+          unread: true,
+          meta: { packageName: "Learner PRO" },
+        });
+      }
     },
-    [persistProTierToSupabase]
+    [persistProTierToSupabase, addLearnerNotification]
   );
 
   const setStudentProTierLocal = useCallback(
@@ -7920,6 +8453,15 @@ export function RuangSosmedProvider({
       studentEmail: string | undefined,
       tier: "PRO" | "Free"
     ) => {
+      const currentMapSnap = stateRef.current.learnerSubscriptions ?? {};
+      const emailKeySnap = studentEmail?.trim().toLowerCase();
+      const nameKeySnap = studentName.trim().toLowerCase();
+      const prevTierSnap =
+        (emailKeySnap ? currentMapSnap[emailKeySnap] : undefined) ??
+        currentMapSnap[studentName] ??
+        currentMapSnap[nameKeySnap] ??
+        "Free";
+
       setState((prev) => {
         const currentMap = prev.learnerSubscriptions ?? {};
         const emailKey = studentEmail?.trim().toLowerCase();
@@ -7937,8 +8479,21 @@ export function RuangSosmedProvider({
           learnerSubscriptions: nextMap,
         };
       });
+
+      if (prevTierSnap !== "PRO" && tier === "PRO") {
+        addLearnerNotification({
+          id: `notif-pro-tier-${Date.now()}-${nameKeySnap.replace(/[^a-z0-9]/g, "")}`,
+          eventType: "pro_activated",
+          targetLearner: studentEmail || studentName,
+          title: "⚡ Langganan Learner PRO Aktif!",
+          body: `Selamat ${studentName}! Akun Learner PRO Anda sekarang aktif. Seluruh fitur eksklusif, template, dan sertifikat siap digunakan.`,
+          time: "Baru saja",
+          unread: true,
+          meta: { packageName: "Learner PRO" },
+        });
+      }
     },
-    []
+    [addLearnerNotification]
   );
 
   const registerLearnerProfile = useCallback(
@@ -8525,31 +9080,26 @@ export function RuangSosmedProvider({
           );
         } catch {}
       }
-      setState((prev) => {
-        const updateNotifTitle = `📚 Materi Diperbarui: ${courseTitle}`;
-        const updateNotif: LearnerNotification = {
-          id: `notif-curriculum-live-${Date.now()}`,
-          title: updateNotifTitle,
-          body: `Mentor telah memperbarui isi materi pada kelas "${courseTitle}". Buka My Learning untuk mempelajari modul terbaru.`,
-          time: "Baru saja",
-          unread: true,
-        };
-        const filteredNotifs = (prev.learnerNotifications || []).filter(
-          (n) => n.title !== updateNotifTitle
-        );
+      setState((prev) => ({
+        ...prev,
+        courseSections:
+          key === "fundamental social media specialist"
+            ? sections
+            : prev.courseSections,
+        courseCurriculums: {
+          ...(prev.courseCurriculums || {}),
+          [key]: sections,
+        },
+      }));
 
-        return {
-          ...prev,
-          courseSections:
-            key === "fundamental social media specialist"
-              ? sections
-              : prev.courseSections,
-          courseCurriculums: {
-            ...(prev.courseCurriculums || {}),
-            [key]: sections,
-          },
-          learnerNotifications: [updateNotif, ...filteredNotifs],
-        };
+      addLearnerNotification({
+        id: `notif-curriculum-live-${Date.now()}`,
+        eventType: "material_added",
+        title: `📚 Materi Diperbarui: ${courseTitle}`,
+        body: `Mentor telah memperbarui isi materi pada kelas "${courseTitle}". Buka My Learning untuk mempelajari modul terbaru.`,
+        time: "Baru saja",
+        unread: true,
+        meta: { contentTitle: courseTitle },
       });
 
       // Sinkronkan perubahan kurikulum (termasuk videoUrl & hide/show) ke Supabase HANYA jika course sudah terdaftar di explorerItems
@@ -8574,7 +9124,7 @@ export function RuangSosmedProvider({
         }, 800);
       }
     },
-    []
+    [addLearnerNotification]
   );
 
   const updateCertificateConfig = useCallback(
@@ -9030,6 +9580,8 @@ export function RuangSosmedProvider({
     setTodos,
     restoreContentVersion,
     markAllNotificationsRead,
+    markLearnerNotificationRead,
+    clearLearnerNotifications,
     addLearnerNotification,
     sendCollaboratorInvitation,
     acceptCollaboratorInvitation,

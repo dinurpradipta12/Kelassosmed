@@ -709,8 +709,9 @@ html[data-theme-active="true"] .shadow-\[0_4px_16px_rgba\(16\,15\,17\,0\.08\)\] 
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
 }
 
-/* Admin Floating Notification Popover (popover="manual" Top-Layer entry/exit + manual fallback) */
-[popover].admin-notif-popover {
+/* Admin & Learner Floating Notification Popovers (popover="manual" Top-Layer entry/exit + manual fallback) */
+[popover].admin-notif-popover,
+[popover].learner-notif-popover {
   display: none;
   position: fixed;
   inset: 2.85rem 1rem auto auto;
@@ -730,21 +731,28 @@ html[data-theme-active="true"] .shadow-\[0_4px_16px_rgba\(16\,15\,17\,0\.08\)\] 
   transition-behavior: allow-discrete;
 }
 
-[popover].admin-notif-popover:is(:popover-open, .\:popover-open, .is-open) {
+[popover].learner-notif-popover {
+  inset: 4.25rem 1rem auto auto;
+}
+
+[popover].admin-notif-popover:is(:popover-open, .\:popover-open, .is-open),
+[popover].learner-notif-popover:is(:popover-open, .\:popover-open, .is-open) {
   display: block;
   opacity: 1;
   transform: translateY(0) scale(1);
 }
 
 @starting-style {
-  [popover].admin-notif-popover:is(:popover-open, .\:popover-open, .is-open) {
+  [popover].admin-notif-popover:is(:popover-open, .\:popover-open, .is-open),
+  [popover].learner-notif-popover:is(:popover-open, .\:popover-open, .is-open) {
     opacity: 0;
     transform: translateY(-8px) scale(0.97);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [popover].admin-notif-popover {
+  [popover].admin-notif-popover,
+  [popover].learner-notif-popover {
     transition: none;
     transform: none;
   }

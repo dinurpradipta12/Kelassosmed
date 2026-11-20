@@ -77,12 +77,27 @@ export interface CourseSectionAccordion {
 
 export const COURSE_OVERVIEW_SECTIONS: CourseSectionAccordion[] = [];
 
+export type LearnerNotificationEventType =
+  | "pro_activated"
+  | "material_added"
+  | "mentor_reply"
+  | "general";
+
 export interface LearnerNotification {
   id: string;
   title: string;
   body: string;
   time: string;
   unread: boolean;
+  eventType?: LearnerNotificationEventType;
+  createdAt?: string;
+  targetLearner?: string;
+  meta?: {
+    contentTitle?: string;
+    chapterTitle?: string;
+    packageName?: string;
+    mentorName?: string;
+  };
 }
 
 export const INITIAL_LEARNER_NOTIFICATIONS: LearnerNotification[] = [];
