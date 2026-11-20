@@ -95,7 +95,6 @@ function IllustratedCardBanner({
   onEditThumbnail?: () => void;
   cardScale?: number;
 }) {
-  const bannerHeight = Math.max(88, Math.round(cardScale * 1.5));
   const isCompactBanner = cardScale <= 84;
   const effectiveThumbnailUrl =
     item.thumbnailUrl ||
@@ -118,15 +117,16 @@ function IllustratedCardBanner({
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-t-xl border-b border-[#EAECEF] bg-[#F8F9FB] transition-[height] duration-150"
-      style={{
-        height: `${bannerHeight}px`,
-        ...(!effectiveThumbnailUrl
+      className={`relative w-full overflow-hidden rounded-t-xl border-b border-[#EAECEF] bg-[#F8F9FB] ${
+        isImage ? "" : "aspect-[16/9]"
+      }`}
+      style={
+        !effectiveThumbnailUrl
           ? { background: item.bannerGradient }
           : !isImage
           ? { background: effectiveThumbnailUrl }
-          : undefined),
-      }}
+          : undefined
+      }
     >
       {isImage ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -135,7 +135,7 @@ function IllustratedCardBanner({
           alt={item.title}
           loading="eager"
           decoding="async"
-          className="h-full w-full object-cover object-center transition-transform duration-300 group-hover:scale-105"
+          className="w-full h-auto block transition-transform duration-300 group-hover:scale-[1.02]"
         />
       ) : (
         /* Clean geometric SVG illustration inside banner */
@@ -694,20 +694,16 @@ export function LearningContentExplorer({
     }
   };
 
-  const getCardGridColsClass = (scale: number) => {
-    if (scale <= 64) {
-      return "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5";
-    }
-    if (scale <= 78) {
-      return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5";
-    }
-    if (scale <= 92) {
-      return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4";
-    }
-    if (scale <= 104) {
-      return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4";
-    }
-    return "grid-cols-1 md:grid-cols-2 gap-5";
+  const getCardGridProps = (scale: number) => {
+    const minCardWidth = Math.round(scale * 3.1);
+    const gapClass =
+      scale <= 64 ? "gap-2.5" : scale <= 84 ? "gap-3.5" : "gap-4";
+    return {
+      className: `grid ${gapClass}`,
+      style: {
+        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${minCardWidth}px), 1fr))`,
+      } as React.CSSProperties,
+    };
   };
 
   const renderScaleControls = ({
@@ -2513,7 +2509,7 @@ export function LearningContentExplorer({
                         </span>
                         {renderCardSizeControls()}
                       </div>
-                      <div className={`grid ${getCardGridColsClass(cardScale)}`}>
+                      <div {...getCardGridProps(cardScale)}>
                         {contentItems.map(renderStandardCard)}
                       </div>
                     </section>
@@ -2617,7 +2613,7 @@ export function LearningContentExplorer({
                       {renderCardSizeControls()}
                     </div>
                   )}
-                  <div className={`grid ${getCardGridColsClass(cardScale)}`}>
+                  <div {...getCardGridProps(cardScale)}>
                     {filteredItems.map((item) =>
                       item.type === "Folder"
                         ? renderMacFolderIconTile(item)
