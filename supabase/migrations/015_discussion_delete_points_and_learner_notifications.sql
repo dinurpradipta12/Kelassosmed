@@ -383,6 +383,22 @@ BEGIN
   IF to_regclass('public.mentor_inbox_threads') IS NOT NULL THEN
     ALTER TABLE public.mentor_inbox_threads ENABLE ROW LEVEL SECURITY;
 
+    DROP POLICY IF EXISTS "mentor_inbox_threads_select_auth" ON public.mentor_inbox_threads;
+    CREATE POLICY "mentor_inbox_threads_select_auth"
+      ON public.mentor_inbox_threads FOR SELECT TO authenticated
+      USING (true);
+
+    DROP POLICY IF EXISTS "mentor_inbox_threads_insert_auth" ON public.mentor_inbox_threads;
+    CREATE POLICY "mentor_inbox_threads_insert_auth"
+      ON public.mentor_inbox_threads FOR INSERT TO authenticated
+      WITH CHECK (true);
+
+    DROP POLICY IF EXISTS "mentor_inbox_threads_update_auth" ON public.mentor_inbox_threads;
+    CREATE POLICY "mentor_inbox_threads_update_auth"
+      ON public.mentor_inbox_threads FOR UPDATE TO authenticated
+      USING (true)
+      WITH CHECK (true);
+
     DROP POLICY IF EXISTS "mentor_inbox_threads_delete_staff" ON public.mentor_inbox_threads;
     CREATE POLICY "mentor_inbox_threads_delete_staff"
       ON public.mentor_inbox_threads FOR DELETE TO authenticated
@@ -392,6 +408,26 @@ BEGIN
           WHERE id = auth.uid() AND role::text IN ('admin', 'mentor')
         )
       );
+
+    -- Bersihkan utas yang sudah ter-tombstone, kosong, atau sisa diskusi lama yang sudah dihapus Admin
+    DELETE FROM public.mentor_inbox_threads
+    WHERE title = '__DELETED__'
+       OR excerpt = '__DELETED__'
+       OR (jsonb_typeof(replies) = 'array' AND jsonb_array_length(replies) = 0)
+       OR excerpt ILIKE '%eh ada si mas%'
+       OR replies::text ILIKE '%eh ada si mas%';
+  END IF;
+
+  IF to_regclass('public.discussions') IS NOT NULL THEN
+    DELETE FROM public.discussions
+    WHERE title = '__DELETED__'
+       OR body ILIKE '%eh ada si mas%';
+  END IF;
+
+  IF to_regclass('public.forum_threads') IS NOT NULL THEN
+    DELETE FROM public.forum_threads
+    WHERE title = '__DELETED__'
+       OR body ILIKE '%eh ada si mas%';
   END IF;
 END $$;
 
@@ -433,6 +469,15 @@ BEGIN
 
   IF v_clean_reply IS NULL THEN
     IF to_regclass('public.mentor_inbox_threads') IS NOT NULL THEN
+      UPDATE public.mentor_inbox_threads
+      SET
+        title = '__DELETED__',
+        excerpt = '__DELETED__',
+        replies = '[]'::jsonb,
+        replies_count = 0,
+        updated_at = now()
+      WHERE id = v_clean_thread;
+
       DELETE FROM public.mentor_inbox_threads WHERE id = v_clean_thread;
     END IF;
     IF to_regclass('public.discussions') IS NOT NULL THEN
@@ -455,6 +500,15 @@ BEGIN
         WHERE coalesce(elem->>'id', '') <> v_clean_reply;
 
         IF jsonb_array_length(v_next_replies) = 0 THEN
+          UPDATE public.mentor_inbox_threads
+          SET
+            title = '__DELETED__',
+            excerpt = '__DELETED__',
+            replies = '[]'::jsonb,
+            replies_count = 0,
+            updated_at = now()
+          WHERE id = v_clean_thread;
+
           DELETE FROM public.mentor_inbox_threads WHERE id = v_clean_thread;
           IF to_regclass('public.discussions') IS NOT NULL THEN
             DELETE FROM public.discussions WHERE id::text = v_clean_thread;
