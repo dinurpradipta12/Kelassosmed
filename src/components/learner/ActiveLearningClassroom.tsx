@@ -60,6 +60,7 @@ export function ActiveLearningClassroom({
   const {
     discussionThreads,
     postDiscussionMessage,
+    explorerItems,
     reportContentIssueFromLearner,
     rsLessons,
     rsLessonNotes,
@@ -156,19 +157,77 @@ export function ActiveLearningClassroom({
       ? Math.round((totalCompleted / flatChapters.length) * 100)
       : 0;
 
-  const syncedComments = discussionThreads.flatMap((thread) =>
-    thread.replies.map((rep) => ({
-      id: rep.id,
-      author: rep.authorName,
-      role: rep.authorRole,
-      initials: rep.authorInitials,
-      bg: rep.avatarBg,
-      text: rep.avatarText,
-      time: rep.timestamp,
-      body: rep.message,
-      chapterTitle: thread.chapterBadge,
-    }))
-  );
+  const syncedComments = React.useMemo(() => {
+    const currentCourseLower = (courseTitle || "").trim().toLowerCase();
+    const currentChapterSet = new Set<string>();
+    sections.forEach((sec) => {
+      if (sec.sectionTitle?.trim()) {
+        currentChapterSet.add(sec.sectionTitle.trim().toLowerCase());
+      }
+      (sec.chapters || []).forEach((ch) => {
+        if (ch.title?.trim()) {
+          currentChapterSet.add(ch.title.trim().toLowerCase());
+        }
+      });
+    });
+
+    const otherCourseTitles = new Set(
+      (explorerItems || [])
+        .filter(
+          (e) =>
+            e.type !== "Folder" &&
+            e.title?.trim() &&
+            e.title.trim().toLowerCase() !== currentCourseLower
+        )
+        .map((e) => e.title.trim().toLowerCase())
+    );
+
+    return (discussionThreads || [])
+      .filter((thread) => {
+        if (
+          !thread?.id ||
+          thread.title === "__DELETED__" ||
+          thread.excerpt === "__DELETED__" ||
+          !Array.isArray(thread.replies) ||
+          thread.replies.length === 0
+        ) {
+          return false;
+        }
+        const badgeLower = (thread.chapterBadge || "").trim().toLowerCase();
+        const titleLower = (thread.title || "").trim().toLowerCase();
+
+        if (
+          (currentCourseLower && badgeLower === currentCourseLower) ||
+          (currentCourseLower && titleLower.includes(currentCourseLower)) ||
+          (badgeLower && currentChapterSet.has(badgeLower))
+        ) {
+          return true;
+        }
+
+        if (badgeLower && otherCourseTitles.has(badgeLower)) {
+          return false;
+        }
+        for (const other of otherCourseTitles) {
+          if (other && titleLower.includes(other)) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .flatMap((thread) =>
+        thread.replies.map((rep) => ({
+          id: rep.id,
+          author: rep.authorName,
+          role: rep.authorRole,
+          initials: rep.authorInitials,
+          bg: rep.avatarBg,
+          text: rep.avatarText,
+          time: rep.timestamp,
+          body: rep.message,
+          chapterTitle: thread.chapterBadge,
+        }))
+      );
+  }, [discussionThreads, courseTitle, sections, explorerItems]);
 
   const courseIsPro = React.useMemo(() => {
     if (typeof window !== "undefined") {

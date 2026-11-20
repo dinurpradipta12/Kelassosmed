@@ -169,13 +169,16 @@ export async function POST(request: Request) {
       }
       case "delete_discussion": {
         const rawPayload = (payload || {}) as Record<string, unknown>;
-        const res = await deleteDiscussionAction({
-          threadId: String(rawPayload.threadId || ""),
-          replyId:
-            typeof rawPayload.replyId === "string"
-              ? rawPayload.replyId
-              : undefined,
-        });
+        const res = await deleteDiscussionAction(
+          {
+            threadId: String(rawPayload.threadId || ""),
+            replyId:
+              typeof rawPayload.replyId === "string"
+                ? rawPayload.replyId
+                : undefined,
+          },
+          caller.supabase
+        );
         return NextResponse.json(res, { headers: API_SECURITY_HEADERS });
       }
       default:

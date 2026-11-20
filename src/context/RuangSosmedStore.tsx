@@ -400,12 +400,19 @@ function filterDeletedDiscussionThreads(
   deletedReplyIds: Set<string>
 ): DiscussionThread[] {
   return (threads || []).reduce<DiscussionThread[]>((acc, thread) => {
-    if (!thread?.id || deletedThreadIds.has(thread.id)) return acc;
+    if (
+      !thread?.id ||
+      deletedThreadIds.has(thread.id) ||
+      thread.title === "__DELETED__" ||
+      thread.excerpt === "__DELETED__"
+    ) {
+      return acc;
+    }
     const originalReplies = Array.isArray(thread.replies) ? thread.replies : [];
     const remainingReplies = originalReplies.filter(
       (rep) => rep?.id && !deletedReplyIds.has(rep.id)
     );
-    if (originalReplies.length > 0 && remainingReplies.length === 0) {
+    if (remainingReplies.length === 0) {
       return acc;
     }
     if (remainingReplies.length !== originalReplies.length) {
@@ -1591,7 +1598,7 @@ async function deleteInboxThreadFromSupabase(
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData?.session?.access_token;
       if (accessToken) {
-        const res = await fetch("/api/lms", {
+        await fetch("/api/lms", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1602,34 +1609,41 @@ async function deleteInboxThreadFromSupabase(
             payload: { threadId, replyId },
           }),
         });
-        if (res.ok) {
-          const parsed = await res.json().catch(() => null);
-          if (parsed?.ok) return;
-        }
       }
     } catch {}
   }
 
-  try {
-    const { data: rpcData, error: rpcError } = await supabase.rpc(
-      "admin_delete_discussion_thread",
-      {
+  const clientTombstoneAndDelete = async () => {
+    try {
+      await supabase
+        .from("mentor_inbox_threads")
+        .update({
+          title: "__DELETED__",
+          excerpt: "__DELETED__",
+          replies: [],
+          replies_count: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", threadId);
+    } catch {}
+
+    try {
+      await supabase.rpc("admin_delete_discussion_thread", {
         p_thread_id: threadId,
         p_reply_id: replyId ?? null,
-      }
-    );
-    if (!rpcError && rpcData && (rpcData as any).ok) return;
-  } catch {
-    // Fallback to direct client delete if migration 015 has not been applied yet
-  }
+      });
+    } catch {}
+
+    await Promise.allSettled([
+      supabase.from("mentor_inbox_threads").delete().eq("id", threadId),
+      supabase.from("discussions").delete().eq("id", threadId),
+      supabase.from("forum_threads").delete().eq("id", threadId),
+    ]);
+  };
 
   try {
     if (!replyId) {
-      await Promise.allSettled([
-        supabase.from("mentor_inbox_threads").delete().eq("id", threadId),
-        supabase.from("discussions").delete().eq("id", threadId),
-        supabase.from("forum_threads").delete().eq("id", threadId),
-      ]);
+      await clientTombstoneAndDelete();
       return;
     }
 
@@ -1647,7 +1661,7 @@ async function deleteInboxThreadFromSupabase(
         (r: any) => String(r?.id || "") !== replyId
       );
       if (filteredReplies.length === 0) {
-        await supabase.from("mentor_inbox_threads").delete().eq("id", threadId);
+        await clientTombstoneAndDelete();
       } else {
         const lastReply = filteredReplies[filteredReplies.length - 1];
         await supabase
@@ -4935,6 +4949,8 @@ export function RuangSosmedProvider({
           // 5) Sinkronisasi Inbox Pesan Mentor & Laporan Kendala dari Supabase
           let nextThreads = prev.discussionThreads ?? [];
           let threadsChanged = false;
+          const threadsToPurgeRemotely: { threadId: string; replyId?: string }[] = [];
+          const newTombstoneIds: string[] = [];
           const nowSyncMs = Date.now();
           for (const [tid, ts] of recentLocalThreadPostsRef.current.entries()) {
             if (nowSyncMs - ts > 20_000) recentLocalThreadPostsRef.current.delete(tid);
@@ -4968,18 +4984,45 @@ export function RuangSosmedProvider({
             });
 
             (inboxThreadsRes.data as any[]).forEach((row) => {
-              if (!row?.id || deletedThreadIdsRef.current.has(row.id)) return;
+              if (!row?.id) return;
+              const isTombstonedRemote =
+                row.title === "__DELETED__" ||
+                row.excerpt === "__DELETED__" ||
+                !Array.isArray(row.replies) ||
+                row.replies.length === 0;
+
+              if (deletedThreadIdsRef.current.has(row.id)) {
+                if (row.title !== "__DELETED__") {
+                  threadsToPurgeRemotely.push({ threadId: row.id });
+                }
+                return;
+              }
+
+              if (isTombstonedRemote) {
+                newTombstoneIds.push(row.id);
+                return;
+              }
+
               const rawRemoteReplies = Array.isArray(row.replies)
                 ? row.replies
                 : [];
-              const filteredRemoteReplies = rawRemoteReplies.filter(
-                (rr: any) =>
-                  rr?.id && !deletedReplyIdsRef.current.has(String(rr.id))
-              );
+              const filteredRemoteReplies = rawRemoteReplies.filter((rr: any) => {
+                if (!rr?.id) return false;
+                const ridStr = String(rr.id);
+                if (deletedReplyIdsRef.current.has(ridStr)) {
+                  threadsToPurgeRemotely.push({
+                    threadId: row.id,
+                    replyId: ridStr,
+                  });
+                  return false;
+                }
+                return true;
+              });
               if (
                 rawRemoteReplies.length > 0 &&
                 filteredRemoteReplies.length === 0
               ) {
+                newTombstoneIds.push(row.id);
                 return;
               }
 
@@ -5338,7 +5381,27 @@ export function RuangSosmedProvider({
             const capturedContentKeys = [...newlyObservedContentKeys];
             const capturedReplyIds = [...newlyObservedReplyIds];
             const capturedFreshLearner = [...freshlyArrivedLearnerNotifs];
+            const capturedPurges = [...threadsToPurgeRemotely];
+            const capturedTombstones = [...newTombstoneIds];
             window.setTimeout(() => {
+              if (capturedTombstones.length > 0) {
+                capturedTombstones.forEach((tid) =>
+                  deletedThreadIdsRef.current.add(tid)
+                );
+                persistStoredIdSet(
+                  DELETED_THREADS_STORAGE_KEY,
+                  deletedThreadIdsRef.current
+                );
+              }
+              if (capturedPurges.length > 0) {
+                const seenPurgeKeys = new Set<string>();
+                capturedPurges.forEach((p) => {
+                  const key = `${p.threadId}:${p.replyId || ""}`;
+                  if (seenPurgeKeys.has(key)) return;
+                  seenPurgeKeys.add(key);
+                  void deleteInboxThreadFromSupabase(p.threadId, p.replyId);
+                });
+              }
               prevSyncedProStatusRef.current = capturedPro;
               if (capturedContentKeys.length > 0) {
                 capturedContentKeys.forEach((k) =>
@@ -5523,8 +5586,8 @@ export function RuangSosmedProvider({
       if (isStaffSessionRef.current) {
         connectStaffRealtime();
       }
-      if (Date.now() - lastSyncAtRef.current < 15_000) return;
-      void syncRegisteredLearners({ force: false });
+      if (Date.now() - lastSyncAtRef.current < 5_000) return;
+      void syncRegisteredLearners({ force: true });
     };
     window.addEventListener("focus", handleVisibilityOrFocus);
     document.addEventListener("visibilitychange", handleVisibilityOrFocus);

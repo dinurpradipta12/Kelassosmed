@@ -637,7 +637,10 @@ export interface DeleteDiscussionPayload {
   replyId?: string;
 }
 
-export async function deleteDiscussionAction(payload: DeleteDiscussionPayload) {
+export async function deleteDiscussionAction(
+  payload: DeleteDiscussionPayload,
+  scopedClient?: any
+) {
   const threadId = (payload.threadId || "").trim();
   const replyId = (payload.replyId || "").trim() || undefined;
 
@@ -651,7 +654,9 @@ export async function deleteDiscussionAction(payload: DeleteDiscussionPayload) {
   }
 
   const client =
-    createServiceRoleClient() ?? (isSupabaseConfigured ? supabase : null);
+    createServiceRoleClient() ??
+    scopedClient ??
+    (isSupabaseConfigured ? supabase : null);
   if (!client) {
     revalidatePath("/");
     return {
@@ -662,13 +667,30 @@ export async function deleteDiscussionAction(payload: DeleteDiscussionPayload) {
     };
   }
 
+  const tombstoneAndDeleteThread = async () => {
+    try {
+      await client
+        .from("mentor_inbox_threads")
+        .update({
+          title: "__DELETED__",
+          excerpt: "__DELETED__",
+          replies: [],
+          replies_count: 0,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", threadId);
+    } catch {}
+
+    await Promise.allSettled([
+      client.from("mentor_inbox_threads").delete().eq("id", threadId),
+      client.from("discussions").delete().eq("id", threadId),
+      client.from("forum_threads").delete().eq("id", threadId),
+    ]);
+  };
+
   try {
     if (!replyId) {
-      await Promise.allSettled([
-        client.from("mentor_inbox_threads").delete().eq("id", threadId),
-        client.from("discussions").delete().eq("id", threadId),
-        client.from("forum_threads").delete().eq("id", threadId),
-      ]);
+      await tombstoneAndDeleteThread();
     } else {
       const { data: row } = await client
         .from("mentor_inbox_threads")
@@ -682,11 +704,7 @@ export async function deleteDiscussionAction(payload: DeleteDiscussionPayload) {
       );
 
       if (filteredReplies.length === 0) {
-        await Promise.allSettled([
-          client.from("mentor_inbox_threads").delete().eq("id", threadId),
-          client.from("discussions").delete().eq("id", threadId),
-          client.from("forum_threads").delete().eq("id", threadId),
-        ]);
+        await tombstoneAndDeleteThread();
       } else {
         const lastReply = filteredReplies[filteredReplies.length - 1];
         await client
