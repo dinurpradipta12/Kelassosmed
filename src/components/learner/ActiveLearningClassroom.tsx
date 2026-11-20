@@ -507,11 +507,7 @@ export function ActiveLearningClassroom({
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col lg:flex-row bg-[#F8FAFC]">
       {/* LEFT / MAIN LEARNING AREA */}
       <div className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-5">
-        <div
-          className={`mx-auto w-full space-y-4 transition-[max-width] duration-200 ${
-            sidebarCollapsed ? "max-w-5xl" : "max-w-4xl"
-          }`}
-        >
+        <div className="w-full max-w-[1440px] mx-auto space-y-4">
           {/* 1. Compact & Friendly Header Bar */}
           <header className="space-y-2 pb-3 border-b border-slate-200/80">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -582,9 +578,9 @@ export function ActiveLearningClassroom({
           {/* 2. Unified Video Player & Immediate Action Card */}
           <div className="overflow-hidden rounded-2xl bg-white border border-slate-200/90 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
             {!currentChapter.hideVideoBlock && (
-              <div className="bg-slate-950 w-full flex justify-center">
+              <div className="bg-slate-950 w-full">
                 {youtubeEmbedUrl ? (
-                  <div className="w-full aspect-video max-h-[420px] sm:max-h-[460px]">
+                  <div className="w-full aspect-video">
                     <iframe
                       src={youtubeEmbedUrl}
                       title={currentChapter.videoTitle || currentChapter.title}
