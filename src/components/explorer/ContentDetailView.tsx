@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ChevronRight,
   Search,
@@ -39,6 +39,76 @@ import {
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 import { ContentBadge } from "@/components/ui/ContentBadge";
 import { ModalDialog } from "@/components/ui/ModalDialog";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+
+interface DbEnrollmentRow {
+  learner_id: string;
+  status: string;
+  progress_percent: number;
+  completed_chapter_ids: string[] | null;
+  assigned_at: string;
+  updated_at: string;
+  profiles?: {
+    id?: string;
+    full_name?: string | null;
+    email?: string | null;
+  } | null;
+}
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parseFlexibleDateMs(raw: string | undefined, fallbackMs: number): number {
+  const s = (raw || "").trim();
+  if (!s) return fallbackMs;
+  const lower = s.toLowerCase();
+  if (
+    lower === "today" ||
+    lower === "hari ini" ||
+    lower === "just now" ||
+    lower === "baru saja" ||
+    lower === "joined via code"
+  ) {
+    return fallbackMs;
+  }
+  const direct = Date.parse(s);
+  if (!Number.isNaN(direct)) return direct;
+  const daysMatch = /(\d+)\s*(?:d|day|days|hari)\s*ago/i.exec(s);
+  if (daysMatch?.[1]) {
+    return fallbackMs - Number(daysMatch[1]) * 86_400_000;
+  }
+  return fallbackMs;
+}
+
+function buildMonotonicCurvePath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const ctrlOffset = (curr.x - prev.x) * 0.42;
+    d += ` C ${(prev.x + ctrlOffset).toFixed(1)} ${prev.y.toFixed(1)}, ${(
+      curr.x - ctrlOffset
+    ).toFixed(1)} ${curr.y.toFixed(1)}, ${curr.x.toFixed(1)} ${curr.y.toFixed(
+      1
+    )}`;
+  }
+  return d;
+}
+
+function buildMonotonicAreaPath(
+  points: { x: number; y: number }[],
+  baselineY: number
+): string {
+  if (points.length === 0) return "";
+  const line = buildMonotonicCurvePath(points);
+  const last = points[points.length - 1];
+  const first = points[0];
+  return `${line} L ${last.x.toFixed(1)} ${baselineY.toFixed(
+    1
+  )} L ${first.x.toFixed(1)} ${baselineY.toFixed(1)} Z`;
+}
 
 interface ContentDetailViewProps {
   item: ExplorerContentItem;
@@ -101,7 +171,7 @@ export function ContentDetailView({
   } = useRuangSosmedStore();
 
   // Hanya tampilkan peserta yang benar-benar di-assign ke materi ini
-  const liveExplorerItem = React.useMemo(
+  const liveExplorerItem = useMemo(
     () =>
       explorerItems.find(
         (e) =>
@@ -111,30 +181,50 @@ export function ContentDetailView({
     [explorerItems, item]
   );
 
-  const assignees = React.useMemo(() => {
-    const rawAssigned = liveExplorerItem.assignedLearners || [];
-    if (rawAssigned.length === 0) return [];
-    const assignedSet = new Set(
-      rawAssigned.map((n) => String(n || "").trim().toLowerCase()).filter(Boolean)
-    );
-    const hasCohortWide =
-      assignedSet.has("all learners") ||
-      assignedSet.has("batch oktober 2026") ||
-      assignedSet.has("ruang sosmed class") ||
-      assignedSet.has("creator growth lab");
-    if (hasCohortWide) {
-      return allPlatformLearners;
-    }
-    return allPlatformLearners.filter((a) =>
-      assignedSet.has(a.name.trim().toLowerCase())
-    );
-  }, [liveExplorerItem, allPlatformLearners]);
+  // Fetch enrollment timestamps & live progress from Supabase for chart analytics
+  const [dbEnrollments, setDbEnrollments] = useState<DbEnrollmentRow[]>([]);
 
-  const [activeTab, setActiveTab] = useState<DetailTabId>("statistics");
-  const [rightTab, setRightTab] = useState<RightPanelTabId>("assignees");
-  const [langMenuOpen, setLangMenuOpen] = useState(false);
-  const [issueTypeFilter, setIssueTypeFilter] = useState<string>("All type issue");
-  const [statsRange, setStatsRange] = useState<"Last 7 days" | "Last 30 days" | "All time">("Last 7 days");
+  useEffect(() => {
+    let active = true;
+    const contentId = liveExplorerItem.id;
+    if (!isSupabaseConfigured || !UUID_REGEX.test(contentId)) {
+      setDbEnrollments([]);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("enrollments")
+          .select(
+            "learner_id, status, progress_percent, completed_chapter_ids, assigned_at, updated_at, profiles(id, full_name, email)"
+          )
+          .eq("content_id", contentId);
+
+        if (!error && Array.isArray(data)) {
+          if (active) setDbEnrollments(data as unknown as DbEnrollmentRow[]);
+          return;
+        }
+
+        const fallback = await supabase
+          .from("enrollments")
+          .select(
+            "learner_id, status, progress_percent, completed_chapter_ids, assigned_at, updated_at"
+          )
+          .eq("content_id", contentId);
+
+        if (active && Array.isArray(fallback.data)) {
+          setDbEnrollments(fallback.data as unknown as DbEnrollmentRow[]);
+        }
+      } catch {
+        if (active) setDbEnrollments([]);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [liveExplorerItem.id]);
 
   // Kurikulum aktual yang tersimpan untuk item ini
   const targetCurriculum =
@@ -154,6 +244,221 @@ export function ContentDetailView({
     );
   const totalChaptersCount = flatChapters.length;
 
+  // Hanya tampilkan peserta yang benar-benar di-assign ke materi ini (gabungkan materi + folder induk + DB enrollments)
+  const assignees = useMemo(() => {
+    const parentFolder = liveExplorerItem.folderName
+      ? explorerItems.find(
+          (f) =>
+            f.type === "Folder" &&
+            f.title.trim().toLowerCase() ===
+              liveExplorerItem.folderName!.trim().toLowerCase()
+        )
+      : undefined;
+
+    const rawAssigned = Array.from(
+      new Set([
+        ...(liveExplorerItem.assignedLearners || []),
+        ...(parentFolder?.assignedLearners || []),
+      ])
+    );
+
+    const assignedSet = new Set(
+      rawAssigned.map((n) => String(n || "").trim().toLowerCase()).filter(Boolean)
+    );
+    const hasCohortWide =
+      assignedSet.has("all learners") ||
+      assignedSet.has("batch oktober 2026") ||
+      assignedSet.has("ruang sosmed class") ||
+      assignedSet.has("creator growth lab");
+
+    const dbByNameOrEmail = new Map<string, DbEnrollmentRow>();
+    const dbById = new Map<string, DbEnrollmentRow>();
+    dbEnrollments.forEach((row) => {
+      dbById.set(row.learner_id, row);
+      const profName = (row.profiles?.full_name || "").trim().toLowerCase();
+      const profEmail = (row.profiles?.email || "").trim().toLowerCase();
+      if (profName) dbByNameOrEmail.set(profName, row);
+      if (profEmail) dbByNameOrEmail.set(profEmail, row);
+    });
+
+    const baseList: AssigneeLearner[] = [];
+    const matchedKeys = new Set<string>();
+    const matchedIds = new Set<string>();
+
+    const enrichWithDb = (learner: AssigneeLearner): AssigneeLearner => {
+      const dbMatch =
+        dbById.get(learner.id) ||
+        dbByNameOrEmail.get(learner.name.trim().toLowerCase());
+      if (!dbMatch) return learner;
+      const effectiveTotal = Math.max(
+        1,
+        totalChaptersCount || learner.totalChapters || 1
+      );
+      const completedFromIds = Array.isArray(dbMatch.completed_chapter_ids)
+        ? dbMatch.completed_chapter_ids.length
+        : 0;
+      const completedFromPct = Math.round(
+        ((dbMatch.progress_percent || 0) / 100) * effectiveTotal
+      );
+      const isDone =
+        dbMatch.status === "completed" || (dbMatch.progress_percent || 0) >= 100;
+      const completedChapters = isDone
+        ? effectiveTotal
+        : Math.max(learner.completedChapters, completedFromIds, completedFromPct);
+
+      return {
+        ...learner,
+        totalChapters: effectiveTotal,
+        completedChapters: Math.min(effectiveTotal, completedChapters),
+        assignedDate: dbMatch.assigned_at || learner.assignedDate,
+      };
+    };
+
+    if (hasCohortWide) {
+      allPlatformLearners.forEach((a) => {
+        if (!matchedIds.has(a.id)) {
+          matchedIds.add(a.id);
+          matchedKeys.add(a.name.trim().toLowerCase());
+          baseList.push(enrichWithDb(a));
+        }
+      });
+    } else {
+      allPlatformLearners.forEach((a) => {
+        const nameLower = a.name.trim().toLowerCase();
+        if (assignedSet.has(nameLower) || assignedSet.has(a.id.toLowerCase())) {
+          if (!matchedIds.has(a.id)) {
+            matchedIds.add(a.id);
+            matchedKeys.add(nameLower);
+            const profEmail = (
+              dbByNameOrEmail.get(nameLower)?.profiles?.email || ""
+            )
+              .trim()
+              .toLowerCase();
+            if (profEmail) matchedKeys.add(profEmail);
+            baseList.push(enrichWithDb(a));
+          }
+        }
+      });
+    }
+
+    // Add DB enrollments not yet represented in platform list
+    dbEnrollments.forEach((row) => {
+      if (matchedIds.has(row.learner_id)) return;
+      const displayName =
+        row.profiles?.full_name?.trim() ||
+        row.profiles?.email?.split("@")[0] ||
+        "Learner";
+      const nameLower = displayName.toLowerCase();
+      if (matchedKeys.has(nameLower)) return;
+      matchedIds.add(row.learner_id);
+      matchedKeys.add(nameLower);
+      if (row.profiles?.email) {
+        matchedKeys.add(row.profiles.email.trim().toLowerCase());
+      }
+      const effectiveTotal = Math.max(1, totalChaptersCount || 1);
+      const isDone =
+        row.status === "completed" || (row.progress_percent || 0) >= 100;
+      const completedCh = isDone
+        ? effectiveTotal
+        : Math.max(
+            Array.isArray(row.completed_chapter_ids)
+              ? row.completed_chapter_ids.length
+              : 0,
+            Math.round(((row.progress_percent || 0) / 100) * effectiveTotal)
+          );
+      const initials =
+        displayName
+          .split(" ")
+          .filter(Boolean)
+          .map((w) => w[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase() || "LN";
+      baseList.push({
+        id: row.learner_id,
+        name: displayName,
+        initials,
+        avatarBg: "#EEF2FF",
+        avatarText: "#4F39F6",
+        roleBadge: "Learner",
+        completedChapters: Math.min(effectiveTotal, completedCh),
+        totalChapters: effectiveTotal,
+        assignedDate: row.assigned_at || "Baru saja",
+      });
+    });
+
+    // Synthesize rows for any non-cohort rawAssigned identifier not yet matched
+    const cohortTokens = new Set([
+      "all learners",
+      "batch oktober 2026",
+      "ruang sosmed class",
+      "creator growth lab",
+    ]);
+    const nonEmailPrefixes = new Set(
+      rawAssigned
+        .filter((t) => !String(t).includes("@"))
+        .map((t) => String(t).trim().toLowerCase())
+    );
+
+    rawAssigned.forEach((rawToken, idx) => {
+      const clean = String(rawToken || "").trim();
+      const lower = clean.toLowerCase();
+      if (!clean || cohortTokens.has(lower) || matchedKeys.has(lower)) return;
+      // Avoid duplicate synthetic row if an email token matches an already-matched local-part name
+      if (clean.includes("@")) {
+        const localPart = lower.split("@")[0].replace(/[._-]+/g, " ").trim();
+        const hasMatchedName = Array.from(matchedKeys).some(
+          (mk) => mk === localPart || mk.includes(localPart) || nonEmailPrefixes.has(localPart)
+        );
+        if (hasMatchedName) return;
+      }
+      matchedKeys.add(lower);
+      const displayName = clean.includes("@") ? clean.split("@")[0] : clean;
+      const initials =
+        displayName
+          .split(/[\s._-]+/)
+          .filter(Boolean)
+          .map((w) => w[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase() || "LN";
+      baseList.push(
+        enrichWithDb({
+          id: `synth-asg-${idx}-${lower.replace(/[^a-z0-9]/g, "")}`,
+          name: displayName,
+          initials,
+          avatarBg: "#EEF2FF",
+          avatarText: "#4F39F6",
+          roleBadge: "Assigned",
+          completedChapters: 0,
+          totalChapters: Math.max(1, totalChaptersCount || 1),
+          assignedDate: "Joined via Code",
+        })
+      );
+    });
+
+    return baseList;
+  }, [
+    liveExplorerItem,
+    explorerItems,
+    allPlatformLearners,
+    dbEnrollments,
+    totalChaptersCount,
+  ]);
+
+  const [activeTab, setActiveTab] = useState<DetailTabId>("statistics");
+  const [rightTab, setRightTab] = useState<RightPanelTabId>("assignees");
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [issueTypeFilter, setIssueTypeFilter] = useState<string>("All type issue");
+  const [statsRange, setStatsRange] = useState<"Last 7 days" | "Last 30 days" | "All time">("Last 7 days");
+  const [chartStyle, setChartStyle] = useState<"area" | "bar">("area");
+  const [visibleSeries, setVisibleSeries] = useState({
+    enrolled: true,
+    inProgress: true,
+    completed: true,
+  });
+  const [hoveredBucketIdx, setHoveredBucketIdx] = useState<number | null>(null);
+
   // Global statistics metrics across assignees
   const completedCount = assignees.filter(
     (a) =>
@@ -172,6 +477,159 @@ export function ContentDetailView({
     assignees.length === 0
       ? 0
       : Math.round((completedCount / totalAsg) * 100);
+  const avgProgressPct = useMemo(() => {
+    if (assignees.length === 0) return 0;
+    const sum = assignees.reduce((acc, a) => {
+      const denom = Math.max(
+        1,
+        totalChaptersCount > 0 ? totalChaptersCount : a.totalChapters || 1
+      );
+      return acc + Math.min(100, Math.round((a.completedChapters / denom) * 100));
+    }, 0);
+    return Math.round(sum / assignees.length);
+  }, [assignees, totalChaptersCount]);
+
+  // Real time-series buckets driven by assignees + Supabase enrollments + statsRange
+  const trendSeriesData = useMemo(() => {
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    const nowEndMs = now.getTime();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayStartMs = todayStart.getTime();
+    const shortFmt = new Intl.DateTimeFormat("id-ID", {
+      day: "numeric",
+      month: "short",
+    });
+    const fullFmt = new Intl.DateTimeFormat("id-ID", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+
+    const learnerRecords = assignees.map((a) => {
+      const targetCh = Math.max(
+        1,
+        totalChaptersCount > 0 ? totalChaptersCount : a.totalChapters || 1
+      );
+      const isCompleted = a.completedChapters >= targetCh;
+      const dbMatch = dbEnrollments.find(
+        (d) =>
+          d.learner_id === a.id ||
+          (d.profiles?.full_name || "").trim().toLowerCase() ===
+            a.name.trim().toLowerCase()
+      );
+      const enrolledAtMs = parseFlexibleDateMs(
+        dbMatch?.assigned_at || a.assignedDate,
+        todayStartMs + 3_600_000
+      );
+      const completedAtMs = isCompleted
+        ? parseFlexibleDateMs(
+            dbMatch?.updated_at || dbMatch?.assigned_at || a.assignedDate,
+            nowEndMs
+          )
+        : null;
+      return {
+        enrolledAtMs,
+        completedAtMs,
+      };
+    });
+
+    const bucketOffsetsDays: number[] = (() => {
+      if (statsRange === "Last 7 days") {
+        return [-6, -5, -4, -3, -2, -1, 0];
+      }
+      if (statsRange === "Last 30 days") {
+        return [-30, -25, -20, -15, -10, -5, 0];
+      }
+      const earliestMs =
+        learnerRecords.length > 0
+          ? Math.min(...learnerRecords.map((r) => r.enrolledAtMs))
+          : todayStartMs - 6 * 86_400_000;
+      const spanDays = Math.min(
+        90,
+        Math.max(6, Math.ceil((todayStartMs - earliestMs) / 86_400_000))
+      );
+      const arr: number[] = [];
+      for (let i = 6; i >= 0; i -= 1) {
+        arr.push(-Math.round((spanDays * i) / 6));
+      }
+      arr[6] = 0;
+      return arr;
+    })();
+
+    const buckets = bucketOffsetsDays.map((offset, idx) => {
+      const dayDate = new Date(now);
+      dayDate.setDate(now.getDate() + offset);
+      dayDate.setHours(23, 59, 59, 999);
+      const cutoffMs = dayDate.getTime();
+      const isLast = idx === bucketOffsetsDays.length - 1;
+
+      if (isLast) {
+        return {
+          label: "Hari Ini",
+          fullDate: fullFmt.format(dayDate),
+          enrolled: assignees.length,
+          inProgress: inProgressCount,
+          completed: completedCount,
+          completionRate: completedPct,
+        };
+      }
+
+      const enrolledByCutoff = learnerRecords.filter(
+        (r) => r.enrolledAtMs <= cutoffMs
+      ).length;
+      const completedByCutoff = learnerRecords.filter(
+        (r) =>
+          r.enrolledAtMs <= cutoffMs &&
+          r.completedAtMs !== null &&
+          r.completedAtMs <= cutoffMs
+      ).length;
+      const inProgressByCutoff = Math.max(0, enrolledByCutoff - completedByCutoff);
+
+      return {
+        label: shortFmt.format(dayDate),
+        fullDate: fullFmt.format(dayDate),
+        enrolled: enrolledByCutoff,
+        inProgress: inProgressByCutoff,
+        completed: completedByCutoff,
+        completionRate:
+          enrolledByCutoff > 0
+            ? Math.round((completedByCutoff / enrolledByCutoff) * 100)
+            : 0,
+      };
+    });
+
+    const maxDataVal = Math.max(
+      1,
+      ...buckets.flatMap((b) => [b.enrolled, b.inProgress, b.completed])
+    );
+    const maxY = Math.max(4, Math.ceil(maxDataVal * 1.25));
+    // Clean tick step (at most 4 intervals -> 5 ticks from maxY down to 0)
+    const niceMax = Math.ceil(maxY / 4) * 4;
+    const ticks = [
+      niceMax,
+      Math.round((niceMax * 3) / 4),
+      Math.round(niceMax / 2),
+      Math.round(niceMax / 4),
+      0,
+    ];
+
+    return {
+      buckets,
+      maxY: niceMax,
+      ticks,
+    };
+  }, [
+    assignees,
+    dbEnrollments,
+    statsRange,
+    totalChaptersCount,
+    inProgressCount,
+    completedCount,
+    completedPct,
+  ]);
 
   // Discussions filter & UI state
   const [discussionSearch, setDiscussionSearch] = useState("");
@@ -755,137 +1213,479 @@ export function ContentDetailView({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
               {/* Left 7/12: Activity & Completion Chart */}
               <div className="lg:col-span-7 rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-bold text-[#121215]">
-                      Tren Pembelajaran &amp; Penyelesaian ({statsRange})
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-[#121215]">
+                        Tren Pembelajaran &amp; Penyelesaian ({statsRange})
+                      </h3>
+                      <span className="inline-flex items-center rounded-md bg-[#4F39F6]/10 px-1.5 py-0.5 text-[10px] font-bold text-[#4F39F6] tabular-nums">
+                        {assignees.length} Peserta
+                      </span>
+                    </div>
                     <p className="text-[11px] text-[#5E5E5E] mt-0.5">
-                      Grafik komparasi peserta aktif belajar vs peserta yang telah menyelesaikan bab.
+                      Data real-time peserta terdaftar, sedang belajar, dan lulus pada modul ini.
                     </p>
                   </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#5E5E5E]">
-                      <span className="h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />
-                      In Progress ({inProgressCount})
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#5E5E5E]">
-                      <span className="h-2.5 w-2.5 rounded-full bg-[#0EA5E9]" />
-                      Completed ({completedCount})
-                    </span>
-                  </div>
-                </div>
 
-                {/* Responsive Line Chart with Grid & Subtle Gradient Area */}
-                <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-4">
-                  <div className="relative h-48 sm:h-56 w-full">
-                    <svg
-                      viewBox="0 0 500 180"
-                      className="w-full h-full overflow-visible"
-                      preserveAspectRatio="none"
+                  {/* Chart Style Switcher (Area vs Bar) */}
+                  <div
+                    role="group"
+                    aria-label="Pilih tipe grafik tren"
+                    className="inline-flex items-center self-start rounded-lg bg-[#F8F9FB] p-0.5 border border-[#EAECEF] shrink-0"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setChartStyle("area")}
+                      aria-pressed={chartStyle === "area"}
+                      className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
+                        chartStyle === "area"
+                          ? "bg-[#FFFFFF] text-[#4F39F6] shadow-2xs border border-[#EAECEF]"
+                          : "text-[#5E5E5E] hover:text-[#121215]"
+                      }`}
                     >
-                      <defs>
-                        <linearGradient id="chart-amber-grad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.25" />
-                          <stop offset="100%" stopColor="#F59E0B" stopOpacity="0.0" />
-                        </linearGradient>
-                        <linearGradient id="chart-cyan-grad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#0EA5E9" stopOpacity="0.2" />
-                          <stop offset="100%" stopColor="#0EA5E9" stopOpacity="0.0" />
-                        </linearGradient>
-                      </defs>
-
-                      {/* Grid Lines */}
-                      {[30, 70, 110, 150].map((y) => (
-                        <line
-                          key={y}
-                          x1={0}
-                          y1={y}
-                          x2={500}
-                          y2={y}
-                          stroke="#EAECEF"
-                          strokeDasharray="4 4"
-                          strokeWidth={1}
-                        />
-                      ))}
-
-                      {/* In Progress Area & Line (Amber) */}
-                      <polygon
-                        points="10,120 80,105 160,85 250,90 340,65 420,55 490,45 490,165 10,165"
-                        fill="url(#chart-amber-grad)"
-                      />
-                      <path
-                        d="M 10 120 C 80 105, 160 85, 250 90 C 340 65, 420 55, 490 45"
-                        fill="none"
-                        stroke="#F59E0B"
-                        strokeWidth={2.8}
-                        strokeLinecap="round"
-                      />
-                      {[
-                        { cx: 10, cy: 120 },
-                        { cx: 80, cy: 105 },
-                        { cx: 160, cy: 85 },
-                        { cx: 250, cy: 90 },
-                        { cx: 340, cy: 65 },
-                        { cx: 420, cy: 55 },
-                        { cx: 490, cy: 45 },
-                      ].map((pt, i) => (
-                        <circle
-                          key={i}
-                          cx={pt.cx}
-                          cy={pt.cy}
-                          r={i === 6 ? 4.5 : 3.5}
-                          fill="#F59E0B"
-                          stroke="#FFFFFF"
-                          strokeWidth={2}
-                        />
-                      ))}
-
-                      {/* Completed Area & Line (Cyan) */}
-                      <polygon
-                        points="10,155 80,145 160,135 250,130 340,115 420,95 490,80 490,165 10,165"
-                        fill="url(#chart-cyan-grad)"
-                      />
-                      <path
-                        d="M 10 155 C 80 145, 160 135, 250 130 C 340 115, 420 95, 490 80"
-                        fill="none"
-                        stroke="#0EA5E9"
-                        strokeWidth={2.8}
-                        strokeLinecap="round"
-                      />
-                      {[
-                        { cx: 10, cy: 155 },
-                        { cx: 80, cy: 145 },
-                        { cx: 160, cy: 135 },
-                        { cx: 250, cy: 130 },
-                        { cx: 340, cy: 115 },
-                        { cx: 420, cy: 95 },
-                        { cx: 490, cy: 80 },
-                      ].map((pt, i) => (
-                        <circle
-                          key={i}
-                          cx={pt.cx}
-                          cy={pt.cy}
-                          r={i === 6 ? 4.5 : 3.5}
-                          fill="#0EA5E9"
-                          stroke="#FFFFFF"
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </svg>
-
-                    {/* X-Axis labels */}
-                    <div className="flex items-center justify-between text-[11px] font-medium text-[#9CA3AF] pt-2">
-                      <span>Day 1</span>
-                      <span>Day 2</span>
-                      <span>Day 3</span>
-                      <span>Day 4</span>
-                      <span>Day 5</span>
-                      <span>Day 6</span>
-                      <span className="font-bold text-[#4F39F6]">Hari Ini</span>
-                    </div>
+                      <Activity size={11} />
+                      <span>Tren Area</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChartStyle("bar")}
+                      aria-pressed={chartStyle === "bar"}
+                      className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
+                        chartStyle === "bar"
+                          ? "bg-[#FFFFFF] text-[#4F39F6] shadow-2xs border border-[#EAECEF]"
+                          : "text-[#5E5E5E] hover:text-[#121215]"
+                      }`}
+                    >
+                      <BarChart3 size={11} />
+                      <span>Batang</span>
+                    </button>
                   </div>
                 </div>
+
+                {/* Clickable Series Legend Pills & Data-Driven Interactive Chart Canvas */}
+                {(() => {
+                  const { buckets, maxY, ticks } = trendSeriesData;
+                  const count = buckets.length;
+                  const svgW = 700;
+                  const svgH = 200;
+                  const toPts = (getValue: (b: (typeof buckets)[number]) => number) =>
+                    buckets.map((b, i) => {
+                      const val = getValue(b);
+                      const ratio = Math.max(0, Math.min(1, val / maxY));
+                      return {
+                        x: count > 1 ? (i / (count - 1)) * svgW : svgW / 2,
+                        y: svgH - ratio * svgH,
+                        xPct: count > 1 ? (i / (count - 1)) * 100 : 50,
+                        yPct: 100 - ratio * 100,
+                        val,
+                      };
+                    });
+
+                  const seriesMeta = [
+                    {
+                      key: "enrolled" as const,
+                      label: "Terdaftar",
+                      count: assignees.length,
+                      color: "#4F39F6",
+                      strokeWidth: 2.25,
+                      activePillCls: "bg-[#4F39F6]/8 border-[#4F39F6]/25 text-[#121215]",
+                      gradId: "cdv-indigo-grad",
+                      topOpacity: "0.16",
+                      pts: toPts((b) => b.enrolled),
+                    },
+                    {
+                      key: "inProgress" as const,
+                      label: "In Progress",
+                      count: inProgressCount,
+                      color: "#F59E0B",
+                      strokeWidth: 2.5,
+                      activePillCls: "bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#121215]",
+                      gradId: "cdv-amber-grad",
+                      topOpacity: "0.22",
+                      pts: toPts((b) => b.inProgress),
+                    },
+                    {
+                      key: "completed" as const,
+                      label: "Completed",
+                      count: completedCount,
+                      color: "#0EA5E9",
+                      strokeWidth: 2.5,
+                      activePillCls: "bg-[#0EA5E9]/10 border-[#0EA5E9]/30 text-[#121215]",
+                      gradId: "cdv-cyan-grad",
+                      topOpacity: "0.22",
+                      pts: toPts((b) => b.completed),
+                    },
+                  ];
+
+                  const activeBucket =
+                    hoveredBucketIdx !== null ? buckets[hoveredBucketIdx] : null;
+                  const activeXPct =
+                    hoveredBucketIdx !== null && count > 1
+                      ? (hoveredBucketIdx / (count - 1)) * 100
+                      : 50;
+
+                  return (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        {seriesMeta.map((s) => {
+                          const isVisible = visibleSeries[s.key];
+                          return (
+                            <button
+                              key={s.key}
+                              type="button"
+                              onClick={() =>
+                                setVisibleSeries((prev) => ({
+                                  ...prev,
+                                  [s.key]: !prev[s.key],
+                                }))
+                              }
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold border transition-all cursor-pointer ${
+                                isVisible
+                                  ? s.activePillCls
+                                  : "bg-[#F8F9FB] border-[#EAECEF] text-[#9CA3AF] opacity-65"
+                              }`}
+                            >
+                              <span
+                                className="h-2 w-2 rounded-full"
+                                style={{ backgroundColor: s.color }}
+                              />
+                              <span>
+                                {s.label} ({s.count})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div
+                        className="rounded-xl bg-[#F8FAFC] border border-[#EAECEF] p-4 space-y-3"
+                        onMouseLeave={() => setHoveredBucketIdx(null)}
+                      >
+                        <div className="flex gap-2.5 items-stretch">
+                          {/* Left Y-Axis Labels */}
+                          <div className="flex flex-col justify-between text-[10px] font-semibold text-[#9CA3AF] tabular-nums py-0.5 w-6 text-right select-none shrink-0">
+                            {ticks.map((t, ti) => (
+                              <span key={ti} className="leading-none">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+
+                          {/* Plot Frame */}
+                          <div className="relative flex-1 min-w-0">
+                            <div className="relative h-44 sm:h-52 mx-2.5 my-0.5">
+                              {/* Horizontal Dashed Gridlines */}
+                              <div className="pointer-events-none absolute inset-0 flex flex-col justify-between">
+                                {ticks.map((_, idxLine) => (
+                                  <div
+                                    key={idxLine}
+                                    className={`w-full border-b ${
+                                      idxLine === ticks.length - 1
+                                        ? "border-[#CBD5E1]"
+                                        : "border-dashed border-[#E2E8F0]"
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+
+                              {chartStyle === "area" ? (
+                                <>
+                                  {/* Smooth Non-Stretching SVG Curves */}
+                                  <svg
+                                    viewBox={`0 0 ${svgW} ${svgH}`}
+                                    className="absolute inset-0 h-full w-full overflow-visible"
+                                    preserveAspectRatio="none"
+                                  >
+                                    <defs>
+                                      {seriesMeta.map((s) => (
+                                        <linearGradient
+                                          key={s.gradId}
+                                          id={s.gradId}
+                                          x1="0"
+                                          y1="0"
+                                          x2="0"
+                                          y2="1"
+                                        >
+                                          <stop
+                                            offset="0%"
+                                            stopColor={s.color}
+                                            stopOpacity={s.topOpacity}
+                                          />
+                                          <stop
+                                            offset="100%"
+                                            stopColor={s.color}
+                                            stopOpacity="0.0"
+                                          />
+                                        </linearGradient>
+                                      ))}
+                                    </defs>
+
+                                    {seriesMeta.map(
+                                      (s) =>
+                                        visibleSeries[s.key] && (
+                                          <React.Fragment key={`svg-${s.key}`}>
+                                            <path
+                                              d={buildMonotonicAreaPath(
+                                                s.pts,
+                                                svgH
+                                              )}
+                                              fill={`url(#${s.gradId})`}
+                                            />
+                                            <path
+                                              d={buildMonotonicCurvePath(s.pts)}
+                                              fill="none"
+                                              stroke={s.color}
+                                              strokeWidth={s.strokeWidth}
+                                              vectorEffect="non-scaling-stroke"
+                                              strokeLinecap="round"
+                                            />
+                                          </React.Fragment>
+                                        )
+                                    )}
+                                  </svg>
+
+                                  {/* Vertical Hover Guide Line */}
+                                  {hoveredBucketIdx !== null && (
+                                    <div
+                                      className="pointer-events-none absolute top-0 bottom-0 w-px bg-[#4F39F6]/35"
+                                      style={{ left: `${activeXPct}%` }}
+                                    />
+                                  )}
+
+                                  {/* Circular HTML Data Dots (Never Distort into Ovals) */}
+                                  {seriesMeta.map(
+                                    (s) =>
+                                      visibleSeries[s.key] &&
+                                      s.pts.map((pt, i) => (
+                                        <span
+                                          key={`dot-${s.key}-${i}`}
+                                          className={`pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-2xs transition-transform ${
+                                            hoveredBucketIdx === i
+                                              ? "h-3.5 w-3.5 scale-110 z-20"
+                                              : "h-2.5 w-2.5 z-10"
+                                          }`}
+                                          style={{
+                                            backgroundColor: s.color,
+                                            left: `${pt.xPct}%`,
+                                            top: `${pt.yPct}%`,
+                                          }}
+                                        />
+                                      ))
+                                  )}
+
+                                  {/* Interactive Hit Columns for Mouse & Touch */}
+                                  <div className="absolute inset-0 grid grid-cols-7 z-20">
+                                    {buckets.map((b, i) => (
+                                      <button
+                                        key={`hit-${i}`}
+                                        type="button"
+                                        onMouseEnter={() =>
+                                          setHoveredBucketIdx(i)
+                                        }
+                                        onFocus={() => setHoveredBucketIdx(i)}
+                                        onClick={() =>
+                                          setHoveredBucketIdx(
+                                            hoveredBucketIdx === i ? null : i
+                                          )
+                                        }
+                                        aria-label={`${b.fullDate}: ${b.enrolled} terdaftar, ${b.inProgress} in progress, ${b.completed} selesai`}
+                                        className="h-full w-full cursor-pointer bg-transparent focus:outline-none"
+                                      />
+                                    ))}
+                                  </div>
+                                </>
+                              ) : (
+                                /* Bar Chart Comparison Mode */
+                                <div className="relative z-10 grid h-full grid-cols-7 gap-1.5 sm:gap-2 items-end">
+                                  {buckets.map((b, i) => {
+                                    const isHovered = hoveredBucketIdx === i;
+                                    const barValues: Record<
+                                      (typeof seriesMeta)[number]["key"],
+                                      number
+                                    > = {
+                                      enrolled: b.enrolled,
+                                      inProgress: b.inProgress,
+                                      completed: b.completed,
+                                    };
+                                    return (
+                                      <button
+                                        key={`bar-col-${i}`}
+                                        type="button"
+                                        onMouseEnter={() =>
+                                          setHoveredBucketIdx(i)
+                                        }
+                                        onFocus={() => setHoveredBucketIdx(i)}
+                                        onClick={() =>
+                                          setHoveredBucketIdx(
+                                            hoveredBucketIdx === i ? null : i
+                                          )
+                                        }
+                                        aria-label={`${b.fullDate}: ${b.enrolled} terdaftar, ${b.inProgress} in progress, ${b.completed} selesai`}
+                                        className={`h-full flex items-end justify-center gap-1 rounded-t-lg px-0.5 transition-colors cursor-pointer focus:outline-none ${
+                                          isHovered ? "bg-[#4F39F6]/6" : ""
+                                        }`}
+                                      >
+                                        {seriesMeta.map((s) => {
+                                          if (!visibleSeries[s.key]) return null;
+                                          const val = barValues[s.key];
+                                          const heightPct =
+                                            val > 0
+                                              ? Math.max(
+                                                  6,
+                                                  Math.round((val / maxY) * 100)
+                                                )
+                                              : 2;
+                                          return (
+                                            <span
+                                              key={`bar-${s.key}-${i}`}
+                                              className="w-2 sm:w-2.5 rounded-t-sm transition-all duration-300"
+                                              style={{
+                                                backgroundColor: s.color,
+                                                height: `${heightPct}%`,
+                                                opacity: val === 0 ? 0.25 : 1,
+                                              }}
+                                            />
+                                          );
+                                        })}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                            {/* Floating Interactive Tooltip */}
+                            {activeBucket && hoveredBucketIdx !== null && (
+                              <div
+                                className={`pointer-events-none absolute top-2 z-30 w-44 rounded-xl bg-[#121215]/95 backdrop-blur-xs text-white p-2.5 shadow-lg border border-white/10 text-[11px] space-y-1.5 ${
+                                  hoveredBucketIdx <= 1
+                                    ? "left-1"
+                                    : hoveredBucketIdx >= count - 2
+                                    ? "right-1"
+                                    : "-translate-x-1/2"
+                                }`}
+                                style={
+                                  hoveredBucketIdx > 1 &&
+                                  hoveredBucketIdx < count - 2
+                                    ? { left: `${activeXPct}%` }
+                                    : undefined
+                                }
+                              >
+                                <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1">
+                                  <span className="font-bold text-white">
+                                    {activeBucket.fullDate}
+                                  </span>
+                                  <span className="rounded bg-white/15 px-1.5 py-0.2 text-[9px] font-bold">
+                                    {activeBucket.completionRate}%
+                                  </span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="inline-flex items-center gap-1.5 text-white/80">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-[#818CF8]" />
+                                      Terdaftar
+                                    </span>
+                                    <strong className="tabular-nums">
+                                      {activeBucket.enrolled}
+                                    </strong>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="inline-flex items-center gap-1.5 text-white/80">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-[#FBBF24]" />
+                                      In Progress
+                                    </span>
+                                    <strong className="tabular-nums">
+                                      {activeBucket.inProgress}
+                                    </strong>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="inline-flex items-center gap-1.5 text-white/80">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-[#38BDF8]" />
+                                      Completed
+                                    </span>
+                                    <strong className="tabular-nums">
+                                      {activeBucket.completed}
+                                    </strong>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Subtle Empty-Baseline Callout when 0 Learners Enrolled */}
+                            {assignees.length === 0 && (
+                              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center px-3 z-25 pointer-events-none">
+                                <div className="pointer-events-auto inline-flex flex-wrap items-center justify-center gap-2 rounded-xl bg-white/95 border border-[#EAECEF] px-3.5 py-2 shadow-sm text-center">
+                                  <span className="text-[11px] font-medium text-[#5E5E5E]">
+                                    Belum ada peserta di modul ini untuk direkam trennya.
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenAssignModal(item)}
+                                    className="inline-flex items-center gap-1 rounded-md bg-[#4F39F6] hover:bg-[#3B28CC] px-2 py-1 text-[10px] font-bold text-white cursor-pointer"
+                                  >
+                                    <Plus size={10} />
+                                    <span>Assign / Kode Akses</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* X-Axis Calendar Labels */}
+                          <div className="grid grid-cols-7 gap-1 pt-2 px-1 text-center text-[10px] sm:text-[11px] font-medium text-[#64748B]">
+                            {buckets.map((b, i) => {
+                              const isLast = i === buckets.length - 1;
+                              const isActive = hoveredBucketIdx === i;
+                              return (
+                                <span
+                                  key={`xlab-${i}`}
+                                  className={`truncate ${
+                                    isActive
+                                      ? "font-bold text-[#121215]"
+                                      : isLast
+                                      ? "font-bold text-[#4F39F6]"
+                                      : ""
+                                  }`}
+                                >
+                                  {b.label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 3-Metric Analytical Summary Strip */}
+                      <div className="grid grid-cols-3 gap-2 pt-2.5 border-t border-[#EAECEF] text-center sm:text-left">
+                        <div className="rounded-lg bg-white border border-[#EAECEF] px-3 py-2">
+                          <p className="text-[10px] font-medium text-[#64748B]">
+                            Tingkat Kelulusan
+                          </p>
+                          <p className="text-xs sm:text-sm font-bold text-[#0EA5E9] tabular-nums mt-0.5">
+                            {completedPct}% ({completedCount}/{assignees.length})
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-white border border-[#EAECEF] px-3 py-2">
+                          <p className="text-[10px] font-medium text-[#64748B]">
+                            Rata-rata Progress
+                          </p>
+                          <p className="text-xs sm:text-sm font-bold text-[#4F39F6] tabular-nums mt-0.5">
+                            {avgProgressPct}% Selesai
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-white border border-[#EAECEF] px-3 py-2">
+                          <p className="text-[10px] font-medium text-[#64748B]">
+                            Cakupan Kurikulum
+                          </p>
+                          <p className="text-xs sm:text-sm font-bold text-[#121215] tabular-nums mt-0.5">
+                            {totalChaptersCount} Bab Aktif
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Right 5/12: Curriculum Retention Funnel */}
