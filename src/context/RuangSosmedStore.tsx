@@ -1385,6 +1385,19 @@ async function deleteInboxThreadFromSupabase(
   }
 
   try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "admin_delete_discussion_thread",
+      {
+        p_thread_id: threadId,
+        p_reply_id: replyId ?? null,
+      }
+    );
+    if (!rpcError && rpcData && (rpcData as any).ok) return;
+  } catch {
+    // Fallback to direct client delete if migration 015 has not been applied yet
+  }
+
+  try {
     if (!replyId) {
       await Promise.allSettled([
         supabase.from("mentor_inbox_threads").delete().eq("id", threadId),
