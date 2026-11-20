@@ -88,11 +88,15 @@ function IllustratedCardBanner({
   item,
   assignedCount,
   onEditThumbnail,
+  cardScale = 72,
 }: {
   item: ExplorerContentItem;
   assignedCount: number;
   onEditThumbnail?: () => void;
+  cardScale?: number;
 }) {
+  const bannerHeight = Math.max(88, Math.round(cardScale * 1.5));
+  const isCompactBanner = cardScale <= 84;
   const effectiveThumbnailUrl =
     item.thumbnailUrl ||
     (typeof window !== "undefined"
@@ -114,14 +118,15 @@ function IllustratedCardBanner({
 
   return (
     <div
-      className="relative h-44 sm:h-52 w-full overflow-hidden border-b border-[#EAECEF] bg-[#F8F9FB]"
-      style={
-        !effectiveThumbnailUrl
+      className="relative w-full overflow-hidden rounded-t-xl border-b border-[#EAECEF] bg-[#F8F9FB] transition-[height] duration-150"
+      style={{
+        height: `${bannerHeight}px`,
+        ...(!effectiveThumbnailUrl
           ? { background: item.bannerGradient }
           : !isImage
           ? { background: effectiveThumbnailUrl }
-          : undefined
-      }
+          : undefined),
+      }}
     >
       {isImage ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -130,7 +135,7 @@ function IllustratedCardBanner({
           alt={item.title}
           loading="eager"
           decoding="async"
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="h-full w-full object-cover object-center transition-transform duration-300 group-hover:scale-105"
         />
       ) : (
         /* Clean geometric SVG illustration inside banner */
@@ -213,8 +218,12 @@ function IllustratedCardBanner({
       )}
 
       {/* Top-Left Translucent Dark Badge: Live Assigned Count */}
-      <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-md bg-[#121215]/75 backdrop-blur-xs px-2.5 py-1 text-[11px] font-semibold text-white shadow-xs">
-        <Users size={11} className="text-white/90" />
+      <div
+        className={`absolute top-2 left-2 inline-flex items-center gap-1 rounded-md bg-[#121215]/75 backdrop-blur-xs font-semibold text-white shadow-xs ${
+          isCompactBanner ? "px-1.5 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"
+        }`}
+      >
+        <Users size={isCompactBanner ? 10 : 11} className="text-white/90" />
         <span>{assignedCount} Assigned</span>
       </div>
 
@@ -227,10 +236,12 @@ function IllustratedCardBanner({
             onEditThumbnail();
           }}
           title="Ganti cover thumbnail"
-          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1.5 rounded-lg bg-white/95 hover:bg-white text-[#121215] text-[11px] font-semibold px-2.5 py-1 shadow-sm border border-[#EAECEF] hover:border-[#4F39F6] cursor-pointer z-10"
+          className={`absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 rounded-lg bg-white/95 hover:bg-white text-[#121215] font-semibold shadow-sm border border-[#EAECEF] hover:border-[#4F39F6] cursor-pointer z-10 ${
+            isCompactBanner ? "px-1.5 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"
+          }`}
         >
-          <ImageIcon size={12} className="text-[#4F39F6]" />
-          <span>Ganti Cover</span>
+          <ImageIcon size={isCompactBanner ? 10 : 12} className="text-[#4F39F6]" />
+          <span>Cover</span>
         </button>
       )}
     </div>
@@ -655,6 +666,130 @@ export function LearningContentExplorer({
       } catch {}
     }
   };
+
+  const [cardScale, setCardScale] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = Number(
+          window.localStorage.getItem("ruang_sosmed_card_scale_v1")
+        );
+        if (!Number.isNaN(saved) && saved >= 56 && saved <= 116) {
+          return saved;
+        }
+      } catch {}
+    }
+    return 72;
+  });
+
+  const updateCardScale = (next: number) => {
+    const clamped = Math.min(116, Math.max(56, Math.round(next)));
+    setCardScale(clamped);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          "ruang_sosmed_card_scale_v1",
+          String(clamped)
+        );
+      } catch {}
+    }
+  };
+
+  const getCardGridColsClass = (scale: number) => {
+    if (scale <= 64) {
+      return "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5";
+    }
+    if (scale <= 78) {
+      return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5";
+    }
+    if (scale <= 92) {
+      return "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4";
+    }
+    if (scale <= 104) {
+      return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4";
+    }
+    return "grid-cols-1 md:grid-cols-2 gap-5";
+  };
+
+  const renderScaleControls = ({
+    value,
+    min,
+    max,
+    stepAmount,
+    defaultValue,
+    onUpdate,
+    label,
+  }: {
+    value: number;
+    min: number;
+    max: number;
+    stepAmount: number;
+    defaultValue: number;
+    onUpdate: (next: number) => void;
+    label: string;
+  }) => (
+    <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-1 shadow-2xs">
+      <button
+        type="button"
+        onClick={() => onUpdate(value - stepAmount)}
+        disabled={value <= min}
+        title={`Perkecil ukuran ${label}`}
+        aria-label={`Perkecil ukuran ${label}`}
+        className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
+      >
+        <Minus size={11} />
+      </button>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={4}
+        value={value}
+        onChange={(e) => onUpdate(Number(e.target.value))}
+        aria-label={`Atur ukuran ${label}`}
+        className="w-20 sm:w-24 h-1.5 accent-[#4F39F6] cursor-pointer"
+      />
+      <button
+        type="button"
+        onClick={() => onUpdate(value + stepAmount)}
+        disabled={value >= max}
+        title={`Perbesar ukuran ${label}`}
+        aria-label={`Perbesar ukuran ${label}`}
+        className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
+      >
+        <Plus size={11} />
+      </button>
+      <button
+        type="button"
+        onClick={() => onUpdate(defaultValue)}
+        title={`Reset ukuran ${label} (100%)`}
+        className="ml-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#64748B] hover:bg-white hover:text-[#121215] tabular-nums cursor-pointer"
+      >
+        {Math.round((value / defaultValue) * 100)}%
+      </button>
+    </div>
+  );
+
+  const renderCardSizeControls = () =>
+    renderScaleControls({
+      value: cardScale,
+      min: 56,
+      max: 116,
+      stepAmount: 8,
+      defaultValue: 72,
+      onUpdate: updateCardScale,
+      label: "kartu materi",
+    });
+
+  const renderFinderSizeControls = () =>
+    renderScaleControls({
+      value: folderIconScale,
+      min: 52,
+      max: 140,
+      stepAmount: 12,
+      defaultValue: 72,
+      onUpdate: updateFolderScale,
+      label: "folder",
+    });
 
   // Persist current folder across refreshes & remounts (e.g. after Publish/Edit)
   useEffect(() => {
@@ -1741,8 +1876,10 @@ export function LearningContentExplorer({
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            <div className="relative w-44 sm:w-60">
+          <div className="flex flex-wrap items-center gap-2">
+            {viewMode === "grid" && renderCardSizeControls()}
+
+            <div className="relative w-44 sm:w-56">
               <Search
                 size={13}
                 className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]"
@@ -2112,7 +2249,9 @@ export function LearningContentExplorer({
               <article
                 key={item.id}
                 onClick={() => onSelectContentItem(item)}
-                className="group relative flex flex-col justify-between overflow-hidden rounded-xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:border-[#4F39F6]/50 hover:shadow-[0_6px_20px_rgba(79,57,246,0.08)] transition-all cursor-pointer"
+                className={`group relative flex flex-col justify-between rounded-xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:border-[#4F39F6]/50 hover:shadow-[0_6px_20px_rgba(79,57,246,0.08)] transition-all cursor-pointer ${
+                  menuOpen ? "z-20" : ""
+                }`}
               >
                 <div>
                   {/* Top Custom Illustrated Banner with Live Assigned 👤 badge */}
@@ -2120,13 +2259,14 @@ export function LearningContentExplorer({
                     item={item}
                     assignedCount={getItemAssignedCount(item)}
                     onEditThumbnail={() => setThumbnailTargetItem(item)}
+                    cardScale={cardScale}
                   />
 
-                  {/* Card Body */}
-                  <div className="p-3.5 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
+                  {/* Card Body (Simplified & High Clarity for 4-5 Column Layout) */}
+                  <div className="p-2.5 sm:p-3 space-y-1.5">
+                    <div className="flex items-center justify-between gap-1.5">
                       <ContentBadge type={item.type} size="sm" />
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -2143,11 +2283,11 @@ export function LearningContentExplorer({
                           }}
                           title={`Klik untuk salin Kode Akses Otomatis: ${itemCode}`}
                           aria-label={`Salin kode akses ${itemCode} untuk ${item.title}`}
-                          className="inline-flex items-center gap-1 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-amber-800 transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-1.5 py-0.5 text-[10px] font-extrabold tracking-wider text-amber-800 transition-colors cursor-pointer"
                         >
-                          <KeyRound size={10} />
+                          <KeyRound size={9} />
                           <span>{itemCode}</span>
-                          <Copy size={9} className="opacity-70" />
+                          <Copy size={8} className="opacity-70" />
                         </button>
                         <button
                           type="button"
@@ -2159,46 +2299,52 @@ export function LearningContentExplorer({
                           aria-label={`Quick-assign learners to ${item.title}`}
                           className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#F8F9FB] text-[#5E5E5E] border border-[#EAECEF] hover:bg-[#4F39F6] hover:text-white hover:border-[#4F39F6] transition-colors cursor-pointer"
                         >
-                          <UserPlus size={12} strokeWidth={2.2} />
+                          <UserPlus size={11} strokeWidth={2.2} />
                         </button>
                       </div>
                     </div>
 
-                    <h3 className="text-[13px] font-bold text-[#121215] group-hover:text-[#4F39F6] transition-colors line-clamp-1 leading-tight">
+                    <h3
+                      title={item.title}
+                      className="text-xs sm:text-[13px] font-bold text-[#121215] group-hover:text-[#4F39F6] transition-colors line-clamp-2 leading-snug min-h-[2.1rem]"
+                    >
                       {item.title}
                     </h3>
 
-                    {/* Category, Urgency & Folder Tags */}
-                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                      {item.folderName && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-[#4F39F6]/10 border border-[#4F39F6]/20 px-1.5 py-0.5 text-[10px] font-semibold text-[#4F39F6]">
-                          <Folder size={10} />
-                          <span>{item.folderName}</span>
+                    {/* Simplified Metadata Strip (omit redundant folder tag inside folder & omit Not Urgent noise) */}
+                    <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                      {!currentFolder && item.folderName && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-[#4F39F6]/10 border border-[#4F39F6]/20 px-1.5 py-0.5 text-[10px] font-semibold text-[#4F39F6] max-w-full truncate">
+                          <Folder size={9} className="shrink-0" />
+                          <span className="truncate">{item.folderName}</span>
                         </span>
                       )}
-                      <span className="inline-flex items-center rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-1.5 py-0.5 text-[10px] font-medium text-[#5E5E5E]">
+                      <span className="inline-flex items-center rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-1.5 py-0.5 text-[10px] font-medium text-[#5E5E5E] max-w-full truncate">
                         {item.category}
                       </span>
-                      <span
-                        className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium border ${
-                          item.urgency === "Urgent"
-                            ? "bg-[#EF4444]/10 border-[#EF4444]/20 text-[#EF4444]"
-                            : "bg-[#F8F9FB] border-[#EAECEF] text-[#5E5E5E]"
-                        }`}
-                      >
-                        {item.urgency}
-                      </span>
+                      {(item.urgency === "Urgent" ||
+                        item.urgency === "High Priority") && (
+                        <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border bg-[#EF4444]/10 border-[#EF4444]/20 text-[#EF4444]">
+                          {item.urgency}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Card Footer: Slimmer height (py-2 px-3.5) */}
-                <div className="px-3.5 py-2 border-t border-[#EAECEF] bg-[#F9FAFB]/50 flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-[#5E5E5E] truncate">
-                    {item.editedLabel} •{" "}
-                    <strong className="font-semibold text-[#121215]">
-                      {item.statusLabel}
-                    </strong>
+                {/* Simplified Card Footer */}
+                <div className="px-2.5 sm:px-3 py-1.5 rounded-b-xl border-t border-[#EAECEF] bg-[#F9FAFB]/60 flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#121215] truncate">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                        item.statusLabel === "Completed"
+                          ? "bg-[#10B981]"
+                          : item.statusLabel === "In Progress"
+                          ? "bg-[#4F39F6]"
+                          : "bg-[#9CA3AF]"
+                      }`}
+                    />
+                    <span className="truncate">{item.statusLabel}</span>
                   </span>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -2353,49 +2499,6 @@ export function LearningContentExplorer({
             );
           };
 
-          const renderFinderSizeControls = () => (
-            <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-1 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => updateFolderScale(folderIconScale - 12)}
-                disabled={folderIconScale <= 52}
-                title="Perkecil ukuran ikon folder"
-                aria-label="Perkecil ukuran folder"
-                className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
-              >
-                <Minus size={11} />
-              </button>
-              <input
-                type="range"
-                min={52}
-                max={140}
-                step={4}
-                value={folderIconScale}
-                onChange={(e) => updateFolderScale(Number(e.target.value))}
-                aria-label="Atur ukuran folder ala macOS Finder"
-                className="w-20 sm:w-24 h-1.5 accent-[#4F39F6] cursor-pointer"
-              />
-              <button
-                type="button"
-                onClick={() => updateFolderScale(folderIconScale + 12)}
-                disabled={folderIconScale >= 140}
-                title="Perbesar ukuran ikon folder"
-                aria-label="Perbesar ukuran folder"
-                className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
-              >
-                <Plus size={11} />
-              </button>
-              <button
-                type="button"
-                onClick={() => updateFolderScale(72)}
-                title="Reset ke ukuran standar (100%)"
-                className="ml-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#64748B] hover:bg-white hover:text-[#121215] tabular-nums cursor-pointer"
-              >
-                {Math.round((folderIconScale / 72) * 100)}%
-              </button>
-            </div>
-          );
-
           return (
             <div className="space-y-6">
               {/* TAMPILAN PER KATEGORI (MATERI DI ATAS, DIREKTORI FOLDER KECIL DI BAWAH) */}
@@ -2404,7 +2507,13 @@ export function LearningContentExplorer({
                   {/* SEKSI 1: KURSUS & MATERI MANDIRI (UTAMA / ATAS) */}
                   {contentItems.length > 0 && (
                     <section aria-labelledby="section-contents" className="space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-[#64748B]">
+                          Materi ({contentItems.length})
+                        </span>
+                        {renderCardSizeControls()}
+                      </div>
+                      <div className={`grid ${getCardGridColsClass(cardScale)}`}>
                         {contentItems.map(renderStandardCard)}
                       </div>
                     </section>
@@ -2499,12 +2608,22 @@ export function LearningContentExplorer({
                 </div>
               ) : (
                 /* JIKA SEDANG DI DALAM FOLDER ATAU TAB FILTER LAIN */
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                  {filteredItems.map((item) =>
-                    item.type === "Folder"
-                      ? renderMacFolderIconTile(item)
-                      : renderStandardCard(item)
+                <div className="space-y-3">
+                  {!currentFolder && (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-[#64748B]">
+                        {selectedTab} ({filteredItems.length})
+                      </span>
+                      {renderCardSizeControls()}
+                    </div>
                   )}
+                  <div className={`grid ${getCardGridColsClass(cardScale)}`}>
+                    {filteredItems.map((item) =>
+                      item.type === "Folder"
+                        ? renderMacFolderIconTile(item)
+                        : renderStandardCard(item)
+                    )}
+                  </div>
                 </div>
               )}
             </div>
