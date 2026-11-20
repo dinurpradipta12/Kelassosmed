@@ -30,6 +30,8 @@ import {
   getItemAccessCode,
   type ExplorerContentItem,
   type ExplorerItemType,
+  type WikiAttachmentFile,
+  type WikiDocumentSection,
   type DiscussionThread,
   type ReportedIssueItem,
   type AssigneeLearner,
@@ -705,6 +707,11 @@ async function pushContentToSupabase(
           assignedLearners: resolvedAssignedLearners,
           assignedCount: resolvedAssignedLearners.length,
           chapterOutline: buildCompactChapterOutline(effectiveCurriculum),
+          ...(item.wikiSections ? { wikiSections: item.wikiSections } : {}),
+          ...(item.wikiAttachments
+            ? { wikiAttachments: item.wikiAttachments }
+            : {}),
+          ...(item.wikiReadTime ? { wikiReadTime: item.wikiReadTime } : {}),
         },
       },
     };
@@ -2109,7 +2116,13 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     cohort?: string,
     folderName?: string,
     folderColor?: string,
-    accessCode?: string
+    accessCode?: string,
+    wikiMeta?: {
+      category?: string;
+      wikiSections?: WikiDocumentSection[];
+      wikiAttachments?: WikiAttachmentFile[];
+      wikiReadTime?: string;
+    }
   ) => void;
   createFolder: (
     folderName: string,
@@ -2709,8 +2722,37 @@ export function RuangSosmedProvider({
                 ? window.localStorage.getItem(`ruang_sosmed_thumb_${item.id}`) ||
                   window.localStorage.getItem(`ruang_sosmed_thumb_${titleKey}`)
                 : null;
+            let cachedWikiDoc: {
+              sections?: WikiDocumentSection[];
+              attachments?: WikiAttachmentFile[];
+              readTime?: string;
+              category?: string;
+            } | null = null;
+            if (item.type === "Wiki" && typeof window !== "undefined") {
+              try {
+                const rawWiki = window.localStorage.getItem(
+                  `ruang_sosmed_wiki_doc_${titleKey}`
+                );
+                if (rawWiki) cachedWikiDoc = JSON.parse(rawWiki);
+              } catch {}
+            }
             return {
               ...item,
+              category:
+                item.type === "Wiki" &&
+                cachedWikiDoc?.category &&
+                (!item.category || item.category === "Social Media Strategy")
+                  ? cachedWikiDoc.category
+                  : item.category,
+              wikiSections:
+                item.wikiSections && item.wikiSections.length > 0
+                  ? item.wikiSections
+                  : cachedWikiDoc?.sections,
+              wikiAttachments:
+                item.wikiAttachments && item.wikiAttachments.length > 0
+                  ? item.wikiAttachments
+                  : cachedWikiDoc?.attachments,
+              wikiReadTime: item.wikiReadTime || cachedWikiDoc?.readTime,
               thumbnailUrl: item.thumbnailUrl || cachedThumb || undefined,
               cohort:
                 !item.cohort ||
@@ -4513,6 +4555,39 @@ export function RuangSosmedProvider({
                   id: r.id,
                   accessCode: r.access_code || meta.accessCode || local?.accessCode,
                 }),
+                ...(() => {
+                  if (type !== "Wiki") return {};
+                  let localWikiDoc: {
+                    sections?: WikiDocumentSection[];
+                    attachments?: WikiAttachmentFile[];
+                    readTime?: string;
+                  } | null = null;
+                  if (typeof window !== "undefined") {
+                    try {
+                      const rawW = window.localStorage.getItem(
+                        `ruang_sosmed_wiki_doc_${key}`
+                      );
+                      if (rawW) localWikiDoc = JSON.parse(rawW);
+                    } catch {}
+                  }
+                  const resolvedSections = Array.isArray(meta.wikiSections)
+                    ? meta.wikiSections
+                    : local?.wikiSections || localWikiDoc?.sections;
+                  const resolvedAttachments = Array.isArray(meta.wikiAttachments)
+                    ? meta.wikiAttachments
+                    : local?.wikiAttachments || localWikiDoc?.attachments;
+                  const resolvedReadTime =
+                    meta.wikiReadTime ||
+                    local?.wikiReadTime ||
+                    localWikiDoc?.readTime;
+                  return {
+                    ...(resolvedSections ? { wikiSections: resolvedSections } : {}),
+                    ...(resolvedAttachments
+                      ? { wikiAttachments: resolvedAttachments }
+                      : {}),
+                    ...(resolvedReadTime ? { wikiReadTime: resolvedReadTime } : {}),
+                  };
+                })(),
               };
             });
 
@@ -4677,10 +4752,16 @@ export function RuangSosmedProvider({
                 pi.title !== ni.title ||
                 pi.thumbnailUrl !== ni.thumbnailUrl ||
                 pi.category !== ni.category ||
+                pi.description !== ni.description ||
                 pi.cohort !== ni.cohort ||
                 pi.folderName !== ni.folderName ||
                 pi.accessCode !== ni.accessCode ||
                 pi.assignedCount !== ni.assignedCount ||
+                pi.wikiReadTime !== ni.wikiReadTime ||
+                JSON.stringify(pi.wikiSections || []) !==
+                  JSON.stringify(ni.wikiSections || []) ||
+                JSON.stringify(pi.wikiAttachments || []) !==
+                  JSON.stringify(ni.wikiAttachments || []) ||
                 JSON.stringify(pi.assignedLearners || []) !==
                   JSON.stringify(ni.assignedLearners || [])
               );
@@ -5779,7 +5860,13 @@ export function RuangSosmedProvider({
       cohort?: string,
       folderName?: string,
       folderColor?: string,
-      accessCode?: string
+      accessCode?: string,
+      wikiMeta?: {
+        category?: string;
+        wikiSections?: WikiDocumentSection[];
+        wikiAttachments?: WikiAttachmentFile[];
+        wikiReadTime?: string;
+      }
     ) => {
       const isFolder = type === "Folder";
       const cfg = isFolder
@@ -5829,6 +5916,18 @@ export function RuangSosmedProvider({
           : null;
       const resolvedThumbnailUrl =
         savedLocalThumb || existingSameTitle?.thumbnailUrl || undefined;
+      const resolvedWikiSections =
+        wikiMeta?.wikiSections ?? existingSameTitle?.wikiSections;
+      const resolvedWikiAttachments =
+        wikiMeta?.wikiAttachments ?? existingSameTitle?.wikiAttachments;
+      const resolvedWikiReadTime =
+        wikiMeta?.wikiReadTime ?? existingSameTitle?.wikiReadTime;
+      const resolvedCategory = isFolder
+        ? "Folder"
+        : wikiMeta?.category?.trim() ||
+          (existingSameTitle?.category && existingSameTitle.category !== "Folder"
+            ? existingSameTitle.category
+            : "Social Media Strategy");
 
       const newExplorerItem: ExplorerContentItem = {
         id: candidateId,
@@ -5836,7 +5935,7 @@ export function RuangSosmedProvider({
         type,
         assignedCount: inheritedLearners.length,
         assignedLearners: inheritedLearners,
-        category: isFolder ? "Folder" : "Social Media Strategy",
+        category: resolvedCategory,
         urgency,
         editedLabel: "Published just now",
         statusLabel: "Completed",
@@ -5855,7 +5954,29 @@ export function RuangSosmedProvider({
         cohort: parentFolder?.cohort || cohort || existingSameTitle?.cohort,
         folderName: effectiveFolderName,
         accessCode: normalizedAccessCode,
+        ...(type === "Wiki"
+          ? {
+              wikiSections: resolvedWikiSections,
+              wikiAttachments: resolvedWikiAttachments,
+              wikiReadTime: resolvedWikiReadTime,
+            }
+          : {}),
       };
+
+      if (type === "Wiki" && typeof window !== "undefined" && resolvedWikiSections) {
+        try {
+          window.localStorage.setItem(
+            `ruang_sosmed_wiki_doc_${title.toLowerCase().trim()}`,
+            JSON.stringify({
+              sections: resolvedWikiSections,
+              attachments: resolvedWikiAttachments || [],
+              category: resolvedCategory,
+              readTime: resolvedWikiReadTime,
+              description: finalDesc,
+            })
+          );
+        } catch {}
+      }
 
       const newCatalogItem: LearnerAssignedItem | null = isFolder
         ? null
@@ -6244,6 +6365,7 @@ export function RuangSosmedProvider({
         if (typeof window !== "undefined") {
           try {
             window.localStorage.removeItem(`ruang_sosmed_curriculum_${key}`);
+            window.localStorage.removeItem(`ruang_sosmed_wiki_doc_${key}`);
           } catch {}
         }
       }

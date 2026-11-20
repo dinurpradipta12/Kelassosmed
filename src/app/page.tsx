@@ -48,6 +48,7 @@ import { AssignLearnersModal } from "@/components/explorer/AssignLearnersModal";
 import { CoursePageEditor } from "@/components/authoring/CoursePageEditor";
 import { LearningPathBuilder } from "@/components/authoring/LearningPathBuilder";
 import { WikiBuilder } from "@/components/authoring/WikiBuilder";
+import { WikiArticleReader } from "@/components/wiki/WikiArticleReader";
 import { ModularQuizBuilder } from "@/components/quiz/ModularQuizBuilder";
 import { TrainerGradingCenter } from "@/components/quiz/TrainerGradingCenter";
 import { LearnerPortalView } from "@/components/learner/LearnerPortalView";
@@ -91,7 +92,7 @@ export type ActiveAuthoringMode =
       draftSessionId?: string;
     }
   | { kind: "learning-path" }
-  | { kind: "wiki"; title?: string }
+  | { kind: "wiki"; title?: string; item?: ExplorerContentItem | null }
   | { kind: "quiz-builder"; title?: string }
   | { kind: "grading-center"; submissionTitle?: string }
   | null;
@@ -894,7 +895,7 @@ function RuangSosmedStudioInner() {
       return;
     }
     if (item.type === "Wiki") {
-      setAuthoringMode({ kind: "wiki", title: item.title });
+      setAuthoringMode({ kind: "wiki", title: item.title, item });
       return;
     }
     if (item.folderName && typeof window !== "undefined") {
@@ -1345,30 +1346,85 @@ function RuangSosmedStudioInner() {
             ) : authoringMode?.kind === "wiki" ? (
               <WikiBuilder
                 initialTitle={authoringMode.title}
+                initialItem={authoringMode.item ?? null}
                 onBack={() => setAuthoringMode(null)}
-                onPublishWiki={(title) => {
-                  handleCreatedContent("Wiki", title);
+                onPublishWiki={(payload) => {
+                  const targetFolder =
+                    activeFolderForCreation ||
+                    authoringMode.item?.folderName ||
+                    undefined;
+                  publishContentToStudioAndCatalog(
+                    "Wiki",
+                    payload.title,
+                    payload.description,
+                    "Not Urgent",
+                    undefined,
+                    activeProject,
+                    targetFolder,
+                    undefined,
+                    undefined,
+                    {
+                      category: payload.category,
+                      wikiSections: payload.sections,
+                      wikiAttachments: payload.attachments,
+                      wikiReadTime: payload.readTime,
+                    }
+                  );
+                  triggerToast(
+                    `Artikel Wiki "${payload.title}" dipublikasikan & tampil di Tab Wiki Admin serta Portal Siswa (Wiki & Catalog)!`
+                  );
+                  setActiveFolderForCreation(null);
                   setAuthoringMode(null);
+                  setSelectedContentDetailId(null);
                   setActiveNav("content");
+                  setActiveSubNav("wiki");
+                  setShowProjectHub(false);
                   setSecondarySidebarOpen(true);
                 }}
                 onShowToast={triggerToast}
               />
             ) : activeNav === "content" || activeNav === "archive" ? (
               selectedContentDetail ? (
-                <ContentDetailView
-                  item={selectedContentDetail}
-                  onBackToExplorer={() => setSelectedContentDetailId(null)}
-                  onOpenAssignModal={(item) => setAssigningItem(item)}
-                  onEditContent={handleEditExplorerItem}
-                  onShowToast={triggerToast}
-                />
+                selectedContentDetail.type === "Wiki" ? (
+                  <WikiArticleReader
+                    itemId={selectedContentDetail.id}
+                    title={selectedContentDetail.title}
+                    category={selectedContentDetail.category}
+                    description={selectedContentDetail.description}
+                    editedDate={selectedContentDetail.editedDate}
+                    sections={selectedContentDetail.wikiSections}
+                    attachments={selectedContentDetail.wikiAttachments}
+                    readTime={selectedContentDetail.wikiReadTime}
+                    isAdmin={true}
+                    onBack={() => setSelectedContentDetailId(null)}
+                    onEdit={() => {
+                      const target = selectedContentDetail;
+                      setSelectedContentDetailId(null);
+                      handleEditExplorerItem(target);
+                    }}
+                    onAssign={() => setAssigningItem(selectedContentDetail)}
+                    onDelete={() => {
+                      handleDeleteItem(selectedContentDetail.id);
+                      setSelectedContentDetailId(null);
+                    }}
+                    onShowToast={triggerToast}
+                  />
+                ) : (
+                  <ContentDetailView
+                    item={selectedContentDetail}
+                    onBackToExplorer={() => setSelectedContentDetailId(null)}
+                    onOpenAssignModal={(item) => setAssigningItem(item)}
+                    onEditContent={handleEditExplorerItem}
+                    onShowToast={triggerToast}
+                  />
+                )
               ) : (
                 <LearningContentExplorer
                   items={explorerItems}
                   onSelectContentItem={(item) =>
                     setSelectedContentDetailId(item.id)
                   }
+                  onEditContentItem={handleEditExplorerItem}
                   onCreateNewContent={handleTriggerContentCreation}
                   onDuplicateItem={handleDuplicateItem}
                   onDeleteItem={handleDeleteItem}

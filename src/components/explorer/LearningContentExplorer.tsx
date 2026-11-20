@@ -57,17 +57,19 @@ import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 import { InviteCollaboratorModal } from "@/components/explorer/InviteCollaboratorModal";
 import { UploadAssetModal } from "@/components/explorer/UploadAssetModal";
 import { ThumbnailPickerModal } from "@/components/ui/ThumbnailPickerModal";
+import { WikiArticleCard } from "@/components/wiki/WikiArticleReader";
 
 interface LearningContentExplorerProps {
   items: ExplorerContentItem[];
   onSelectContentItem: (item: ExplorerContentItem) => void;
+  onEditContentItem?: (item: ExplorerContentItem) => void;
   onCreateNewContent: (type: ExplorerItemType, targetFolder?: string) => void;
   onDuplicateItem: (item: ExplorerContentItem) => void;
   onDeleteItem: (id: string) => void;
   onOpenAssignModal: (item: ExplorerContentItem) => void;
   onShowToast: (msg: string) => void;
   activeProjectName?: string;
-  activeSubView?: "recents" | "shared" | "archived" | "templates";
+  activeSubView?: "recents" | "shared" | "archived" | "templates" | "wiki";
   showProjectPicker?: boolean;
   onSelectProject?: (projectName: string) => void;
   onBackToProjects?: () => void;
@@ -541,6 +543,7 @@ function MacOsFolderIcon({
 export function LearningContentExplorer({
   items,
   onSelectContentItem,
+  onEditContentItem,
   onCreateNewContent,
   onDuplicateItem,
   onDeleteItem,
@@ -1012,10 +1015,18 @@ export function LearningContentExplorer({
         if (!item.isArchived) return false;
       }
 
-      // 4. Templates: template saja
+      // 4. Templates: template & page saja
       if (activeSubView === "templates") {
         if (item.isArchived) return false;
-        if (!item.isTemplate && item.type !== "Wiki" && item.type !== "Page") {
+        if (!item.isTemplate && item.type !== "Page") {
+          return false;
+        }
+      }
+
+      // 5. Wiki: artikel bacaan & SOP Wiki saja
+      if (activeSubView === "wiki") {
+        if (item.isArchived) return false;
+        if (item.type !== "Wiki") {
           return false;
         }
       }
@@ -1071,6 +1082,7 @@ export function LearningContentExplorer({
     shared: "Shared Cohort Content",
     archived: "Archived & Completed Curriculum",
     templates: "Reusable SOPs & Templates",
+    wiki: "Wiki & Playbook Bacaan (Notion-Style)",
   };
 
   const activeCohortColor =
@@ -1520,6 +1532,16 @@ export function LearningContentExplorer({
                           ? cohortScopedItems.filter(
                               (i) => !i.isArchived && !i.isTemplate
                             )
+                          : activeSubView === "wiki"
+                          ? cohortScopedItems.filter(
+                              (i) => !i.isArchived && i.type === "Wiki"
+                            )
+                          : activeSubView === "templates"
+                          ? cohortScopedItems.filter(
+                              (i) =>
+                                !i.isArchived &&
+                                (Boolean(i.isTemplate) || i.type === "Page")
+                            )
                           : cohortScopedItems;
 
                         if (selectedTab === "All") {
@@ -1548,6 +1570,16 @@ export function LearningContentExplorer({
                           : activeSubView === "recents"
                           ? cohortScopedItems.filter(
                               (i) => !i.isArchived && !i.isTemplate
+                            )
+                          : activeSubView === "wiki"
+                          ? cohortScopedItems.filter(
+                              (i) => !i.isArchived && i.type === "Wiki"
+                            )
+                          : activeSubView === "templates"
+                          ? cohortScopedItems.filter(
+                              (i) =>
+                                !i.isArchived &&
+                                (Boolean(i.isTemplate) || i.type === "Page")
                             )
                           : cohortScopedItems;
 
@@ -1612,8 +1644,12 @@ export function LearningContentExplorer({
                       } else if (activeSubView === "templates") {
                         if (
                           item.isArchived ||
-                          (!item.isTemplate && item.type !== "Wiki" && item.type !== "Page")
+                          (!item.isTemplate && item.type !== "Page")
                         ) {
+                          return false;
+                        }
+                      } else if (activeSubView === "wiki") {
+                        if (item.isArchived || item.type !== "Wiki") {
                           return false;
                         }
                       }
@@ -1948,6 +1984,8 @@ export function LearningContentExplorer({
               <Archive size={22} />
             ) : activeSubView === "templates" ? (
               <LayoutTemplate size={22} />
+            ) : activeSubView === "wiki" ? (
+              <BookOpen size={22} />
             ) : (
               <Clock size={22} />
             )}
@@ -1963,6 +2001,8 @@ export function LearningContentExplorer({
               ? "Belum Ada Kelas yang Diarsipkan (Archived)"
               : activeSubView === "templates"
               ? "Belum Ada Template Modul atau SOP"
+              : activeSubView === "wiki"
+              ? "Belum Ada Artikel Wiki & Playbook"
               : `Belum Ada Konten ${selectedTab !== "All" ? selectedTab : "Terbaru"}`}
           </h3>
           <p className="text-xs text-[#5E5E5E] max-w-md mx-auto leading-relaxed">
@@ -1976,14 +2016,27 @@ export function LearningContentExplorer({
               ? "Kelas atau kurikulum yang telah selesai dan diarsipkan akan tersimpan rapi di sini. Buka tab Recents dan pilih 'Arsipkan' untuk memindahkan kelas ke arsip."
               : activeSubView === "templates"
               ? "Simpan modul panduan, format SOP, atau template kurikulum agar instruktur lain dapat menduplikasinya dengan mudah."
+              : activeSubView === "wiki"
+              ? "Wiki berbentuk artikel bacaan & Playbook SOP bergaya Notion (bukan kelas video). Artikel Wiki yang dipublikasikan otomatis muncul di tab Wiki & Catalog Student Portal."
               : `Cohort "${activeProjectName}" belum memiliki konten ${selectedTab !== "All" ? selectedTab : "aktif"}. Klik tombol di bawah untuk membuat kelas atau modul baru.`}
           </p>
-          {(activeSubView === "recents" || activeSubView === "templates") && (
+          {(activeSubView === "recents" ||
+            activeSubView === "templates" ||
+            activeSubView === "wiki") && (
             <div className="pt-1 flex justify-center gap-2">
-              {activeSubView === "templates" ? (
+              {activeSubView === "wiki" ? (
                 <button
                   type="button"
                   onClick={() => onCreateNewContent("Wiki")}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white transition-colors cursor-pointer shadow-xs"
+                >
+                  <Plus size={14} />
+                  <span>+ Buat Artikel Wiki Baru</span>
+                </button>
+              ) : activeSubView === "templates" ? (
+                <button
+                  type="button"
+                  onClick={() => onCreateNewContent("Page")}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white transition-colors cursor-pointer shadow-xs"
                 >
                   <Plus size={14} />
@@ -2238,6 +2291,45 @@ export function LearningContentExplorer({
           };
 
           const renderStandardCard = (item: ExplorerContentItem) => {
+            if (item.type === "Wiki") {
+              const itemCode = getItemAccessCode(item);
+              return (
+                <WikiArticleCard
+                  key={item.id}
+                  id={item.id}
+                  title={item.title}
+                  category={item.category}
+                  description={item.description}
+                  editedDate={item.editedDate}
+                  folderName={item.folderName}
+                  accessCode={itemCode}
+                  wikiSections={item.wikiSections}
+                  wikiAttachments={item.wikiAttachments}
+                  wikiReadTime={item.wikiReadTime}
+                  isAdmin={true}
+                  onOpen={() => onSelectContentItem(item)}
+                  onEdit={() =>
+                    onEditContentItem
+                      ? onEditContentItem(item)
+                      : onSelectContentItem(item)
+                  }
+                  onAssign={() => onOpenAssignModal(item)}
+                  onDelete={() => onDeleteItem(item.id)}
+                  onCopyCode={() => {
+                    if (
+                      typeof navigator !== "undefined" &&
+                      navigator.clipboard
+                    ) {
+                      void navigator.clipboard.writeText(itemCode);
+                    }
+                    onShowToast(
+                      `Kode akses '${itemCode}' untuk Wiki "${item.title}" disalin!`
+                    );
+                  }}
+                />
+              );
+            }
+
             const menuOpen = openMenuCardId === item.id;
             const itemCode = getItemAccessCode(item);
 
@@ -2497,6 +2589,32 @@ export function LearningContentExplorer({
 
           return (
             <div className="space-y-6">
+              {activeSubView === "wiki" && !currentFolder && (
+                <div className="rounded-2xl bg-gradient-to-r from-[#F5F3FF] via-[#F8FAFC] to-[#EEF2FF] border border-[#DDD6FE] p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-start gap-3 max-w-2xl">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white border border-[#DDD6FE] text-lg shadow-2xs">
+                      📘
+                    </span>
+                    <div className="space-y-0.5">
+                      <h2 className="text-sm font-bold text-[#121215]">
+                        Wiki &amp; Playbook Bacaan (Notion-Style Article)
+                      </h2>
+                      <p className="text-xs text-[#5E5E5E] leading-relaxed">
+                        Wiki berbentuk artikel bacaan &amp; Playbook SOP terstruktur (bukan kelas video). Setiap Wiki yang Anda publikasikan otomatis tampil di Portal Siswa (tab Wiki &amp; Catalog).
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onCreateNewContent("Wiki")}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer shrink-0"
+                  >
+                    <Plus size={14} />
+                    <span>+ Buat Artikel Wiki Baru</span>
+                  </button>
+                </div>
+              )}
+
               {/* TAMPILAN PER KATEGORI (MATERI DI ATAS, DIREKTORI FOLDER KECIL DI BAWAH) */}
               {!currentFolder && selectedTab === "All" ? (
                 <>

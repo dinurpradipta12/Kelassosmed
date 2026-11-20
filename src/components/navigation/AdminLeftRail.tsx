@@ -28,6 +28,7 @@ import {
   Palette,
   Award,
   MessageSquare,
+  BookOpen,
 } from "lucide-react";
 import { type ContentType } from "@/lib/design-tokens";
 import { type ExplorerItemType } from "@/lib/phase2-data";
@@ -58,7 +59,8 @@ export type SecondaryNavLinkId =
   | "recents"
   | "shared"
   | "archived"
-  | "templates";
+  | "templates"
+  | "wiki";
 
 interface AdminLeftRailProps {
   activeNav: AdminNavId;
@@ -227,9 +229,10 @@ export function AdminLeftRail({
     Boolean(i.isArchived)
   ).length;
   const templateCount = projectScopedItems.filter(
-    (i) =>
-      !i.isArchived &&
-      (Boolean(i.isTemplate) || i.type === "Wiki" || i.type === "Page")
+    (i) => !i.isArchived && (Boolean(i.isTemplate) || i.type === "Page")
+  ).length;
+  const wikiCount = projectScopedItems.filter(
+    (i) => !i.isArchived && i.type === "Wiki"
   ).length;
 
   const [createCohortModalOpen, setCreateCohortModalOpen] = useState(false);
@@ -755,6 +758,12 @@ export function AdminLeftRail({
                   label: "Templates",
                   icon: LayoutTemplate,
                   badge: templateCount > 0 ? String(templateCount) : undefined,
+                },
+                {
+                  id: "wiki" as const,
+                  label: "Wiki",
+                  icon: BookOpen,
+                  badge: wikiCount > 0 ? String(wikiCount) : undefined,
                 },
               ].map((link) => {
                 const Icon = link.icon;

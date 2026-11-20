@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ChevronLeft,
   Plus,
@@ -30,29 +30,43 @@ import {
   type WikiCategory,
   type WikiResourceCard,
 } from "@/lib/phase3-data";
+import {
+  type ExplorerContentItem,
+  type WikiAttachmentFile,
+  type WikiDocumentSection,
+} from "@/lib/phase2-data";
+import {
+  WikiArticleReader,
+  estimateWikiReadTime,
+  resolveLocalWikiDocument,
+} from "@/components/wiki/WikiArticleReader";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 import { ContentBadge } from "@/components/ui/ContentBadge";
 
+export interface WikiPublishPayload {
+  title: string;
+  category: string;
+  description: string;
+  sections: WikiDocumentSection[];
+  attachments: WikiAttachmentFile[];
+  readTime: string;
+}
+
 interface WikiBuilderProps {
   initialTitle?: string;
+  initialItem?: ExplorerContentItem | null;
   onBack: () => void;
-  onPublishWiki: (title: string) => void;
+  onPublishWiki: (payload: WikiPublishPayload) => void;
   onShowToast: (msg: string) => void;
 }
 
-interface WikiAttachmentFile {
-  id: string;
-  name: string;
-  size: string;
-  ext: "pdf" | "zip" | "mp4" | "fig";
-  uploadProgress?: number; // 0..100 (undefined or 100 means complete)
-}
-
-interface WikiDocumentSection {
-  id: string;
-  title: string;
-  content: string;
-}
+const WIKI_PILLAR_CATEGORIES = [
+  "Social Media Specialist",
+  "Content Strategist",
+  "Personal Branding",
+  "Tren & Algoritma Social Media",
+  ...WIKI_CATEGORIES,
+];
 
 const INITIAL_WIKI_ATTACHMENTS: WikiAttachmentFile[] = [];
 
@@ -66,17 +80,43 @@ const INITIAL_SECTIONS: WikiDocumentSection[] = [
 
 export function WikiBuilder({
   initialTitle = "Dokumen Panduan & SOP Pembelajaran",
+  initialItem = null,
   onBack,
   onPublishWiki,
   onShowToast,
 }: WikiBuilderProps) {
   const {
+    explorerItems,
     wikiResources: resources,
     addWikiResourceCard,
     deleteWikiResourceCard,
   } = useRuangSosmedStore();
 
-  const [wikiTitle, setWikiTitle] = useState(initialTitle);
+  const existingWikiItem = useMemo(() => {
+    if (initialItem && initialItem.type === "Wiki") return initialItem;
+    const targetTitle = (initialItem?.title || initialTitle || "")
+      .trim()
+      .toLowerCase();
+    if (!targetTitle) return null;
+    return (
+      explorerItems.find(
+        (e) =>
+          e.type === "Wiki" && e.title.trim().toLowerCase() === targetTitle
+      ) || null
+    );
+  }, [initialItem, initialTitle, explorerItems]);
+
+  const [wikiTitle, setWikiTitle] = useState(
+    existingWikiItem?.title || initialTitle
+  );
+  const [wikiCategory, setWikiCategory] = useState<string>(
+    existingWikiItem?.category && existingWikiItem.category !== "Folder"
+      ? existingWikiItem.category
+      : "Social Media Specialist"
+  );
+  const [wikiSummary, setWikiSummary] = useState<string>(
+    existingWikiItem?.description || ""
+  );
   const [viewMode, setViewMode] = useState<"document" | "directory">(
     "document"
   );
@@ -87,14 +127,104 @@ export function WikiBuilder({
   const [addingResource, setAddingResource] = useState(false);
 
   // Trenning 2-Column Wiki Document + Attachment File state
-  const [attachments, setAttachments] = useState<WikiAttachmentFile[]>(
-    INITIAL_WIKI_ATTACHMENTS
-  );
-  const [sections, setSections] = useState<WikiDocumentSection[]>(INITIAL_SECTIONS);
+  const [attachments, setAttachments] = useState<WikiAttachmentFile[]>(() => {
+    if (
+      existingWikiItem?.wikiAttachments &&
+      existingWikiItem.wikiAttachments.length > 0
+    ) {
+      return existingWikiItem.wikiAttachments;
+    }
+    const localDoc = resolveLocalWikiDocument(
+      existingWikiItem?.title || initialTitle
+    );
+    return localDoc?.attachments?.length
+      ? localDoc.attachments
+      : INITIAL_WIKI_ATTACHMENTS;
+  });
+  const [sections, setSections] = useState<WikiDocumentSection[]>(() => {
+    if (
+      existingWikiItem?.wikiSections &&
+      existingWikiItem.wikiSections.length > 0
+    ) {
+      return existingWikiItem.wikiSections;
+    }
+    const localDoc = resolveLocalWikiDocument(
+      existingWikiItem?.title || initialTitle
+    );
+    return localDoc?.sections?.length ? localDoc.sections : INITIAL_SECTIONS;
+  });
   const [activeSectionId, setActiveSectionId] = useState<string>("sec-1");
   const [previewMode, setPreviewMode] = useState<boolean>(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const hydratedKeyRef = React.useRef<string>("");
+
+  useEffect(() => {
+    const lookupTitle = existingWikiItem?.title || initialTitle || "";
+    const hydrateKey = `${existingWikiItem?.id || ""}:${lookupTitle}`;
+    if (!hydrateKey || hydratedKeyRef.current === hydrateKey) return;
+    hydratedKeyRef.current = hydrateKey;
+
+    const localDoc = resolveLocalWikiDocument(lookupTitle);
+    if (existingWikiItem?.title) {
+      setWikiTitle(existingWikiItem.title);
+    }
+    if (
+      existingWikiItem?.category &&
+      existingWikiItem.category !== "Folder"
+    ) {
+      setWikiCategory(existingWikiItem.category);
+    } else if (localDoc?.category) {
+      setWikiCategory(localDoc.category);
+    }
+    if (existingWikiItem?.description) {
+      setWikiSummary(existingWikiItem.description);
+    } else if (localDoc?.description) {
+      setWikiSummary(localDoc.description);
+    }
+    if (existingWikiItem?.wikiSections?.length) {
+      setSections(existingWikiItem.wikiSections);
+      setActiveSectionId(existingWikiItem.wikiSections[0]?.id || "sec-1");
+    } else if (localDoc?.sections?.length) {
+      setSections(localDoc.sections);
+      setActiveSectionId(localDoc.sections[0]?.id || "sec-1");
+    }
+    if (existingWikiItem?.wikiAttachments?.length) {
+      setAttachments(existingWikiItem.wikiAttachments);
+    } else if (localDoc?.attachments?.length) {
+      setAttachments(localDoc.attachments);
+    }
+  }, [existingWikiItem, initialTitle]);
+
+  const handlePublishClick = () => {
+    const cleanTitle = wikiTitle.trim() || initialTitle || "Artikel Wiki Baru";
+    const firstContentSnippet = sections
+      .map((s) => (s.content || "").trim())
+      .find(Boolean);
+    const derivedDesc =
+      wikiSummary.trim() ||
+      (firstContentSnippet
+        ? firstContentSnippet
+            .replace(/\*\*|__|~~|<\/?u>/g, "")
+            .replace(/\s+/g, " ")
+            .slice(0, 180)
+        : `Artikel bacaan Wiki & Playbook SOP: ${cleanTitle} (${sections.length} bagian pembahasan).`);
+
+    const cleanAttachments = attachments.map((att) => ({
+      ...att,
+      uploadProgress: 100,
+    }));
+    const readTime = estimateWikiReadTime(sections);
+
+    onPublishWiki({
+      title: cleanTitle,
+      category: wikiCategory,
+      description: derivedDesc,
+      sections,
+      attachments: cleanAttachments,
+      readTime,
+    });
+  };
 
   const insertWikiFormatting = (snippet: string, label: string) => {
     const targetId = activeSectionId || sections[0]?.id;
@@ -431,7 +561,7 @@ export function WikiBuilder({
 
             <button
               type="button"
-              onClick={() => onPublishWiki(wikiTitle)}
+              onClick={handlePublishClick}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-1.5 text-xs font-semibold text-white shadow-[0_2px_6px_rgba(79,57,246,0.28)] transition-colors cursor-pointer"
             >
               <span>Publish</span>
@@ -440,7 +570,21 @@ export function WikiBuilder({
         </div>
       </header>
 
-      {viewMode === "document" ? (
+      {viewMode === "document" && previewMode ? (
+        <WikiArticleReader
+          itemId={existingWikiItem?.id}
+          title={wikiTitle.trim() || initialTitle}
+          category={wikiCategory}
+          description={wikiSummary}
+          editedDate="Preview Draft"
+          sections={sections}
+          attachments={attachments}
+          readTime={estimateWikiReadTime(sections)}
+          isAdmin={false}
+          onBack={() => setPreviewMode(false)}
+          onShowToast={onShowToast}
+        />
+      ) : viewMode === "document" ? (
         /* ===============================================================
            EXACT TRENNING 2-COLUMN WIKI BUILDER LAYOUT (ref_15)
            Left: Rich Resource Listing Document | Right: Attachment File Panel
@@ -449,9 +593,60 @@ export function WikiBuilder({
           <div className="rounded-2xl bg-[#FFFFFF] p-6 sm:p-10 border border-[#EAECEF] shadow-[0_2px_12px_rgba(16,15,17,0.04)] grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Left 7 Columns: Resource Listing Editor */}
             <div className="lg:col-span-7 space-y-5">
-              <h1 className="text-2xl font-bold text-[#121215] tracking-tight">
-                {wikiTitle}
-              </h1>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F5F3FF] border border-[#DDD6FE] px-2.5 py-0.5 text-[11px] font-bold text-[#6D28D9]">
+                    📘 Artikel Bacaan Wiki &amp; Playbook SOP (Notion-Style)
+                  </span>
+                  <span className="text-[11px] font-medium text-[#64748B]">
+                    ⏱ {estimateWikiReadTime(sections)} • {sections.length} Bagian
+                  </span>
+                </div>
+
+                <h1 className="text-2xl font-bold text-[#121215] tracking-tight">
+                  {wikiTitle}
+                </h1>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3">
+                  <div>
+                    <label
+                      htmlFor="wiki-pillar-category"
+                      className="block text-[10px] font-bold uppercase tracking-wider text-[#64748B] mb-1"
+                    >
+                      Kategori / Pilar Wiki
+                    </label>
+                    <select
+                      id="wiki-pillar-category"
+                      value={wikiCategory}
+                      onChange={(e) => setWikiCategory(e.target.value)}
+                      className="w-full rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
+                    >
+                      {WIKI_PILLAR_CATEGORIES.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="wiki-short-summary"
+                      className="block text-[10px] font-bold uppercase tracking-wider text-[#64748B] mb-1"
+                    >
+                      Ringkasan Singkat Artikel
+                    </label>
+                    <input
+                      id="wiki-short-summary"
+                      type="text"
+                      value={wikiSummary}
+                      onChange={(e) => setWikiSummary(e.target.value)}
+                      placeholder="Ringkasan singkat isi panduan / SOP ini..."
+                      className="w-full rounded-lg bg-white px-2.5 py-1.5 text-xs text-[#121215] placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
 
               {/* Formatting Toolbar: B I U S | List (ref_15) */}
               {!previewMode && (

@@ -2,6 +2,21 @@ import { type ContentType } from "@/lib/design-tokens";
 
 export type ExplorerItemType = ContentType | "Folder";
 
+export interface WikiAttachmentFile {
+  id: string;
+  name: string;
+  size: string;
+  ext: "pdf" | "zip" | "mp4" | "fig";
+  uploadProgress?: number;
+  url?: string;
+}
+
+export interface WikiDocumentSection {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export interface ExplorerContentItem {
   id: string;
   title: string;
@@ -29,6 +44,9 @@ export interface ExplorerContentItem {
   folderName?: string;
   folderId?: string;
   accessCode?: string;
+  wikiSections?: WikiDocumentSection[];
+  wikiAttachments?: WikiAttachmentFile[];
+  wikiReadTime?: string;
 }
 
 export function getDefaultFolderAccessCode(folderTitle: string): string {

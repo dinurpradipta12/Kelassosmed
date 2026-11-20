@@ -32,6 +32,7 @@ import {
   Search,
   ArrowUpDown,
   LogOut,
+  BookOpen,
 } from "lucide-react";
 import {
   LearnerTopNavbar,
@@ -55,6 +56,11 @@ import {
 } from "@/components/certificate/OfficialCertificateModal";
 import { LearnerRewardsModal } from "@/components/rewards/LearnerRewardsModal";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
+import {
+  WikiArticleCard,
+  WikiArticleReader,
+  estimateWikiReadTime,
+} from "@/components/wiki/WikiArticleReader";
 
 interface LearnerPortalViewProps {
   currentUser?: AuthenticatedUser | null;
@@ -69,7 +75,8 @@ type LearnerScreenState =
   | { screen: "dashboard" }
   | { screen: "course-overview"; courseTitle: string }
   | { screen: "classroom"; courseTitle: string; chapterId: string }
-  | { screen: "quiz-runner"; quizTitle: string };
+  | { screen: "quiz-runner"; quizTitle: string }
+  | { screen: "wiki-reader"; wikiIdOrTitle: string };
 
 const ACTIVE_FEATURE_UPDATE = {
   id: "discussion_voicenote_v1",
@@ -584,6 +591,13 @@ export function LearnerPortalView({
     matchesCurrentLearner,
     assignedFolderNames,
   ]);
+
+  // Published Notion-style Wiki & Playbook articles (synced across all students)
+  const publishedWikiArticles = React.useMemo(
+    () => explorerItems.filter((e) => e.type === "Wiki" && !e.isArchived),
+    [explorerItems]
+  );
+  const [wikiCategoryFilter, setWikiCategoryFilter] = useState<string>("All");
 
   // Shared macOS Finder Folder Series grouping (accessible across Home, Catalog, and My Learning)
   const learnerFolders = React.useMemo(() => {
@@ -1256,7 +1270,7 @@ export function LearnerPortalView({
         if (saved) return saved === "pro";
       } catch {}
     }
-    return item.type === "Assignment" || item.type === "Wiki";
+    return item.type === "Assignment";
   };
 
   const handleOpenAssignedCard = (item: LearnerAssignedItem) => {
@@ -1272,8 +1286,10 @@ export function LearnerPortalView({
       return;
     }
     if (item.type === "Wiki") {
-      setActiveNavTab("wiki");
-      setScreenState({ screen: "dashboard" });
+      setScreenState({
+        screen: "wiki-reader",
+        wikiIdOrTitle: item.id || item.title,
+      });
       return;
     }
     setScreenState({
@@ -1769,6 +1785,37 @@ export function LearnerPortalView({
           onExitQuiz={() => setScreenState({ screen: "dashboard" })}
           onShowToast={onShowToast}
         />
+      ) : screenState.screen === "wiki-reader" ? (
+        (() => {
+          const needle = screenState.wikiIdOrTitle.trim().toLowerCase();
+          const matchedWiki =
+            publishedWikiArticles.find(
+              (w) =>
+                w.id.toLowerCase() === needle ||
+                w.title.trim().toLowerCase() === needle
+            ) ||
+            explorerItems.find(
+              (e) =>
+                e.type === "Wiki" &&
+                (e.id.toLowerCase() === needle ||
+                  e.title.trim().toLowerCase() === needle)
+            );
+          return (
+            <WikiArticleReader
+              itemId={matchedWiki?.id}
+              title={matchedWiki?.title || screenState.wikiIdOrTitle}
+              category={matchedWiki?.category}
+              description={matchedWiki?.description}
+              editedDate={matchedWiki?.editedDate}
+              sections={matchedWiki?.wikiSections}
+              attachments={matchedWiki?.wikiAttachments}
+              readTime={matchedWiki?.wikiReadTime}
+              isAdmin={false}
+              onBack={() => setScreenState({ screen: "dashboard" })}
+              onShowToast={onShowToast}
+            />
+          );
+        })()
       ) : activeNavTab === "profile" ? (
         <UserProfileScreen
           mode="learner"
@@ -1964,253 +2011,328 @@ export function LearnerPortalView({
             </div>
           )}
 
-          {/* WIKI TAB VIEW (Synced with Admin WikiBuilder - Gated by Learner PRO) */}
+          {/* WIKI TAB VIEW (Notion-Style Published Articles + Resource Cards Directory) */}
           {activeNavTab === "wiki" ? (
-            <section aria-label="Student Wiki Directory" className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-bold text-[#121215]">
-                    Ruang Sosmed 2.0 Student Wiki &amp; Template Directory
-                  </h2>
-                  <p className="text-xs text-[#5E5E5E]">
-                    Download official content calendars, hook swipe files, and
-                    Meta Ads SOPs published by your Mentor.
-                  </p>
-                </div>
+            (() => {
+              const wikiCategoriesList = Array.from(
+                new Set(
+                  publishedWikiArticles
+                    .map((w) => w.category || "Playbook & SOP")
+                    .filter(Boolean)
+                )
+              );
+              const filteredWikiArticles = publishedWikiArticles.filter((w) => {
+                const cat = w.category || "Playbook & SOP";
+                if (wikiCategoryFilter !== "All" && cat !== wikiCategoryFilter) {
+                  return false;
+                }
+                if (searchQuery.trim()) {
+                  const q = searchQuery.trim().toLowerCase();
+                  const inTitle = w.title.toLowerCase().includes(q);
+                  const inDesc = (w.description || "").toLowerCase().includes(q);
+                  const inCat = cat.toLowerCase().includes(q);
+                  if (!inTitle && !inDesc && !inCat) return false;
+                }
+                return true;
+              });
 
-                {!learnerIsPro && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenUpgradeModal?.()}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#FEF3C7] hover:bg-[#FDE68A] border border-[#F59E0B]/40 px-3.5 py-2 text-xs font-bold text-[#92400E] cursor-pointer"
-                  >
-                    <Lock size={13} />
-                    <span>⚡ Unlock Wiki &amp; SOP Directory (PRO)</span>
-                  </button>
-                )}
-              </div>
-
-              {!learnerIsPro && (
-                <div className="rounded-xl bg-[#FFFBEB] border border-[#FDE68A] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-xs font-bold text-[#92400E] flex items-center gap-1.5">
-                      <Zap size={13} fill="currentColor" />
-                      Direktori Wiki &amp; SOP Agency Khusus Member Learner PRO
-                    </p>
-                    <p className="text-xs text-[#B45309]">
-                      Upgrade ke Learner PRO untuk mengunduh Kalender Konten Notion, 120 Hook Script, dan SOP Meta Ads resmi.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onOpenUpgradeModal?.()}
-                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[#121215] hover:bg-[#27272A] px-4 py-2 text-xs font-bold text-white cursor-pointer"
-                  >
-                    <Zap size={12} className="text-[#F59E0B]" fill="currentColor" />
-                    <span>Upgrade ke PRO</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Trenning 2-Column Learner Wiki View (ref_23) */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#5E5E5E]">
-                  Curated Design &amp; Social Media Wiki Page
-                </span>
-                <div className="inline-flex rounded-lg bg-[#FFFFFF] p-1 border border-[#EAECEF]">
-                  <button
-                    type="button"
-                    onClick={() => setWikiViewLayout("trenning-2col")}
-                    className={`rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer ${
-                      wikiViewLayout === "trenning-2col"
-                        ? "bg-[#4F39F6] text-white"
-                        : "text-[#5E5E5E]"
-                    }`}
-                  >
-                    2-Column Wiki View
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWikiViewLayout("cards")}
-                    className={`rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer ${
-                      wikiViewLayout === "cards"
-                        ? "bg-[#4F39F6] text-white"
-                        : "text-[#5E5E5E]"
-                    }`}
-                  >
-                    Resource Grid
-                  </button>
-                </div>
-              </div>
-
-              {wikiResources.length === 0 ? (
-                <div className="rounded-xl bg-[#FFFFFF] p-8 border border-[#EAECEF] text-center text-xs text-[#5E5E5E]">
-                  Belum ada dokumen Wiki atau SOP yang dipublikasikan oleh Mentor.
-                </div>
-              ) : wikiViewLayout === "trenning-2col" ? (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  {/* Left 8 Cols: Rich Resource Recommendations (ref_23) */}
-                  <div className="lg:col-span-8 rounded-2xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-6">
-                    <div className="border-b border-[#EAECEF] pb-4">
-                      <span className="rounded-md bg-[#10B981]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#059669]">
-                        Wiki • Design &amp; Social Media Playbook
-                      </span>
-                      <h3 className="text-xl font-bold text-[#121215] mt-2">
-                        Resource Recommendation for UI/UX &amp; Social Creators
-                      </h3>
-                      <p className="text-xs text-[#5E5E5E] mt-1">
-                        Curated by Mentor • Official Wiki Directory
-                      </p>
-                    </div>
-
-                    <div className="space-y-4">
-                      {wikiResources.map((card, idx) => (
-                        <div key={card.id} className="space-y-1.5 border-b border-[#EAECEF] pb-4 last:border-b-0 last:pb-0">
-                          <h4 className="text-sm font-bold text-[#121215]">
-                            {idx + 1}. {card.title} ({card.category})
-                          </h4>
-                          <p className="text-xs text-[#5E5E5E] leading-relaxed">
-                            {card.description}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onShowToast(`Accessed Wiki resource: "${card.title}"`)
-                            }
-                            className="text-xs font-semibold text-[#4F39F6] hover:underline cursor-pointer"
-                          >
-                            {card.actionLabel} →
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Right 4 Cols: Attachment File Cards (ref_23) */}
-                  <div className="lg:col-span-4 rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4 h-fit">
+              return (
+                <section aria-label="Student Wiki Directory" className="space-y-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-bold text-[#121215]">
-                        Attachment File ({wikiResources.length})
-                      </h3>
-                      <p className="text-[11px] text-[#5E5E5E]">
-                        Official downloadable files attached to this Wiki
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#F5F3FF] border border-[#DDD6FE] px-2.5 py-0.5 text-[10px] font-bold text-[#6D28D9]">
+                          📘 Bacaan Artikel &amp; SOP Notion-Style
+                        </span>
+                      </div>
+                      <h2 className="text-lg font-bold text-[#121215]">
+                        Ruang Sosmed 2.0 Wiki &amp; Playbook Artikel
+                      </h2>
+                      <p className="text-xs text-[#5E5E5E]">
+                        Kumpulan artikel panduan praktis, checklist SOP, dan lampiran template resmi dari Mentor (bukan kelas video — klik kartu untuk membaca langsung).
                       </p>
                     </div>
+                  </div>
 
-                    <div className="space-y-2.5">
-                      {wikiResources.map((att) => (
-                        <div
-                          key={`att-${att.id}`}
-                          className="rounded-xl bg-[#F8F9FB] p-3 border border-[#EAECEF] flex items-center justify-between gap-2.5"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span
-                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-extrabold text-white"
-                              style={{ backgroundColor: att.iconAccent || "#4F39F6" }}
-                            >
-                              FILE
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-[#121215] truncate">
-                                {att.title}
-                              </p>
-                              <p className="text-[10px] text-[#9CA3AF]">
-                                {att.category}
-                              </p>
-                            </div>
-                          </div>
+                  {/* Category Filter Pills for Wiki Articles */}
+                  {wikiCategoriesList.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {["All", ...wikiCategoriesList].map((cat) => {
+                        const isActive = wikiCategoryFilter === cat;
+                        return (
                           <button
+                            key={cat}
                             type="button"
-                            onClick={() =>
-                              onShowToast(`Downloading "${att.title}"...`)
-                            }
-                            className="p-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#4F39F6] hover:text-white text-[#121215] border border-[#EAECEF] cursor-pointer shrink-0"
+                            onClick={() => setWikiCategoryFilter(cat)}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                              isActive
+                                ? "bg-[#6D28D9] text-white shadow-2xs"
+                                : "bg-white text-[#5E5E5E] border border-[#EAECEF] hover:text-[#121215]"
+                            }`}
                           >
-                            <Download size={13} />
+                            {cat === "All" ? `Semua Artikel (${publishedWikiArticles.length})` : cat}
                           </button>
-                        </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Published Wiki Articles Grid */}
+                  {filteredWikiArticles.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                      {filteredWikiArticles.map((wiki) => (
+                        <WikiArticleCard
+                          key={wiki.id}
+                          id={wiki.id}
+                          title={wiki.title}
+                          category={wiki.category}
+                          description={wiki.description}
+                          editedDate={wiki.editedDate}
+                          folderName={wiki.folderName}
+                          wikiSections={wiki.wikiSections}
+                          wikiAttachments={wiki.wikiAttachments}
+                          wikiReadTime={wiki.wikiReadTime}
+                          isAdmin={false}
+                          onOpen={() =>
+                            setScreenState({
+                              screen: "wiki-reader",
+                              wikiIdOrTitle: wiki.id || wiki.title,
+                            })
+                          }
+                        />
                       ))}
                     </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                  {wikiResources.length === 0 ? (
-                    <div className="rounded-xl bg-[#FFFFFF] p-8 border border-[#EAECEF] text-center text-xs text-[#5E5E5E] col-span-full">
-                      Belum ada dokumen Wiki atau SOP yang dipublikasikan oleh Mentor.
+                  ) : wikiResources.length === 0 ? (
+                    <div className="rounded-2xl bg-[#FFFFFF] p-10 border border-[#EAECEF] text-center space-y-2">
+                      <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#F5F3FF] border border-[#DDD6FE] text-[#6D28D9]">
+                        <BookOpen size={20} />
+                      </div>
+                      <h3 className="text-sm font-bold text-[#121215]">
+                        {searchQuery.trim()
+                          ? `Tidak ada artikel Wiki yang cocok dengan "${searchQuery}"`
+                          : "Belum Ada Artikel Wiki atau SOP yang Dipublikasikan"}
+                      </h3>
+                      <p className="text-xs text-[#5E5E5E] max-w-md mx-auto">
+                        Artikel Wiki dan Playbook SOP yang dipublikasikan oleh Admin/Mentor akan langsung tampil di sini sebagai halaman bacaan bergaya Notion.
+                      </p>
                     </div>
-                  ) : (
-                    wikiResources.map((card) => (
-                      <article
-                        key={card.id}
-                        className="flex flex-col justify-between rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]"
-                      >
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-3">
-                            <div className="flex items-center gap-2.5">
-                              <span
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg"
-                                style={{
-                                  backgroundColor: `${card.iconAccent}15`,
-                                  color: card.iconAccent,
-                                }}
-                              >
-                                <Library size={16} />
-                              </span>
-                              <span className="rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-0.5 text-[11px] font-semibold text-[#5E5E5E]">
-                                {card.category}
-                              </span>
-                            </div>
-                            {!learnerIsPro && (
-                              <span className="inline-flex items-center gap-1 rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-2 py-0.5 text-[10px] font-bold text-[#92400E]">
-                                <Lock size={10} />
-                                PRO
-                              </span>
-                            )}
-                          </div>
-                          <h3 className="text-sm font-bold text-[#121215]">
-                            {card.title}
-                          </h3>
-                          <p className="mt-1.5 text-xs text-[#5E5E5E] leading-relaxed">
-                            {card.description}
-                          </p>
-                        </div>
+                  ) : null}
 
-                        <div className="mt-4 pt-3 border-t border-[#EAECEF]">
+                  {/* Supporting Downloadable Resource Cards Section (only displayed when Mentor adds Resource Cards) */}
+                  {wikiResources.length > 0 && (
+                    <div className="pt-4 border-t border-[#EAECEF] space-y-4">
+                      {!learnerIsPro && (
+                        <div className="rounded-xl bg-[#FFFBEB] border border-[#FDE68A] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-[#92400E] flex items-center gap-1.5">
+                              <Zap size={13} fill="currentColor" />
+                              Direktori Resource &amp; Template File Khusus Member Learner PRO
+                            </p>
+                            <p className="text-xs text-[#B45309]">
+                              Upgrade ke Learner PRO untuk mengunduh Kalender Konten Notion, 120 Hook Script, dan SOP Meta Ads resmi.
+                            </p>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              if (!learnerIsPro) {
-                                onShowToast(
-                                  `🔒 "${card.title}" khusus member Learner PRO. Silakan upgrade untuk mengunduh.`
-                                );
-                                onOpenUpgradeModal?.();
-                                return;
-                              }
-                              onShowToast(`Accessed Wiki resource: "${card.title}"`);
-                            }}
-                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#4F39F6] hover:text-white px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
+                            onClick={() => onOpenUpgradeModal?.()}
+                            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[#121215] hover:bg-[#27272A] px-4 py-2 text-xs font-bold text-white cursor-pointer"
                           >
-                            {!learnerIsPro ? (
-                              <Lock size={13} className="text-[#D97706]" />
-                            ) : card.actionType === "download" ? (
-                              <Download size={13} />
-                            ) : (
-                              <ExternalLink size={13} />
-                            )}
-                            <span>
-                              {!learnerIsPro
-                                ? `Unlock ${card.actionLabel} (PRO)`
-                                : card.actionLabel}
-                            </span>
+                            <Zap size={12} className="text-[#F59E0B]" fill="currentColor" />
+                            <span>Upgrade ke PRO</span>
                           </button>
                         </div>
-                      </article>
-                    ))
+                      )}
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-[#5E5E5E]">
+                          Direktori Asset &amp; Download Resource Cards ({wikiResources.length})
+                        </span>
+                        <div className="inline-flex rounded-lg bg-[#FFFFFF] p-1 border border-[#EAECEF]">
+                          <button
+                            type="button"
+                            onClick={() => setWikiViewLayout("trenning-2col")}
+                            className={`rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer ${
+                              wikiViewLayout === "trenning-2col"
+                                ? "bg-[#4F39F6] text-white"
+                                : "text-[#5E5E5E]"
+                            }`}
+                          >
+                            2-Column Wiki View
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWikiViewLayout("cards")}
+                            className={`rounded-md px-2.5 py-1 text-xs font-bold cursor-pointer ${
+                              wikiViewLayout === "cards"
+                                ? "bg-[#4F39F6] text-white"
+                                : "text-[#5E5E5E]"
+                            }`}
+                          >
+                            Resource Grid
+                          </button>
+                        </div>
+                      </div>
+
+                      {wikiViewLayout === "trenning-2col" ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                          <div className="lg:col-span-8 rounded-2xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-6">
+                            <div className="border-b border-[#EAECEF] pb-4">
+                              <span className="rounded-md bg-[#10B981]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#059669]">
+                                Wiki • Design &amp; Social Media Playbook
+                              </span>
+                              <h3 className="text-xl font-bold text-[#121215] mt-2">
+                                Resource Recommendation for Creators &amp; Strategists
+                              </h3>
+                              <p className="text-xs text-[#5E5E5E] mt-1">
+                                Curated by Mentor • Official Resource Directory
+                              </p>
+                            </div>
+
+                            <div className="space-y-4">
+                              {wikiResources.map((card, idx) => (
+                                <div key={card.id} className="space-y-1.5 border-b border-[#EAECEF] pb-4 last:border-b-0 last:pb-0">
+                                  <h4 className="text-sm font-bold text-[#121215]">
+                                    {idx + 1}. {card.title} ({card.category})
+                                  </h4>
+                                  <p className="text-xs text-[#5E5E5E] leading-relaxed">
+                                    {card.description}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onShowToast(`Accessed Wiki resource: "${card.title}"`)
+                                    }
+                                    className="text-xs font-semibold text-[#4F39F6] hover:underline cursor-pointer"
+                                  >
+                                    {card.actionLabel} →
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="lg:col-span-4 rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4 h-fit">
+                            <div>
+                              <h3 className="text-sm font-bold text-[#121215]">
+                                Attachment File ({wikiResources.length})
+                              </h3>
+                              <p className="text-[11px] text-[#5E5E5E]">
+                                Official downloadable files attached to this Wiki
+                              </p>
+                            </div>
+
+                            <div className="space-y-2.5">
+                              {wikiResources.map((att) => (
+                                <div
+                                  key={`att-${att.id}`}
+                                  className="rounded-xl bg-[#F8F9FB] p-3 border border-[#EAECEF] flex items-center justify-between gap-2.5"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <span
+                                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-extrabold text-white"
+                                      style={{ backgroundColor: att.iconAccent || "#4F39F6" }}
+                                    >
+                                      FILE
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-[#121215] truncate">
+                                        {att.title}
+                                      </p>
+                                      <p className="text-[10px] text-[#9CA3AF]">
+                                        {att.category}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      onShowToast(`Downloading "${att.title}"...`)
+                                    }
+                                    className="p-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#4F39F6] hover:text-white text-[#121215] border border-[#EAECEF] cursor-pointer shrink-0"
+                                  >
+                                    <Download size={13} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                          {wikiResources.map((card) => (
+                            <article
+                              key={card.id}
+                              className="flex flex-col justify-between rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]"
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <span
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg"
+                                      style={{
+                                        backgroundColor: `${card.iconAccent}15`,
+                                        color: card.iconAccent,
+                                      }}
+                                    >
+                                      <Library size={16} />
+                                    </span>
+                                    <span className="rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-0.5 text-[11px] font-semibold text-[#5E5E5E]">
+                                      {card.category}
+                                    </span>
+                                  </div>
+                                  {!learnerIsPro && (
+                                    <span className="inline-flex items-center gap-1 rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-2 py-0.5 text-[10px] font-bold text-[#92400E]">
+                                      <Lock size={10} />
+                                      PRO
+                                    </span>
+                                  )}
+                                </div>
+                                <h3 className="text-sm font-bold text-[#121215]">
+                                  {card.title}
+                                </h3>
+                                <p className="mt-1.5 text-xs text-[#5E5E5E] leading-relaxed">
+                                  {card.description}
+                                </p>
+                              </div>
+
+                              <div className="mt-4 pt-3 border-t border-[#EAECEF]">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!learnerIsPro) {
+                                      onShowToast(
+                                        `🔒 "${card.title}" khusus member Learner PRO. Silakan upgrade untuk mengunduh.`
+                                      );
+                                      onOpenUpgradeModal?.();
+                                      return;
+                                    }
+                                    onShowToast(`Accessed Wiki resource: "${card.title}"`);
+                                  }}
+                                  className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#4F39F6] hover:text-white px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
+                                >
+                                  {!learnerIsPro ? (
+                                    <Lock size={13} className="text-[#D97706]" />
+                                  ) : card.actionType === "download" ? (
+                                    <Download size={13} />
+                                  ) : (
+                                    <ExternalLink size={13} />
+                                  )}
+                                  <span>
+                                    {!learnerIsPro
+                                      ? `Unlock ${card.actionLabel} (PRO)`
+                                      : card.actionLabel}
+                                  </span>
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
-                </div>
-              )}
-            </section>
+                </section>
+              );
+            })()
           ) : activeNavTab === "favorites" && !learnerIsPro ? (
             /* FAVORITES TAB LOCKED WHEN FREE TIER */
             <section
@@ -3467,7 +3589,45 @@ export function LearnerPortalView({
                   </div>
                 )}
 
-              {assignedItems.length === 0 && learnerFolders.length === 0 ? (
+              {(() => {
+                const shownWikiTitles = new Set(
+                  visibleCourseCards
+                    .filter((c) => c.type === "Wiki")
+                    .map((c) => c.title.trim().toLowerCase())
+                );
+                const catalogWikiArticles =
+                  activeNavTab === "catalog" && !activeFolderObj
+                    ? publishedWikiArticles.filter((w) => {
+                        if (shownWikiTitles.has(w.title.trim().toLowerCase())) {
+                          return false;
+                        }
+                        if (isProjectFilterScope) {
+                          const wProj = (w.cohort || "Ruang Sosmed Class")
+                            .trim()
+                            .toLowerCase();
+                          if (wProj !== selectedProjectFilter.trim().toLowerCase()) {
+                            return false;
+                          }
+                        }
+                        if (searchQuery.trim()) {
+                          const q = searchQuery.trim().toLowerCase();
+                          if (
+                            !w.title.toLowerCase().includes(q) &&
+                            !(w.description || "").toLowerCase().includes(q) &&
+                            !(w.category || "").toLowerCase().includes(q)
+                          ) {
+                            return false;
+                          }
+                        }
+                        return true;
+                      })
+                    : [];
+
+                return (
+                  <>
+              {assignedItems.length === 0 &&
+              learnerFolders.length === 0 &&
+              catalogWikiArticles.length === 0 ? (
                 <div className="rounded-xl bg-[#FFFFFF] p-8 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] text-center space-y-2.5">
                   <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[#F8F9FB] border border-[#EAECEF] text-[#9CA3AF]">
                     <Heart size={18} />
@@ -3483,7 +3643,8 @@ export function LearnerPortalView({
                       : "Silakan masukkan Kode Akses Materi / Folder dari mentor atau tunggu materi kelas Anda diaktifkan."}
                   </p>
                 </div>
-              ) : visibleCourseCards.length === 0 ? (
+              ) : visibleCourseCards.length === 0 &&
+                catalogWikiArticles.length === 0 ? (
                 activeFolderObj ||
                 searchQuery.trim() ||
                 folderSearchQuery.trim() ||
@@ -3525,6 +3686,8 @@ export function LearnerPortalView({
                   </div>
                 ) : null
               ) : (
+                <>
+                {visibleCourseCards.length > 0 && (
                 <div className="space-y-3">
                   {!activeFolderObj &&
                     !searchQuery.trim() &&
@@ -3537,6 +3700,50 @@ export function LearnerPortalView({
                   {activeFolderObj && learnerCourseViewMode === "list" ? (
                     <div className="space-y-2.5">
                       {visibleCourseCards.map((item) => {
+                        if (item.type === "Wiki") {
+                          const matchedWiki = explorerItems.find(
+                            (e) =>
+                              e.type === "Wiki" &&
+                              (e.id === item.id ||
+                                e.title.trim().toLowerCase() ===
+                                  item.title.trim().toLowerCase())
+                          );
+                          const readTime = estimateWikiReadTime(
+                            matchedWiki?.wikiSections,
+                            matchedWiki?.wikiReadTime
+                          );
+                          return (
+                            <article
+                              key={`folder-list-${item.id}`}
+                              onClick={() => handleOpenAssignedCard(item)}
+                              className="group rounded-xl bg-white border border-[#EAECEF] p-3.5 shadow-[0_1px_4px_rgba(16,15,17,0.03)] hover:border-[#8B5CF6]/55 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                            >
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-[#F5F3FF] border border-[#DDD6FE] px-2 py-0.5 text-[10px] font-bold text-[#6D28D9]">
+                                    📖 Bacaan Wiki &amp; SOP
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#64748B]">
+                                    <Clock size={10} className="text-[#7C3AED]" />
+                                    {readTime}
+                                  </span>
+                                </div>
+                                <h3 className="text-sm font-bold text-[#121215] group-hover:text-[#6D28D9] truncate">
+                                  {item.title}
+                                </h3>
+                                <p className="text-xs text-[#5E5E5E] line-clamp-1">
+                                  {item.description}
+                                </p>
+                              </div>
+
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-[#6D28D9] text-white px-3.5 py-1.5 text-xs font-bold shrink-0">
+                                <span>Baca Artikel</span>
+                                <ArrowRight size={12} />
+                              </span>
+                            </article>
+                          );
+                        }
+
                         const lockedByPro = isProItem(item) && !learnerIsPro;
                         const pct = lockedByPro ? 0 : item.progressPercent;
                         return (
@@ -3661,6 +3868,32 @@ export function LearnerPortalView({
                   ) : (
                   <div className={`grid ${activeGridColsClass} gap-4`}>
                     {visibleCourseCards.map((item) => {
+                    if (item.type === "Wiki") {
+                      const matchedWiki = explorerItems.find(
+                        (e) =>
+                          e.type === "Wiki" &&
+                          (e.id === item.id ||
+                            e.title.trim().toLowerCase() ===
+                              item.title.trim().toLowerCase())
+                      );
+                      return (
+                        <WikiArticleCard
+                          key={item.id}
+                          id={matchedWiki?.id || item.id}
+                          title={item.title}
+                          category={matchedWiki?.category}
+                          description={matchedWiki?.description || item.description}
+                          editedDate={matchedWiki?.editedDate}
+                          folderName={matchedWiki?.folderName || item.folderName}
+                          wikiSections={matchedWiki?.wikiSections}
+                          wikiAttachments={matchedWiki?.wikiAttachments}
+                          wikiReadTime={matchedWiki?.wikiReadTime}
+                          isAdmin={false}
+                          onOpen={() => handleOpenAssignedCard(item)}
+                        />
+                      );
+                    }
+
                     const lockedByPro = isProItem(item) && !learnerIsPro;
 
                     return (
@@ -3817,7 +4050,54 @@ export function LearnerPortalView({
                   </div>
                   )}
                 </div>
+                )}
+
+                {catalogWikiArticles.length > 0 && (
+                  <div className="space-y-3 pt-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-[#F5F3FF] border border-[#DDD6FE] px-2 py-0.5 text-[10px] font-bold text-[#6D28D9]">
+                          📘 Bacaan Wiki &amp; Playbook SOP
+                        </span>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
+                          Artikel Bacaan &amp; Panduan ({catalogWikiArticles.length})
+                        </h3>
+                      </div>
+                      <span className="text-[11px] text-[#64748B]">
+                        Klik kartu untuk membaca artikel lengkap bergaya Notion
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {catalogWikiArticles.map((wiki) => (
+                        <WikiArticleCard
+                          key={`cat-wiki-${wiki.id}`}
+                          id={wiki.id}
+                          title={wiki.title}
+                          category={wiki.category}
+                          description={wiki.description}
+                          editedDate={wiki.editedDate}
+                          folderName={wiki.folderName}
+                          wikiSections={wiki.wikiSections}
+                          wikiAttachments={wiki.wikiAttachments}
+                          wikiReadTime={wiki.wikiReadTime}
+                          isAdmin={false}
+                          onOpen={() =>
+                            setScreenState({
+                              screen: "wiki-reader",
+                              wikiIdOrTitle: wiki.id || wiki.title,
+                            })
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                </>
               )}
+                  </>
+                );
+              })()}
                 </>
                 );
               })()}
