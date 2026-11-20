@@ -33,6 +33,9 @@ import {
 import {
   useRuangSosmedStore,
   inferLearnerNotifEventType,
+  extractNotificationContentTitle,
+  isLearnerAssignedToContentTitle,
+  doesLearnerOwnAnyMaterial,
 } from "@/context/RuangSosmedStore";
 import {
   type LearnerNotification,
@@ -235,6 +238,8 @@ export function LearnerTopNavbar({
     learnerIsPro,
     certificateUnlocked,
     learnerAssignedItems,
+    explorerItems,
+    courseCurriculums,
     wikiResources,
     resolveUserAvatar,
   } = useRuangSosmedStore();
@@ -421,23 +426,58 @@ export function LearnerTopNavbar({
 
   const matchesCurrentLearner = useCallback(
     (n: LearnerNotification): boolean => {
-      if (!n?.targetLearner) return true;
-      if (currentUser?.role === "admin") {
-        return true;
+      if (n?.targetLearner && currentUser?.role !== "admin") {
+        const target = n.targetLearner.trim().toLowerCase();
+        if (target) {
+          const candidates = [
+            currentUser?.email,
+            currentUser?.name,
+            currentUser?.username,
+            effectiveDisplayName,
+          ]
+            .filter(Boolean)
+            .map((s) => String(s).trim().toLowerCase());
+          const isTargetMatch = candidates.some(
+            (c) => c === target || target.includes(c) || c.includes(target)
+          );
+          if (!isTargetMatch) return false;
+        }
       }
-      const target = n.targetLearner.trim().toLowerCase();
-      if (!target) return true;
-      const candidates = [
-        currentUser?.email,
-        currentUser?.name,
-        currentUser?.username,
-        effectiveDisplayName,
-      ]
-        .filter(Boolean)
-        .map((s) => String(s).trim().toLowerCase());
-      return candidates.some((c) => c === target || target.includes(c) || c.includes(target));
+
+      const learnerIdentity = {
+        email: currentUser?.email,
+        name: effectiveDisplayName || currentUser?.name,
+        username: currentUser?.username,
+      };
+
+      const contentTitle = extractNotificationContentTitle(n);
+      if (contentTitle) {
+        const hasAccess = isLearnerAssignedToContentTitle(
+          contentTitle,
+          explorerItems,
+          learnerIdentity,
+          courseCurriculums
+        );
+        if (!hasAccess) return false;
+      }
+
+      if (inferLearnerNotifEventType(n) === "material_added") {
+        if (!doesLearnerOwnAnyMaterial(explorerItems, learnerIdentity)) {
+          return false;
+        }
+      }
+
+      return true;
     },
-    [currentUser?.email, currentUser?.name, currentUser?.username, currentUser?.role, effectiveDisplayName]
+    [
+      currentUser?.email,
+      currentUser?.name,
+      currentUser?.username,
+      currentUser?.role,
+      effectiveDisplayName,
+      explorerItems,
+      courseCurriculums,
+    ]
   );
 
   const uniqueNotifications = useMemo(() => {
@@ -547,6 +587,13 @@ export function LearnerTopNavbar({
       window.removeEventListener("ruang_sosmed_learner_notif", handleEvent);
     };
   }, [enqueueFloatingPopup]);
+
+  useEffect(() => {
+    setActivePopups((prev) => {
+      const next = prev.filter((p) => matchesCurrentLearner(p));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [matchesCurrentLearner]);
 
   useEffect(() => {
     const fresh = (learnerNotifications || []).filter((n) => {

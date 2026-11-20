@@ -995,6 +995,22 @@ const LEARNER_NOTIFS_STORAGE_KEY = "ruang_sosmed_learner_notifications_v1";
 export function inferLearnerNotifEventType(
   n: Partial<LearnerNotification>
 ): LearnerNotificationEventType {
+  const titleLower = (n.title || "").toLowerCase();
+  // Title patterns override stale/misclassified cached eventType in localStorage
+  if (
+    /materi|assignment|published|akses\s+(?:folder|materi)|modul|kurikulum/.test(
+      titleLower
+    )
+  ) {
+    return "material_added";
+  }
+  if (/\bpro\b|langganan|membership/.test(titleLower)) {
+    return "pro_activated";
+  }
+  if (/balasan|diskusi|tanggapan/.test(titleLower)) {
+    return "mentor_reply";
+  }
+
   if (
     n.eventType === "pro_activated" ||
     n.eventType === "material_added" ||
@@ -1003,21 +1019,231 @@ export function inferLearnerNotifEventType(
   ) {
     return n.eventType;
   }
-  const haystack = `${n.title || ""} ${n.body || ""}`.toLowerCase();
+
+  const haystack = `${titleLower} ${(n.body || "").toLowerCase()}`;
   if (/\bpro\b|langganan|membership/.test(haystack)) {
     return "pro_activated";
   }
-  if (/balasan|mentor|diskusi|tanggapan/.test(haystack)) {
-    return "mentor_reply";
-  }
   if (
-    /materi|published|assigned|assignment|modul|kelas|course|quiz|wiki|kode akses|folder/.test(
+    /materi|published|assigned|assignment|modul|kurikulum|kelas|course|quiz|wiki|kode akses|folder/.test(
       haystack
     )
   ) {
     return "material_added";
   }
+  if (/balasan|diskusi|tanggapan|membalas/.test(haystack)) {
+    return "mentor_reply";
+  }
   return "general";
+}
+
+export function extractNotificationContentTitle(
+  n: Partial<LearnerNotification>
+): string | null {
+  if (n.meta?.contentTitle?.trim()) return n.meta.contentTitle.trim();
+  if (n.meta?.chapterTitle?.trim()) return n.meta.chapterTitle.trim();
+
+  const title = (n.title || "").trim();
+  const titleColonMatch =
+    /^(?:📚\s*|💬\s*|📝\s*|🎓\s*)?(?:Materi\s+(?:Diperbarui|Baru\s+Tersedia|Baru\s+Ditugaskan)|New\s+Assignment|New\s+\w+\s+Published(?:\s+in\s+Catalog)?|Balasan\s+[^:]+):\s*(.+)$/i.exec(
+      title
+    );
+  if (titleColonMatch?.[1]) {
+    return titleColonMatch[1].trim().replace(/^["']|["']$/g, "");
+  }
+
+  const unlockMatch = /🔓\s*Akses\s+(?:Folder|Materi)\s+"([^"]+)"/i.exec(title);
+  if (unlockMatch?.[1]) {
+    return unlockMatch[1].trim();
+  }
+
+  const body = (n.body || "").trim();
+  const bodyQuoteMatch =
+    /(?:pada\s+(?:kelas|materi)\s+|materi\s+(?:\w+\s+)?|folder\s+)"([^"]+)"/i.exec(
+      body
+    );
+  if (bodyQuoteMatch?.[1]) {
+    return bodyQuoteMatch[1].trim();
+  }
+
+  return null;
+}
+
+function matchesLearnerAssignedArray(
+  assignedListRaw: unknown,
+  learner: {
+    email?: string | null;
+    name?: string | null;
+    username?: string | null;
+  }
+): boolean {
+  const assignedList = Array.isArray(assignedListRaw) ? assignedListRaw : [];
+  if (assignedList.length === 0) return false;
+
+  const userEmail = (learner.email || "").toLowerCase().trim();
+  const userName = (learner.name || "").toLowerCase().trim();
+  const usernameLower = (learner.username || "")
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .trim();
+  if (!userEmail && !userName && !usernameLower) return false;
+
+  const nameParts = userName.split(" ").filter(Boolean);
+  const userFirstLast =
+    nameParts.length >= 3
+      ? `${nameParts[0]} ${nameParts[nameParts.length - 1]}`
+      : "";
+
+  const cohortKeys = new Set([
+    "all learners",
+    "batch oktober 2026",
+    "ruang sosmed class",
+    "creator growth lab",
+  ]);
+
+  return assignedList.some((entry) => {
+    const l = String(entry || "").toLowerCase().trim();
+    if (!l) return false;
+    if (cohortKeys.has(l)) return true;
+    if (userEmail && l === userEmail) return true;
+    if (userName && l === userName) return true;
+    if (userFirstLast && l === userFirstLast) return true;
+    if (usernameLower && l === usernameLower) return true;
+    return false;
+  });
+}
+
+export function isLearnerAssignedToContentTitle(
+  contentTitle: string,
+  explorerItems: ExplorerContentItem[],
+  learner: {
+    email?: string | null;
+    name?: string | null;
+    username?: string | null;
+  },
+  courseCurriculums?: Record<string, CourseSectionAccordion[]>
+): boolean {
+  const needle = (contentTitle || "").trim().toLowerCase();
+  if (!needle) return false;
+  if (!Array.isArray(explorerItems) || explorerItems.length === 0) {
+    return false;
+  }
+
+  const userEmail = (learner.email || "").toLowerCase().trim();
+  const userName = (learner.name || "").toLowerCase().trim();
+  const usernameLower = (learner.username || "")
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .trim();
+  if (!userEmail && !userName && !usernameLower) return false;
+
+  // Bangun himpunan nama folder yang di-assign ke learner
+  const assignedFolderNames = new Set(
+    explorerItems
+      .filter(
+        (e) =>
+          e.type === "Folder" &&
+          matchesLearnerAssignedArray(e.assignedLearners, learner)
+      )
+      .map((f) => (f.title || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  // Resolusi judul target (bisa berupa judul Course/Folder/Content atau judul Chapter di kurikulum)
+  let resolvedCourseTitle = needle;
+  const directMatches = explorerItems.filter(
+    (e) =>
+      (e.title || "").trim().toLowerCase() === needle ||
+      (e.id || "").trim().toLowerCase() === needle
+  );
+
+  if (directMatches.length === 0 && courseCurriculums) {
+    for (const [courseKey, secs] of Object.entries(courseCurriculums)) {
+      const hasChap = (secs || []).some(
+        (s) =>
+          (s.sectionTitle || "").trim().toLowerCase() === needle ||
+          (s.chapters || []).some(
+            (ch) => (ch.title || "").trim().toLowerCase() === needle
+          )
+      );
+      if (hasChap) {
+        resolvedCourseTitle = courseKey.trim().toLowerCase();
+        break;
+      }
+    }
+  }
+
+  const candidateItems = explorerItems.filter(
+    (e) =>
+      (e.title || "").trim().toLowerCase() === resolvedCourseTitle ||
+      (e.id || "").trim().toLowerCase() === resolvedCourseTitle
+  );
+
+  if (candidateItems.length > 0) {
+    for (const item of candidateItems) {
+      if (matchesLearnerAssignedArray(item.assignedLearners, learner)) {
+        return true;
+      }
+      const folderKey = (item.folderName || "").trim().toLowerCase();
+      if (folderKey && assignedFolderNames.has(folderKey)) {
+        return true;
+      }
+    }
+  }
+
+  // Fallback localStorage per-user assignment list (e.g. hasil redeem code terbaru)
+  if (typeof window !== "undefined") {
+    try {
+      for (const tok of [userEmail, userName, usernameLower]) {
+        if (!tok) continue;
+        const raw = window.localStorage.getItem(
+          `ruang_sosmed_user_assignments_${tok}`
+        );
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (
+            Array.isArray(parsed) &&
+            parsed.some(
+              (t) =>
+                String(t || "").trim().toLowerCase() === resolvedCourseTitle ||
+                String(t || "").trim().toLowerCase() === needle
+            )
+          ) {
+            return true;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return false;
+}
+
+export function doesLearnerOwnAnyMaterial(
+  explorerItems: ExplorerContentItem[],
+  learner: {
+    email?: string | null;
+    name?: string | null;
+    username?: string | null;
+  }
+): boolean {
+  if (!Array.isArray(explorerItems) || explorerItems.length === 0) return false;
+  const assignedFolderNames = new Set(
+    explorerItems
+      .filter(
+        (e) =>
+          e.type === "Folder" &&
+          matchesLearnerAssignedArray(e.assignedLearners, learner)
+      )
+      .map((f) => (f.title || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  return explorerItems.some((e) => {
+    if (e.type === "Folder") return false;
+    if (matchesLearnerAssignedArray(e.assignedLearners, learner)) return true;
+    const fk = (e.folderName || "").trim().toLowerCase();
+    return Boolean(fk && assignedFolderNames.has(fk));
+  });
 }
 
 function normalizeLearnerNotification(
@@ -3709,6 +3935,12 @@ export function RuangSosmedProvider({
             }
           }
 
+          const activeLearnerIdentity = {
+            email: activeLearnerEmail || getActiveSessionUser().email,
+            name: activeLearnerName || getActiveSessionUser().name,
+            username: getActiveSessionUser().username,
+          };
+
           const pointsChanged = prev.learnerPoints !== activeUserPoints;
           let nextNotifications = (prev.learnerNotifications ?? []).map((n) =>
             normalizeLearnerNotification(n)
@@ -4295,7 +4527,13 @@ export function RuangSosmedProvider({
                 exp.type !== "Folder" &&
                 !exp.isArchived &&
                 !knownSyncedContentIdsRef.current.has(exp.id) &&
-                (!titleKey || !knownSyncedContentIdsRef.current.has(titleKey))
+                (!titleKey || !knownSyncedContentIdsRef.current.has(titleKey)) &&
+                isLearnerAssignedToContentTitle(
+                  exp.title,
+                  nextExplorer,
+                  activeLearnerIdentity,
+                  nextCurriculums
+                )
               ) {
                 enqueueSyncedLearnerNotif({
                   id: `notif-mat-sync-${exp.id}`,
@@ -4451,7 +4689,7 @@ export function RuangSosmedProvider({
             JSON.stringify(prev.courseCurriculums) !==
             JSON.stringify(nextCurriculums);
 
-          // Jika ada pembaruan kurikulum materi, beri tahu learner via sistem Pemberitahuan (bell)
+          // Jika ada pembaruan kurikulum materi, beri tahu learner HANYA jika learner memiliki akses ke materi tersebut
           if (
             curriculumsChanged &&
             prev.courseCurriculums &&
@@ -4467,18 +4705,24 @@ export function RuangSosmedProvider({
                 (e) => e.title.toLowerCase().trim() === changedKey
               );
               const courseTitle = matchedItem?.title || changedKey;
-              const notifTitle = `📚 Materi Diperbarui: ${courseTitle}`;
-              if (!nextNotifications.some((n) => n.title === notifTitle && n.unread)) {
-                nextNotifications = [
-                  {
-                    id: `notif-curriculum-sync-${Date.now()}`,
-                    title: notifTitle,
-                    body: `Mentor telah memperbarui isi materi pada kelas "${courseTitle}". Silakan cek modul terbaru Anda.`,
-                    time: "Baru saja",
-                    unread: true,
-                  },
-                  ...nextNotifications,
-                ];
+              if (
+                isLearnerAssignedToContentTitle(
+                  courseTitle,
+                  nextExplorer,
+                  activeLearnerIdentity,
+                  nextCurriculums
+                )
+              ) {
+                const notifTitle = `📚 Materi Diperbarui: ${courseTitle}`;
+                enqueueSyncedLearnerNotif({
+                  id: `notif-curriculum-sync-${Date.now()}`,
+                  title: notifTitle,
+                  body: `Mentor telah memperbarui isi materi pada kelas "${courseTitle}". Silakan cek modul terbaru Anda.`,
+                  time: "Baru saja",
+                  unread: true,
+                  eventType: "material_added",
+                  meta: { contentTitle: courseTitle },
+                });
               }
             }
           }
@@ -4807,18 +5051,27 @@ export function RuangSosmedProvider({
                 ) {
                   const chapTitle =
                     row.chapter_badge || row.title || "Diskusi Materi";
-                  enqueueSyncedLearnerNotif({
-                    id: `notif-reply-sync-${rid}`,
-                    title: `💬 Balasan ${roleStr || "Mentor"}: ${chapTitle}`,
-                    body: `${rep.authorName || "Mentor"} membalas diskusi: "${String(rep.message || "").slice(0, 140)}"`,
-                    time: "Baru saja",
-                    unread: true,
-                    eventType: "mentor_reply",
-                    meta: {
-                      chapterTitle: chapTitle,
-                      mentorName: rep.authorName || "Mentor",
-                    },
-                  });
+                  const ownsDiscussedCourse = isLearnerAssignedToContentTitle(
+                    chapTitle,
+                    nextExplorer,
+                    activeLearnerIdentity,
+                    nextCurriculums
+                  );
+                  if (ownsDiscussedCourse) {
+                    enqueueSyncedLearnerNotif({
+                      id: `notif-reply-sync-${rid}`,
+                      title: `💬 Balasan ${roleStr || "Mentor"}: ${chapTitle}`,
+                      body: `${rep.authorName || "Mentor"} membalas diskusi: "${String(rep.message || "").slice(0, 140)}"`,
+                      time: "Baru saja",
+                      unread: true,
+                      eventType: "mentor_reply",
+                      meta: {
+                        chapterTitle: chapTitle,
+                        contentTitle: chapTitle,
+                        mentorName: rep.authorName || "Mentor",
+                      },
+                    });
+                  }
                 }
               });
             });
@@ -5039,12 +5292,22 @@ export function RuangSosmedProvider({
             });
             remoteLearnerNotifs.forEach((rn) => {
               if (!rn?.id) return;
+              const contentTitle = extractNotificationContentTitle(rn);
+              const assignedToContent = contentTitle
+                ? isLearnerAssignedToContentTitle(
+                    contentTitle,
+                    nextExplorer,
+                    activeLearnerIdentity,
+                    nextCurriculums
+                  )
+                : true;
               const existingLocal = localLearnerNotifMap.get(rn.id);
               const merged = existingLocal
                 ? { ...rn, unread: existingLocal.unread && rn.unread }
                 : rn;
               localLearnerNotifMap.set(rn.id, merged);
               if (
+                assignedToContent &&
                 merged.unread &&
                 !knownLearnerNotifIdsRef.current.has(rn.id) &&
                 learnerNotifHydratedRef.current &&
