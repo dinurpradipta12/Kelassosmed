@@ -356,8 +356,9 @@ interface PersistedGlobalState {
   // Web Under Construction (404) Maintenance Mode & Custom Design
   maintenanceConfig: MaintenanceConfig;
 
-  // Global Synchronized User Avatars map (keyed by lowercase email / name / username / id)
+  // Global Synchronized User Avatars & Points maps (keyed by lowercase email / name / username / id)
   userAvatars: Record<string, string>;
+  userPointsMap: Record<string, number>;
 
   // Admin-only Real-time Activity Notifications (new member signups & PRO subscriptions)
   adminNotifications: AdminActivityNotification[];
@@ -1014,6 +1015,95 @@ export function normalizeAvatarKeys(identifiers: {
   return Array.from(keys);
 }
 
+function lookupNormalizedRecordValue<T>(
+  map: Record<string, T> | undefined,
+  identifiers: (string | undefined | null)[]
+): T | undefined {
+  if (!map) return undefined;
+  for (const rawId of identifiers) {
+    if (!rawId) continue;
+    const clean = rawId.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!clean) continue;
+    if (clean in map && map[clean] !== undefined) return map[clean];
+    const noAt = clean.replace(/^@+/, "");
+    if (noAt in map && map[noAt] !== undefined) return map[noAt];
+    if (`@${noAt}` in map && map[`@${noAt}`] !== undefined) {
+      return map[`@${noAt}`];
+    }
+    const parts = clean.split(" ").filter(Boolean);
+    if (parts.length >= 3) {
+      const firstLast = `${parts[0]} ${parts[parts.length - 1]}`;
+      if (firstLast in map && map[firstLast] !== undefined) {
+        return map[firstLast];
+      }
+    }
+  }
+  return undefined;
+}
+
+async function persistUserPointsToSupabase(params: {
+  id?: string | null;
+  email?: string | null;
+  name?: string | null;
+  username?: string | null;
+  newPoints: number;
+}): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  const cleanPoints = Math.max(0, Math.round(Number(params.newPoints) || 0));
+  const cleanId = params.id?.trim() || undefined;
+  const cleanEmail = params.email?.trim() || undefined;
+  const cleanName = params.name?.trim() || undefined;
+  const cleanUsername = params.username?.trim().replace(/^@+/, "") || undefined;
+
+  if (typeof window !== "undefined") {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (accessToken) {
+        const res = await fetch("/api/lms", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            action: "sync_user_points",
+            payload: {
+              targetId: cleanId,
+              targetEmail: cleanEmail,
+              targetName: cleanName,
+              targetUsername: cleanUsername,
+              newPoints: cleanPoints,
+            },
+          }),
+        });
+        if (res.ok) {
+          const parsed = await res.json().catch(() => null);
+          if (parsed?.ok) return;
+        }
+      }
+    } catch {}
+  }
+
+  try {
+    let targetUuid = cleanId && isUuid(cleanId) ? cleanId : null;
+    if (!targetUuid && cleanEmail) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("id")
+        .ilike("email", cleanEmail)
+        .maybeSingle();
+      targetUuid = prof?.id || null;
+    }
+    if (targetUuid) {
+      await supabase.rpc("admin_adjust_learner_points", {
+        p_target_id: targetUuid,
+        p_new_points: cleanPoints,
+      });
+    }
+  } catch {}
+}
+
 async function syncUserAvatarsToSupabase(
   userAvatars: Record<string, string>
 ): Promise<void> {
@@ -1456,6 +1546,7 @@ export const DEMO_GLOBAL_STATE: PersistedGlobalState = {
   learnerProConfig: DEFAULT_LEARNER_PRO_CONFIG,
   maintenanceConfig: DEFAULT_MAINTENANCE_CONFIG,
   userAvatars: {},
+  userPointsMap: {},
   adminNotifications: [],
 };
 
@@ -1507,6 +1598,7 @@ const DEFAULT_GLOBAL_STATE: PersistedGlobalState = {
   learnerProConfig: DEFAULT_LEARNER_PRO_CONFIG,
   maintenanceConfig: DEFAULT_MAINTENANCE_CONFIG,
   userAvatars: {},
+  userPointsMap: {},
   adminNotifications: [],
 };
 
@@ -1736,6 +1828,16 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     }
   ) => void;
   resolveUserAvatar: (...identifiers: (string | undefined | null)[]) => string;
+  resolveUserPoints: (
+    ...identifiers: (string | undefined | null)[]
+  ) => number | null;
+  syncUserPointsBalance: (params: {
+    id?: string | null;
+    email?: string | null;
+    name?: string | null;
+    username?: string | null;
+    newPoints: number;
+  }) => number;
 
   // 14. Course & Folder Unassign / Disconnect Access Sync + Folder Access Code Redemption
   unassignLearnerFromContent: (
@@ -1823,6 +1925,10 @@ export function RuangSosmedProvider({
   const recentAvatarLocksRef = useRef<
     Map<string, { value: string; expiresAt: number }>
   >(new Map());
+  const recentPointLocksRef = useRef<
+    Map<string, { value: number; expiresAt: number }>
+  >(new Map());
+  const backfilledInitialPointsRef = useRef<boolean>(false);
   const recentAssignmentLocksRef = useRef<
     Map<string, { assignedLearners: string[]; expiresAt: number }>
   >(new Map());
@@ -2349,6 +2455,28 @@ export function RuangSosmedProvider({
             }
             return merged;
           })(),
+          userPointsMap: (() => {
+            const merged: Record<string, number> = {
+              ...(parsed.userPointsMap || {}),
+            };
+            if (typeof window !== "undefined") {
+              try {
+                const rawPts = window.localStorage.getItem(
+                  "ruang_sosmed_user_points_map_v1"
+                );
+                if (rawPts) {
+                  const parsedPts = JSON.parse(rawPts) as Record<string, unknown>;
+                  Object.entries(parsedPts).forEach(([k, v]) => {
+                    const num = Number(v);
+                    if (k && Number.isFinite(num) && num >= 0) {
+                      merged[k] = num;
+                    }
+                  });
+                }
+              } catch {}
+            }
+            return merged;
+          })(),
           adminNotifications: [],
         }));
       } else {
@@ -2505,6 +2633,37 @@ export function RuangSosmedProvider({
               return {
                 ...prev,
                 userAvatars: merged,
+              };
+            });
+          } else if (
+            event.data?.type === "USER_POINTS_UPDATED" &&
+            event.data.userPointsMap
+          ) {
+            const incoming = event.data.userPointsMap as Record<string, number>;
+            const nextPointsVal = Number(event.data.newPoints);
+            setState((prev) => {
+              const merged = { ...(prev.userPointsMap || {}), ...incoming };
+              try {
+                window.localStorage.setItem(
+                  "ruang_sosmed_user_points_map_v1",
+                  JSON.stringify(merged)
+                );
+              } catch {}
+              const activeUser = getActiveSessionUser();
+              const matchedSession =
+                lookupNormalizedRecordValue(incoming, [
+                  activeUser.email,
+                  activeUser.name,
+                  activeUser.username,
+                ]) !== undefined;
+
+              return {
+                ...prev,
+                userPointsMap: merged,
+                learnerPoints:
+                  matchedSession && Number.isFinite(nextPointsVal)
+                    ? Math.max(0, nextPointsVal)
+                    : prev.learnerPoints,
               };
             });
           } else if (
@@ -2882,6 +3041,7 @@ export function RuangSosmedProvider({
         }[] = [];
 
         const dbAvatarsFromTables: Record<string, string> = {};
+        const dbPointsFromTables: Record<string, number> = {};
         const proMapFromDb: Record<string, "PRO" | "Free"> = {};
         const expiredProfileEmails = new Set<string>();
         const activeProEmailsFromProfiles = new Set<string>();
@@ -2890,16 +3050,21 @@ export function RuangSosmedProvider({
           profilesRes.data.forEach((p: any) => {
             const rawAvatar =
               typeof p.avatar_url === "string" ? p.avatar_url.trim() : "";
+            const pKeys = normalizeAvatarKeys({
+              id: p.id,
+              email: p.email,
+              name: p.full_name || p.name,
+              username: p.username,
+            });
             if (rawAvatar) {
-              normalizeAvatarKeys({
-                id: p.id,
-                email: p.email,
-                name: p.full_name || p.name,
-                username: p.username,
-              }).forEach((k) => {
+              pKeys.forEach((k) => {
                 dbAvatarsFromTables[k] = rawAvatar;
               });
             }
+            const pPointsVal = Math.max(0, Number(p.total_points || 0));
+            pKeys.forEach((k) => {
+              dbPointsFromTables[k] = pPointsVal;
+            });
             if (p.email) {
               const pName = p.full_name || p.email.split("@")[0];
               const pEmailLower = String(p.email).toLowerCase().trim();
@@ -2970,6 +3135,18 @@ export function RuangSosmedProvider({
               up.name ||
               up.username ||
               (up.email ? up.email.split("@")[0] : "");
+            const upRawPts = Number(up.perks?.total_points ?? up.perks?.points ?? 0);
+            const upCleanPts = Number.isFinite(upRawPts) ? Math.max(0, upRawPts) : 0;
+            normalizeAvatarKeys({
+              id: up.user_id || up.id,
+              email: up.email,
+              name: resolvedName,
+              username: up.username,
+            }).forEach((k) => {
+              if (!(k in dbPointsFromTables) || upCleanPts > dbPointsFromTables[k]) {
+                dbPointsFromTables[k] = upCleanPts;
+              }
+            });
             if (resolvedName) {
               proMapFromDb[resolvedName] = tierValue;
               proMapFromDb[resolvedName.toLowerCase()] = tierValue;
@@ -2989,7 +3166,7 @@ export function RuangSosmedProvider({
                 email: up.email,
                 role: up.role || "learner",
                 jobTitle: up.job_title || "Social Media Specialist",
-                points: 0,
+                points: upCleanPts,
                 avatarUrl: rawUpAvatar || undefined,
               });
             }
@@ -3023,8 +3200,58 @@ export function RuangSosmedProvider({
             ownProfile?.full_name || authUser?.user_metadata?.full_name || ""
           ).trim();
 
+          const activeUserKeys = normalizeAvatarKeys({
+            id: ownProfile?.id || authUserId,
+            email: activeLearnerEmail || getActiveSessionUser().email,
+            name: activeLearnerName || getActiveSessionUser().name,
+            username: getActiveSessionUser().username,
+          });
+          const activeLockMatch = (() => {
+            const nowLockMs = Date.now();
+            for (const k of activeUserKeys) {
+              const lock = recentPointLocksRef.current.get(k);
+              if (lock && lock.expiresAt > nowLockMs) {
+                return lock.value;
+              }
+            }
+            return null;
+          })();
+
           if (authUserId && ownProfile) {
-            activeUserPoints = Number(ownProfile.total_points || 0);
+            const ownUpPts = (() => {
+              if (!Array.isArray(userProfilesRes.data)) return 0;
+              const ownUp = userProfilesRes.data.find(
+                (up: any) =>
+                  up.user_id === authUserId ||
+                  (activeLearnerEmail &&
+                    String(up.email || "").toLowerCase().trim() === activeLearnerEmail)
+              );
+              const val = Number(ownUp?.perks?.total_points ?? ownUp?.perks?.points ?? 0);
+              return Number.isFinite(val) ? Math.max(0, val) : 0;
+            })();
+            const dbActivePts = Math.max(
+              Number(ownProfile.total_points || 0),
+              ownUpPts
+            );
+            if (activeLockMatch !== null) {
+              activeUserPoints = activeLockMatch;
+            } else if (
+              dbActivePts === 0 &&
+              prev.learnerPoints > 0 &&
+              !backfilledInitialPointsRef.current
+            ) {
+              activeUserPoints = prev.learnerPoints;
+              backfilledInitialPointsRef.current = true;
+              void persistUserPointsToSupabase({
+                id: ownProfile.id,
+                email: activeLearnerEmail,
+                name: activeLearnerName,
+                username: getActiveSessionUser().username,
+                newPoints: prev.learnerPoints,
+              });
+            } else {
+              activeUserPoints = dbActivePts;
+            }
             const ownExplicitlyExpired =
               Boolean(ownProfile.pro_expires_at) &&
               !isProSubscriptionActive(
@@ -4076,6 +4303,43 @@ export function RuangSosmedProvider({
             } catch {}
           }
 
+          // 6b) Sinkronisasi Global User Points Map (profiles.total_points + user_profiles.perks.total_points + active session + locks)
+          const nextUserPointsMap: Record<string, number> = {
+            ...(prev.userPointsMap || {}),
+          };
+          Object.entries(dbPointsFromTables).forEach(([k, val]) => {
+            if (k && Number.isFinite(val) && val >= 0) {
+              nextUserPointsMap[k] = val;
+            }
+          });
+          if (activeUserPoints > 0) {
+            activeUserKeys.forEach((k) => {
+              if ((nextUserPointsMap[k] ?? 0) < activeUserPoints) {
+                nextUserPointsMap[k] = activeUserPoints;
+              }
+            });
+          }
+          recentPointLocksRef.current.forEach((lock, key) => {
+            if (lock.expiresAt > nowMs) {
+              nextUserPointsMap[key] = lock.value;
+            } else {
+              recentPointLocksRef.current.delete(key);
+            }
+          });
+
+          const pointsMapChanged =
+            JSON.stringify(nextUserPointsMap) !==
+            JSON.stringify(prev.userPointsMap || {});
+
+          if (pointsMapChanged && typeof window !== "undefined") {
+            try {
+              window.localStorage.setItem(
+                "ruang_sosmed_user_points_map_v1",
+                JSON.stringify(nextUserPointsMap)
+              );
+            } catch {}
+          }
+
           // 7) Merge Admin Activity Notifications (__SYSTEM_ADMIN_NOTIFICATIONS__) STRICTLY for Staff sessions
           let nextAdminNotifications: AdminActivityNotification[] = [];
           const freshlyArrivedAdminNotifs: AdminActivityNotification[] = [];
@@ -4164,6 +4428,7 @@ export function RuangSosmedProvider({
             !threadsChanged &&
             !issuesChanged &&
             !avatarsChanged &&
+            !pointsMapChanged &&
             !adminNotifsChanged
           ) {
             // Data tidak berubah: pertahankan referensi state sebelumnya agar tidak ada glitch / flicker cover
@@ -4174,6 +4439,7 @@ export function RuangSosmedProvider({
             ...prev,
             adminNotifications: nextAdminNotifications,
             userAvatars: nextUserAvatars,
+            userPointsMap: nextUserPointsMap,
             rewardsCatalog: nextRewards,
             certificateConfig: nextCertConfig,
             courseCertificateConfigs: nextCourseCertConfigs,
@@ -6233,6 +6499,59 @@ export function RuangSosmedProvider({
         };
       });
 
+      const activeUser = getActiveSessionUser();
+      const predictedNextPoints = Math.max(
+        0,
+        (stateRef.current.learnerPoints || 0) + pointsReward
+      );
+      const keys = normalizeAvatarKeys({
+        email: activeUser.email,
+        name: activeUser.name,
+        username: activeUser.username,
+      });
+      if (keys.length > 0) {
+        const expiresAt = Date.now() + 15000;
+        const patch: Record<string, number> = {};
+        keys.forEach((k) => {
+          recentPointLocksRef.current.set(k, {
+            value: predictedNextPoints,
+            expiresAt,
+          });
+          patch[k] = predictedNextPoints;
+        });
+        const mergedPtsMap = {
+          ...(stateRef.current.userPointsMap || {}),
+          ...patch,
+        };
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              "ruang_sosmed_user_points_map_v1",
+              JSON.stringify(mergedPtsMap)
+            );
+            if ("BroadcastChannel" in window) {
+              const bc = new BroadcastChannel("ruang_sosmed_channel");
+              bc.postMessage({
+                type: "USER_POINTS_UPDATED",
+                userPointsMap: patch,
+                newPoints: predictedNextPoints,
+              });
+              bc.close();
+            }
+          } catch {}
+        }
+        setState((prev) => ({
+          ...prev,
+          userPointsMap: { ...(prev.userPointsMap || {}), ...patch },
+        }));
+        void persistUserPointsToSupabase({
+          email: activeUser.email,
+          name: activeUser.name,
+          username: activeUser.username,
+          newPoints: predictedNextPoints,
+        });
+      }
+
       return true;
     },
     [state.courseSections]
@@ -7551,7 +7870,43 @@ export function RuangSosmedProvider({
 
       const newPoints = state.learnerPoints - reward.pointsCost;
 
-      // Update Supabase profiles total_points atomically via hardened RPC
+      // Update Supabase profiles total_points atomically via hardened RPC + full points sync
+      const activeSess = getActiveSessionUser();
+      const claimEmail = learnerEmail || activeSess.email;
+      const claimName = learnerName || activeSess.name;
+      const claimKeys = normalizeAvatarKeys({
+        email: claimEmail,
+        name: claimName,
+        username: activeSess.username,
+      });
+      const claimPatch: Record<string, number> = {};
+      const expiresAt = Date.now() + 15000;
+      claimKeys.forEach((k) => {
+        recentPointLocksRef.current.set(k, { value: newPoints, expiresAt });
+        claimPatch[k] = newPoints;
+      });
+      if (typeof window !== "undefined" && claimKeys.length > 0) {
+        try {
+          const nextPtsMap = {
+            ...(stateRef.current.userPointsMap || {}),
+            ...claimPatch,
+          };
+          window.localStorage.setItem(
+            "ruang_sosmed_user_points_map_v1",
+            JSON.stringify(nextPtsMap)
+          );
+          if ("BroadcastChannel" in window) {
+            const bc = new BroadcastChannel("ruang_sosmed_channel");
+            bc.postMessage({
+              type: "USER_POINTS_UPDATED",
+              userPointsMap: claimPatch,
+              newPoints,
+            });
+            bc.close();
+          }
+        } catch {}
+      }
+
       if (isSupabaseConfigured && reward.pointsCost > 0) {
         void (async () => {
           try {
@@ -7559,6 +7914,12 @@ export function RuangSosmedProvider({
               p_points_cost: reward.pointsCost,
             });
           } catch {}
+          await persistUserPointsToSupabase({
+            email: claimEmail,
+            name: claimName,
+            username: activeSess.username,
+            newPoints,
+          });
         })();
       }
 
@@ -7600,6 +7961,7 @@ export function RuangSosmedProvider({
         return {
           ...prev,
           learnerPoints: newPoints,
+          userPointsMap: { ...(prev.userPointsMap || {}), ...claimPatch },
           rewardsCatalog: nextCatalog,
           claimedRewards: [claimRecord, ...(prev.claimedRewards ?? [])],
           leaderboard: nextLeaderboard,
@@ -7966,23 +8328,97 @@ export function RuangSosmedProvider({
   const resolveUserAvatar = useCallback(
     (...identifiers: (string | undefined | null)[]): string => {
       const map = state.userAvatars || stateRef.current.userAvatars || {};
-      for (const rawId of identifiers) {
-        if (!rawId) continue;
-        const clean = rawId.trim().toLowerCase().replace(/\s+/g, " ");
-        if (!clean) continue;
-        if (map[clean]) return map[clean];
-        const noAt = clean.replace(/^@+/, "");
-        if (map[noAt]) return map[noAt];
-        if (map[`@${noAt}`]) return map[`@${noAt}`];
-        const parts = clean.split(" ").filter(Boolean);
-        if (parts.length >= 3) {
-          const firstLast = `${parts[0]} ${parts[parts.length - 1]}`;
-          if (map[firstLast]) return map[firstLast];
-        }
-      }
-      return "";
+      return lookupNormalizedRecordValue(map, identifiers) || "";
     },
     [state.userAvatars]
+  );
+
+  const resolveUserPoints = useCallback(
+    (...identifiers: (string | undefined | null)[]): number | null => {
+      const map = state.userPointsMap || stateRef.current.userPointsMap || {};
+      const val = lookupNormalizedRecordValue(map, identifiers);
+      return typeof val === "number" && Number.isFinite(val) ? val : null;
+    },
+    [state.userPointsMap]
+  );
+
+  const syncUserPointsBalance = useCallback(
+    (params: {
+      id?: string | null;
+      email?: string | null;
+      name?: string | null;
+      username?: string | null;
+      newPoints: number;
+    }): number => {
+      const cleanPoints = Math.max(0, Math.round(Number(params.newPoints) || 0));
+      const keys = normalizeAvatarKeys(params);
+      const patchForChannel: Record<string, number> = {};
+      const expiresAt = Date.now() + 15000;
+      keys.forEach((k) => {
+        recentPointLocksRef.current.set(k, { value: cleanPoints, expiresAt });
+        patchForChannel[k] = cleanPoints;
+      });
+
+      const mergedPtsMap: Record<string, number> = {
+        ...(stateRef.current.userPointsMap || {}),
+        ...patchForChannel,
+      };
+
+      if (typeof window !== "undefined" && keys.length > 0) {
+        try {
+          window.localStorage.setItem(
+            "ruang_sosmed_user_points_map_v1",
+            JSON.stringify(mergedPtsMap)
+          );
+          if ("BroadcastChannel" in window) {
+            const bc = new BroadcastChannel("ruang_sosmed_channel");
+            bc.postMessage({
+              type: "USER_POINTS_UPDATED",
+              userPointsMap: patchForChannel,
+              newPoints: cleanPoints,
+            });
+            bc.close();
+          }
+        } catch {}
+      }
+
+      const activeSess = getActiveSessionUser();
+      const matchesSessionUser =
+        lookupNormalizedRecordValue(patchForChannel, [
+          activeSess.email,
+          activeSess.name,
+          activeSess.username,
+        ]) !== undefined;
+
+      setState((prev) => {
+        const keySet = new Set(keys);
+        const nextLeaderboard = (prev.leaderboard || [])
+          .map((l) => {
+            const lKey = (l.name || "").trim().toLowerCase();
+            return lKey && keySet.has(lKey) ? { ...l, points: cleanPoints } : l;
+          })
+          .sort((a, b) => b.points - a.points)
+          .map((l, idx) => ({ ...l, rank: idx + 1 }));
+
+        return {
+          ...prev,
+          userPointsMap: mergedPtsMap,
+          leaderboard: nextLeaderboard,
+          learnerPoints: matchesSessionUser ? cleanPoints : prev.learnerPoints,
+        };
+      });
+
+      void persistUserPointsToSupabase({
+        id: params.id,
+        email: params.email,
+        name: params.name,
+        username: params.username,
+        newPoints: cleanPoints,
+      });
+
+      return cleanPoints;
+    },
+    []
   );
 
   const updateUserAvatarInStore = useCallback(
@@ -8265,6 +8701,8 @@ export function RuangSosmedProvider({
     updateMaintenanceConfig,
     updateUserAvatarInStore,
     resolveUserAvatar,
+    resolveUserPoints,
+    syncUserPointsBalance,
     unassignLearnerFromContent,
     redeemFolderAccessCode,
     updateContentAccessCode,

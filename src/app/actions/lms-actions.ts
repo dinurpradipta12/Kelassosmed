@@ -495,3 +495,139 @@ export async function redeemAccessCodeAction(payload: RedeemAccessCodePayload) {
     matchedTitles,
   };
 }
+
+export interface SyncUserPointsPayload {
+  targetId?: string;
+  targetEmail?: string;
+  targetName?: string;
+  targetUsername?: string;
+  newPoints: number;
+}
+
+export async function syncUserPointsAction(payload: SyncUserPointsPayload) {
+  const cleanPoints = Math.max(0, Math.round(Number(payload.newPoints) || 0));
+  const adminClient = createServiceRoleClient();
+  if (!adminClient) {
+    return {
+      ok: false,
+      error: "Service role client belum tersedia.",
+      points: cleanPoints,
+    };
+  }
+
+  const targetId = (payload.targetId || "").trim();
+  const targetEmail = (payload.targetEmail || "").trim();
+  const targetName = (payload.targetName || "").trim();
+  const targetUsername = (payload.targetUsername || "").trim().replace(/^@+/, "");
+  const isUuidId =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      targetId
+    );
+
+  let updatedProfiles = 0;
+  let updatedUserProfiles = 0;
+
+  try {
+    if (isUuidId) {
+      const { data } = await adminClient
+        .from("profiles")
+        .update({ total_points: cleanPoints })
+        .eq("id", targetId)
+        .select("id");
+      if (Array.isArray(data)) updatedProfiles += data.length;
+    }
+
+    if (updatedProfiles === 0 && targetEmail) {
+      const { data } = await adminClient
+        .from("profiles")
+        .update({ total_points: cleanPoints })
+        .ilike("email", targetEmail)
+        .select("id");
+      if (Array.isArray(data)) updatedProfiles += data.length;
+    }
+
+    if (updatedProfiles === 0 && targetName) {
+      const { data } = await adminClient
+        .from("profiles")
+        .update({ total_points: cleanPoints })
+        .ilike("full_name", targetName)
+        .select("id");
+      if (Array.isArray(data)) updatedProfiles += data.length;
+    }
+  } catch {}
+
+  try {
+    const matchedRows: any[] = [];
+    if (isUuidId) {
+      const { data } = await adminClient
+        .from("user_profiles")
+        .select("username, email, perks")
+        .eq("user_id", targetId);
+      if (Array.isArray(data)) matchedRows.push(...data);
+    }
+    if (matchedRows.length === 0 && targetEmail) {
+      const { data } = await adminClient
+        .from("user_profiles")
+        .select("username, email, perks")
+        .ilike("email", targetEmail);
+      if (Array.isArray(data)) matchedRows.push(...data);
+    }
+    if (matchedRows.length === 0 && targetUsername) {
+      const { data } = await adminClient
+        .from("user_profiles")
+        .select("username, email, perks")
+        .ilike("username", targetUsername);
+      if (Array.isArray(data)) matchedRows.push(...data);
+    }
+    if (matchedRows.length === 0 && targetName) {
+      const { data } = await adminClient
+        .from("user_profiles")
+        .select("username, email, perks")
+        .ilike("full_name", targetName);
+      if (Array.isArray(data)) matchedRows.push(...data);
+    }
+
+    const seenUsernames = new Set<string>();
+    for (const row of matchedRows) {
+      const uname = String(row?.username || "").trim();
+      const rowEmail = String(row?.email || "").trim();
+      const dedupKey = (uname || rowEmail).toLowerCase();
+      if (!dedupKey || seenUsernames.has(dedupKey)) continue;
+      seenUsernames.add(dedupKey);
+
+      const nextPerks = {
+        ...(row?.perks && typeof row.perks === "object" ? row.perks : {}),
+        total_points: cleanPoints,
+        points: cleanPoints,
+      };
+
+      if (uname) {
+        const { error } = await adminClient
+          .from("user_profiles")
+          .update({
+            perks: nextPerks,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("username", uname);
+        if (!error) updatedUserProfiles += 1;
+      } else if (rowEmail) {
+        const { error } = await adminClient
+          .from("user_profiles")
+          .update({
+            perks: nextPerks,
+            updated_at: new Date().toISOString(),
+          })
+          .ilike("email", rowEmail);
+        if (!error) updatedUserProfiles += 1;
+      }
+    }
+  } catch {}
+
+  revalidatePath("/");
+  return {
+    ok: updatedProfiles > 0 || updatedUserProfiles > 0,
+    points: cleanPoints,
+    updatedProfiles,
+    updatedUserProfiles,
+  };
+}

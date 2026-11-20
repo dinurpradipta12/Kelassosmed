@@ -19,6 +19,7 @@ import {
   postChapterDiscussionAction,
   saveLessonNoteAndReviewAction,
   redeemAccessCodeAction,
+  syncUserPointsAction,
 } from "@/app/actions/lms-actions";
 import {
   API_SECURITY_HEADERS,
@@ -68,7 +69,8 @@ export async function POST(request: Request) {
         | "grade_submission"
         | "post_discussion"
         | "save_lesson_note_review"
-        | "redeem_access_code";
+        | "redeem_access_code"
+        | "sync_user_points";
       payload: Record<string, unknown>;
     };
 
@@ -130,6 +132,34 @@ export async function POST(request: Request) {
             typeof rawPayload.learnerUsername === "string"
               ? rawPayload.learnerUsername
               : undefined,
+        });
+        return NextResponse.json(res, { headers: API_SECURITY_HEADERS });
+      }
+      case "sync_user_points": {
+        const rawPayload = (payload || {}) as Record<string, unknown>;
+        const isStaff = caller.role === "admin" || caller.role === "mentor";
+        const res = await syncUserPointsAction({
+          targetId: isStaff
+            ? typeof rawPayload.targetId === "string"
+              ? rawPayload.targetId
+              : undefined
+            : caller.user.id,
+          targetEmail: isStaff
+            ? typeof rawPayload.targetEmail === "string"
+              ? rawPayload.targetEmail
+              : caller.email
+            : caller.email,
+          targetName: isStaff
+            ? typeof rawPayload.targetName === "string"
+              ? rawPayload.targetName
+              : caller.fullName
+            : caller.fullName,
+          targetUsername: isStaff
+            ? typeof rawPayload.targetUsername === "string"
+              ? rawPayload.targetUsername
+              : undefined
+            : undefined,
+          newPoints: Number(rawPayload.newPoints ?? 0),
         });
         return NextResponse.json(res, { headers: API_SECURITY_HEADERS });
       }

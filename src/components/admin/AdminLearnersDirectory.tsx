@@ -138,6 +138,9 @@ export function AdminLearnersDirectory({
     claimedRewards,
     assignContentToLearners,
     resolveUserAvatar,
+    resolveUserPoints,
+    syncUserPointsBalance,
+    learnerPoints,
     unassignLearnerFromContent,
   } = useRuangSosmedStore();
 
@@ -379,11 +382,6 @@ export function AdminLearnersDirectory({
             nextProMap[name.toLowerCase()] = tierVal;
           }
 
-          const isOwner =
-            emailLower.includes("dinur") ||
-            emailLower === "admin@ruangsosmed.id";
-          if (isOwner) return;
-
           const initials =
             name
               .split(" ")
@@ -457,7 +455,10 @@ export function AdminLearnersDirectory({
             completedChapters: completedCh,
             totalChapters: totalChCount,
             avgQuizScore: avgQuiz,
-            points: Number(p.total_points || 0),
+            points: Math.max(
+              Number(p.total_points || 0),
+              Number(upMatch?.perks?.total_points ?? upMatch?.perks?.points ?? 0)
+            ),
             credentialId: `RS2-2026-850${idx + 1}`,
             subscriptionTier: tierVal,
             proStartedAt: resolvedStartedAt,
@@ -493,13 +494,6 @@ export function AdminLearnersDirectory({
           nextProMap[name] = tierVal;
           nextProMap[name.toLowerCase()] = tierVal;
           nextProMap[emailLower] = tierVal;
-
-          const isOwner =
-            up.username === "dinur" ||
-            up.username === "admin" ||
-            emailLower.includes("dinur") ||
-            emailLower === "admin@ruangsosmed.id";
-          if (isOwner) return;
 
           if (existingProf) {
             return;
@@ -539,7 +533,10 @@ export function AdminLearnersDirectory({
             completedChapters: 0,
             totalChapters: totalChCount,
             avgQuizScore: 0,
-            points: 0,
+            points: Math.max(
+              0,
+              Number(up.perks?.total_points ?? up.perks?.points ?? 0)
+            ),
             credentialId: `RS2-2026-860${idx + 1}`,
             subscriptionTier: tierVal,
             proStartedAt: up.perks?.pro_started_at ?? subMatch?.started_at ?? null,
@@ -888,27 +885,12 @@ export function AdminLearnersDirectory({
     setIsAdjustingPoints(true);
     const newPoints = finalCalculatedPoints;
     try {
-      if (isSupabaseConfigured) {
-        const isUuid =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-            adjustPointsTarget.id || ""
-          );
-        let targetUuid = isUuid ? adjustPointsTarget.id : null;
-        if (!targetUuid && adjustPointsTarget.email) {
-          const { data: prof } = await supabase
-            .from("profiles")
-            .select("id")
-            .ilike("email", adjustPointsTarget.email)
-            .maybeSingle();
-          targetUuid = prof?.id || null;
-        }
-        if (targetUuid) {
-          await supabase.rpc("admin_adjust_learner_points", {
-            p_target_id: targetUuid,
-            p_new_points: newPoints,
-          });
-        }
-      }
+      syncUserPointsBalance({
+        id: adjustPointsTarget.id,
+        email: adjustPointsTarget.email,
+        name: adjustPointsTarget.name,
+        newPoints,
+      });
 
       // Update local Supabase directory state immediately
       setSupabaseMembers((prev) =>
@@ -1065,7 +1047,7 @@ export function AdminLearnersDirectory({
       completedChapters: 0,
       totalChapters: totalCourseChapters,
       avgQuizScore: 100,
-      points: 500,
+      points: 0,
       credentialId: `RS2-COLLAB-${c.initials}`,
     }));
 
@@ -1215,14 +1197,31 @@ export function AdminLearnersDirectory({
 
   const allDirectoryMembers = Array.from(mergedByEmail.values()).map((member) => {
     const emailLower = (member.email || "").toLowerCase().trim();
+    const mappedPoints = resolveUserPoints(member.email, member.name, member.id);
+    const currentEmailLower = (currentUser?.email || "").toLowerCase().trim();
+    const currentNameLower = (currentUser?.name || "").toLowerCase().trim();
+    const isCurrentSessionMember =
+      (currentEmailLower && emailLower === currentEmailLower) ||
+      (currentNameLower && member.name.toLowerCase().trim() === currentNameLower);
+    const resolvedPoints =
+      mappedPoints !== null
+        ? mappedPoints
+        : isCurrentSessionMember
+        ? learnerPoints
+        : member.points;
+
     const override = localSubOverrides[emailLower];
-    if (!override) return member;
     return {
       ...member,
-      subscriptionTier: override.subscriptionTier,
-      proStartedAt: override.proStartedAt,
-      proExpiresAt: override.proExpiresAt,
-      proPackageName: override.proPackageName,
+      points: resolvedPoints,
+      ...(override
+        ? {
+            subscriptionTier: override.subscriptionTier,
+            proStartedAt: override.proStartedAt,
+            proExpiresAt: override.proExpiresAt,
+            proPackageName: override.proPackageName,
+          }
+        : {}),
     };
   });
 
