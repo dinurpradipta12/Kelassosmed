@@ -504,29 +504,32 @@ export function ActiveLearningClassroom({
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col lg:flex-row bg-slate-50">
+    <div className="min-h-[calc(100vh-3.5rem)] flex flex-col lg:flex-row bg-[#F8FAFC]">
       {/* LEFT / MAIN LEARNING AREA */}
-      <div className="flex-1 min-w-0 px-4 sm:px-6 py-6">
-        <div className="w-full space-y-5">
-          {/* 1. Clean Top Header Bar */}
-          <header className="space-y-2 pb-4 border-b border-slate-200">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+      <div className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-5">
+        <div
+          className={`mx-auto w-full space-y-4 transition-[max-width] duration-200 ${
+            sidebarCollapsed ? "max-w-5xl" : "max-w-4xl"
+          }`}
+        >
+          {/* 1. Compact & Friendly Header Bar */}
+          <header className="space-y-2 pb-3 border-b border-slate-200/80">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                 <button
                   type="button"
                   onClick={onBackToOverview}
-                  className="inline-flex items-center gap-1 font-semibold text-slate-700 hover:text-[#4F39F6] transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200/80 px-2.5 py-1 font-semibold text-slate-700 hover:text-[#4F39F6] transition-colors cursor-pointer"
                 >
-                  <ChevronLeft size={14} />
+                  <ChevronLeft size={13} />
                   <span>Daftar Materi</span>
                 </button>
                 <span className="text-slate-300">/</span>
-                <span className="font-medium text-slate-600 truncate max-w-[200px] sm:max-w-xs">
+                <span className="font-medium text-slate-600 truncate max-w-[180px] sm:max-w-xs">
                   {courseTitle}
                 </span>
-                <span className="text-slate-300">/</span>
-                <span className="font-semibold text-[#4F39F6]">
-                  Bab {currentIndex + 1} dari {flatChapters.length}
+                <span className="inline-flex items-center rounded-full bg-[#4F39F6]/10 px-2 py-0.5 text-[11px] font-bold text-[#4F39F6]">
+                  Bab {currentIndex + 1} / {flatChapters.length}
                 </span>
               </div>
 
@@ -558,62 +561,338 @@ export function ActiveLearningClassroom({
               </div>
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-              {currentChapter.title}
-            </h1>
-
-            <p className="text-xs text-slate-500">
-              {currentChapter.type} • {currentChapter.duration} • +
-              {currentChapter.points} poin
-            </p>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 pt-0.5">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight leading-snug">
+                {currentChapter.title}
+              </h1>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 shrink-0">
+                <span className="rounded-md bg-slate-200/70 px-1.5 py-0.5 font-semibold text-slate-700">
+                  {currentChapter.type}
+                </span>
+                <span>•</span>
+                <span>{currentChapter.duration}</span>
+                <span>•</span>
+                <span className="font-semibold text-amber-600">
+                  +{currentChapter.points} poin
+                </span>
+              </span>
+            </div>
           </header>
 
-          {/* 2. Video Player (Only if not hidden) */}
-          {!currentChapter.hideVideoBlock && (
-            <div className="overflow-hidden rounded-2xl bg-slate-950 border border-slate-200">
-              {youtubeEmbedUrl ? (
-                <div className="w-full aspect-video">
-                  <iframe
-                    src={youtubeEmbedUrl}
-                    title={currentChapter.videoTitle || currentChapter.title}
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="h-60 sm:h-72 w-full flex flex-col items-center justify-center p-6 text-center text-white">
-                    <button
-                      type="button"
-                      onClick={() => setVideoPlaying((p) => !p)}
-                      aria-label={videoPlaying ? "Pause video" : "Play video"}
-                      className="flex h-14 w-14 items-center justify-center rounded-full bg-[#4F39F6] hover:bg-[#3B28CC] text-white transition-transform hover:scale-105 cursor-pointer mb-3"
-                    >
-                      <Play size={22} fill="currentColor" />
-                    </button>
-                    <p className="text-sm font-semibold">
-                      {currentChapter.videoTitle || currentChapter.title}
-                    </p>
-                    <p className="text-xs text-slate-300 mt-1">
-                      {videoPlaying
-                        ? "Memutar video materi..."
-                        : "Klik untuk memutar video materi"}{" "}
-                      • {currentChapter.videoDuration || currentChapter.duration}
-                    </p>
+          {/* 2. Unified Video Player & Immediate Action Card */}
+          <div className="overflow-hidden rounded-2xl bg-white border border-slate-200/90 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+            {!currentChapter.hideVideoBlock && (
+              <div className="bg-slate-950 w-full flex justify-center">
+                {youtubeEmbedUrl ? (
+                  <div className="w-full aspect-video max-h-[420px] sm:max-h-[460px]">
+                    <iframe
+                      src={youtubeEmbedUrl}
+                      title={currentChapter.videoTitle || currentChapter.title}
+                      className="w-full h-full border-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                    />
                   </div>
-                  <div className="bg-slate-900 px-4 py-2 flex items-center justify-between gap-3 text-[11px] text-slate-300">
-                    <span>{videoPlaying ? "03:18" : "00:00"}</span>
-                    <div className="flex-1 h-1.5 rounded-full bg-white/15 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[#4F39F6] transition-all"
-                        style={{ width: videoPlaying ? "42%" : "8%" }}
-                      />
+                ) : (
+                  <div className="w-full">
+                    <div className="h-56 sm:h-68 w-full flex flex-col items-center justify-center p-6 text-center text-white">
+                      <button
+                        type="button"
+                        onClick={() => setVideoPlaying((p) => !p)}
+                        aria-label={videoPlaying ? "Pause video" : "Play video"}
+                        className="flex h-13 w-13 items-center justify-center rounded-full bg-[#4F39F6] hover:bg-[#3B28CC] text-white transition-transform hover:scale-105 cursor-pointer mb-3 shadow-lg"
+                      >
+                        <Play size={20} fill="currentColor" />
+                      </button>
+                      <p className="text-sm font-semibold max-w-md">
+                        {currentChapter.videoTitle || currentChapter.title}
+                      </p>
+                      <p className="text-xs text-slate-300 mt-1">
+                        {videoPlaying
+                          ? "Memutar video materi..."
+                          : "Klik untuk memutar video materi"}{" "}
+                        •{" "}
+                        {currentChapter.videoDuration || currentChapter.duration}
+                      </p>
                     </div>
-                    <span>{currentChapter.duration}</span>
+                    <div className="bg-slate-900/95 px-4 py-2 flex items-center justify-between gap-3 text-[11px] text-slate-300">
+                      <span className="tabular-nums">
+                        {videoPlaying ? "03:18" : "00:00"}
+                      </span>
+                      <div className="flex-1 h-1.5 rounded-full bg-white/15 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-[#4F39F6] transition-all"
+                          style={{ width: videoPlaying ? "42%" : "8%" }}
+                        />
+                      </div>
+                      <span className="tabular-nums">
+                        {currentChapter.duration}
+                      </span>
+                    </div>
                   </div>
-                </>
+                )}
+              </div>
+            )}
+
+            {/* Immediate Lesson Action Bar Directly Under Video */}
+            <div
+              className={`p-3.5 sm:px-4 sm:py-3 bg-white flex flex-wrap items-center justify-between gap-3 ${
+                !currentChapter.hideVideoBlock ? "border-t border-slate-100" : ""
+              }`}
+            >
+              {/* Left: Notes / Reviews / Report Pills */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveUtilityTab((t) => (t === "notes" ? null : "notes"))
+                  }
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-colors cursor-pointer ${
+                    activeUtilityTab === "notes"
+                      ? "bg-[#4F39F6]/8 border-[#4F39F6] text-[#4F39F6]"
+                      : "bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  <StickyNote size={13} />
+                  <span>Catatan</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveUtilityTab((t) =>
+                      t === "reviews" ? null : "reviews"
+                    )
+                  }
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium border transition-colors cursor-pointer ${
+                    activeUtilityTab === "reviews"
+                      ? "bg-[#4F39F6]/8 border-[#4F39F6] text-[#4F39F6]"
+                      : "bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  <Star size={13} className="text-amber-500" />
+                  <span>Ulasan ({allSanitizedReviews.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
+                >
+                  <Flag size={12} />
+                  <span className="hidden sm:inline">Laporkan</span>
+                </button>
+              </div>
+
+              {/* Right: Complete & Next Chapter Navigation */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!prevChapter}
+                  onClick={() => prevChapter && onSelectChapter(prevChapter.id)}
+                  className="inline-flex items-center gap-1 rounded-xl bg-slate-50 hover:bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                >
+                  <ChevronLeft size={13} />
+                  <span>Sebelumnya</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onMarkChapterComplete(
+                      currentChapter.id,
+                      currentChapter.points
+                    )
+                  }
+                  className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    currentChapter.completed
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
+                  }`}
+                >
+                  <Check size={13} strokeWidth={2.5} />
+                  <span>
+                    {currentChapter.completed
+                      ? `Selesai (+${currentChapter.points})`
+                      : `Tandai Selesai (+${currentChapter.points} Poin)`}
+                  </span>
+                </button>
+
+                {nextChapter ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isChapterProOnly(nextChapter) && !learnerIsPro) {
+                        onShowToast(
+                          "🔒 Bab Lanjutan (Advance Module) khusus member Learner PRO. Silakan upgrade ke PRO."
+                        );
+                        onOpenUpgradeModal?.();
+                        return;
+                      }
+                      if (nextChapter.type === "Quiz") {
+                        onStartQuizRunner();
+                      } else {
+                        onSelectChapter(nextChapter.id);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-1.5 text-xs font-semibold text-white cursor-pointer transition-colors shadow-2xs"
+                  >
+                    <span>Berikutnya</span>
+                    <ChevronRight size={13} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!currentChapter.completed) {
+                        onMarkChapterComplete(
+                          currentChapter.id,
+                          currentChapter.points
+                        );
+                      }
+                      setCourseCompleteScreenOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-1.5 text-xs font-semibold text-white cursor-pointer transition-colors shadow-2xs"
+                  >
+                    <Check size={13} strokeWidth={2.5} />
+                    <span>Selesaikan Kelas</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Expandable Utility Panel Directly Below Player (Notes / Reviews) */}
+          {activeUtilityTab === "notes" && (
+            <div className="rounded-2xl bg-white p-5 border border-slate-200/90 space-y-3 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <StickyNote size={15} className="text-[#4F39F6]" />
+                  <h3 className="text-xs font-bold text-slate-900">
+                    Catatan Pribadi — {currentChapter.title}
+                  </h3>
+                </div>
+                {learnerIsPro ? (
+                  <span className="text-[11px] font-medium text-emerald-600">
+                    Tersimpan otomatis
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                    <Lock size={9} />
+                    PRO
+                  </span>
+                )}
+              </div>
+
+              {learnerIsPro ? (
+                <textarea
+                  rows={4}
+                  value={rsLessonNotes?.[currentChapter.id] ?? ""}
+                  onChange={(e) =>
+                    saveRsLessonNote(currentChapter.id, e.target.value)
+                  }
+                  placeholder="Tulis catatan atau poin penting dari materi ini..."
+                  className="w-full rounded-xl bg-slate-50 p-3 text-xs text-slate-800 border border-slate-200 focus:bg-white focus:border-[#4F39F6] focus:outline-none leading-relaxed"
+                />
+              ) : (
+                <div className="rounded-xl bg-amber-50/70 border border-amber-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <p className="text-xs text-amber-900">
+                    Catatan pribadi per bab tersedia untuk member Learner PRO.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onOpenUpgradeModal?.()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-white cursor-pointer shrink-0"
+                  >
+                    <Zap size={11} className="text-amber-400" fill="currentColor" />
+                    <span>Upgrade PRO</span>
+                  </button>
+                </div>
               )}
+            </div>
+          )}
+
+          {activeUtilityTab === "reviews" && (
+            <div className="rounded-2xl bg-white p-5 border border-slate-200/90 space-y-3 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Star
+                    size={15}
+                    className="text-amber-500"
+                    fill="currentColor"
+                  />
+                  <h3 className="text-xs font-bold text-slate-900">
+                    Ulasan &amp; Rating Materi
+                  </h3>
+                </div>
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      aria-label={`Beri ${star} bintang`}
+                      className="p-0.5 cursor-pointer"
+                    >
+                      <Star
+                        size={15}
+                        className={
+                          star <= reviewRating
+                            ? "text-amber-500"
+                            : "text-slate-300"
+                        }
+                        fill={star <= reviewRating ? "currentColor" : "none"}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={reviewFeedback}
+                  onChange={(e) => setReviewFeedback(e.target.value)}
+                  placeholder="Tulis ulasan atau masukan Anda untuk materi ini..."
+                  className="flex-1 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-900 border border-slate-200 focus:bg-white focus:border-[#4F39F6] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!reviewFeedback.trim()) return;
+                    submitRsLessonReview({
+                      lessonKey: currentChapter.id,
+                      rating: reviewRating,
+                      feedback: reviewFeedback.trim(),
+                      reviewerName: learnerName,
+                      reviewerUsername: learnerName
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]/g, "."),
+                    });
+                    setReviewFeedback("");
+                    onShowToast(
+                      `Terima kasih! Ulasan ${reviewRating}★ berhasil dikirim.`
+                    );
+                  }}
+                  className="rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-2 text-xs font-semibold text-white cursor-pointer shrink-0"
+                >
+                  Kirim
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between pt-1 text-xs text-slate-500">
+                <span>
+                  Rata-rata {reviewStats.average} ★ dari{" "}
+                  {allSanitizedReviews.length} ulasan
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReviewRecapModalOpen(true)}
+                  className="font-semibold text-[#4F39F6] hover:underline cursor-pointer"
+                >
+                  Lihat semua ulasan
+                </button>
+              </div>
             </div>
           )}
 
@@ -852,263 +1131,7 @@ export function ActiveLearningClassroom({
             </article>
           )}
 
-          {/* 4. Primary Chapter Navigation Bar (Directly Below Content) */}
-          <div className="rounded-2xl bg-white p-4 border border-slate-200/90 flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              disabled={!prevChapter}
-              onClick={() => prevChapter && onSelectChapter(prevChapter.id)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-700 border border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-            >
-              <ChevronLeft size={14} />
-              <span>Bab Sebelumnya</span>
-            </button>
-
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() =>
-                  onMarkChapterComplete(currentChapter.id, currentChapter.points)
-                }
-                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-colors cursor-pointer ${
-                  currentChapter.completed
-                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                }`}
-              >
-                <Check size={14} strokeWidth={2.5} />
-                <span>
-                  {currentChapter.completed
-                    ? `Sudah Selesai (+${currentChapter.points} Poin)`
-                    : `Tandai Selesai (+${currentChapter.points} Poin)`}
-                </span>
-              </button>
-
-              {nextChapter ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isChapterProOnly(nextChapter) && !learnerIsPro) {
-                      onShowToast(
-                        "🔒 Bab Lanjutan (Advance Module) khusus member Learner PRO. Silakan upgrade ke PRO."
-                      );
-                      onOpenUpgradeModal?.();
-                      return;
-                    }
-                    if (nextChapter.type === "Quiz") {
-                      onStartQuizRunner();
-                    } else {
-                      onSelectChapter(nextChapter.id);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-semibold text-white cursor-pointer transition-colors"
-                >
-                  <span>Bab Berikutnya</span>
-                  <ChevronRight size={14} />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!currentChapter.completed) {
-                      onMarkChapterComplete(
-                        currentChapter.id,
-                        currentChapter.points
-                      );
-                    }
-                    setCourseCompleteScreenOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-semibold text-white cursor-pointer transition-colors"
-                >
-                  <Check size={14} strokeWidth={2.5} />
-                  <span>Selesaikan Kelas</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* 5. Optional On-Demand Utility Bar (Notes, Reviews, Report Issue) */}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveUtilityTab((t) => (t === "notes" ? null : "notes"))
-                  }
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors cursor-pointer ${
-                    activeUtilityTab === "notes"
-                      ? "bg-white border-[#4F39F6] text-[#4F39F6]"
-                      : "bg-white border-slate-200 text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <StickyNote size={13} />
-                  <span>Catatan Pribadi</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActiveUtilityTab((t) =>
-                      t === "reviews" ? null : "reviews"
-                    )
-                  }
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors cursor-pointer ${
-                    activeUtilityTab === "reviews"
-                      ? "bg-white border-[#4F39F6] text-[#4F39F6]"
-                      : "bg-white border-slate-200 text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <Star size={13} className="text-amber-500" />
-                  <span>Beri Ulasan ({allSanitizedReviews.length})</span>
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setReportModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
-              >
-                <Flag size={12} />
-                <span>Laporkan Kendala</span>
-              </button>
-            </div>
-
-            {/* Expandable Notes Panel */}
-            {activeUtilityTab === "notes" && (
-              <div className="rounded-2xl bg-white p-5 border border-slate-200/90 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <StickyNote size={15} className="text-[#4F39F6]" />
-                    <h3 className="text-xs font-bold text-slate-900">
-                      Catatan Pribadi
-                    </h3>
-                  </div>
-                  {learnerIsPro ? (
-                    <span className="text-[11px] font-medium text-emerald-600">
-                      Tersimpan otomatis
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                      <Lock size={9} />
-                      PRO
-                    </span>
-                  )}
-                </div>
-
-                {learnerIsPro ? (
-                  <textarea
-                    rows={4}
-                    value={rsLessonNotes?.[currentChapter.id] ?? ""}
-                    onChange={(e) =>
-                      saveRsLessonNote(currentChapter.id, e.target.value)
-                    }
-                    placeholder="Tulis catatan atau poin penting dari materi ini..."
-                    className="w-full rounded-xl bg-slate-50 p-3 text-xs text-slate-800 border border-slate-200 focus:bg-white focus:border-[#4F39F6] focus:outline-none leading-relaxed"
-                  />
-                ) : (
-                  <div className="rounded-xl bg-amber-50/70 border border-amber-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <p className="text-xs text-amber-900">
-                      Catatan pribadi per bab tersedia untuk member Learner PRO.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => onOpenUpgradeModal?.()}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-white cursor-pointer shrink-0"
-                    >
-                      <Zap size={11} className="text-amber-400" fill="currentColor" />
-                      <span>Upgrade PRO</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Expandable Reviews Panel */}
-            {activeUtilityTab === "reviews" && (
-              <div className="rounded-2xl bg-white p-5 border border-slate-200/90 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Star
-                      size={15}
-                      className="text-amber-500"
-                      fill="currentColor"
-                    />
-                    <h3 className="text-xs font-bold text-slate-900">
-                      Ulasan &amp; Rating Materi
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setReviewRating(star)}
-                        aria-label={`Beri ${star} bintang`}
-                        className="p-0.5 cursor-pointer"
-                      >
-                        <Star
-                          size={15}
-                          className={
-                            star <= reviewRating
-                              ? "text-amber-500"
-                              : "text-slate-300"
-                          }
-                          fill={star <= reviewRating ? "currentColor" : "none"}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={reviewFeedback}
-                    onChange={(e) => setReviewFeedback(e.target.value)}
-                    placeholder="Tulis ulasan atau masukan Anda untuk materi ini..."
-                    className="flex-1 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-900 border border-slate-200 focus:bg-white focus:border-[#4F39F6] focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!reviewFeedback.trim()) return;
-                      submitRsLessonReview({
-                        lessonKey: currentChapter.id,
-                        rating: reviewRating,
-                        feedback: reviewFeedback.trim(),
-                        reviewerName: learnerName,
-                        reviewerUsername: learnerName
-                          .toLowerCase()
-                          .replace(/[^a-z0-9]/g, "."),
-                      });
-                      setReviewFeedback("");
-                      onShowToast(
-                        `Terima kasih! Ulasan ${reviewRating}★ berhasil dikirim.`
-                      );
-                    }}
-                    className="rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-2 text-xs font-semibold text-white cursor-pointer shrink-0"
-                  >
-                    Kirim
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between pt-1 text-xs text-slate-500">
-                  <span>
-                    Rata-rata {reviewStats.average} ★ dari{" "}
-                    {allSanitizedReviews.length} ulasan
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setReviewRecapModalOpen(true)}
-                    className="font-semibold text-[#4F39F6] hover:underline cursor-pointer"
-                  >
-                    Lihat semua ulasan
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Closing Left Main Learning Container */}
         </div>
       </div>
 
@@ -1181,34 +1204,32 @@ export function ActiveLearningClassroom({
       ) : (
         <aside
           aria-label="Daftar Bab & Diskusi"
-          className="w-full lg:w-[340px] xl:w-[360px] bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col shrink-0"
+          className="w-full lg:w-[350px] xl:w-[370px] bg-white border-t lg:border-t-0 lg:border-l border-slate-200/90 flex flex-col shrink-0 lg:sticky lg:top-0 lg:h-[calc(100vh-3.5rem)]"
         >
-          <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+          {/* Fixed Top Sidebar Header (Progress + Tabs + Search) */}
+          <div className="p-3.5 border-b border-slate-100 space-y-3 shrink-0 bg-white">
             {/* Compact Course Progress Header */}
-            <div className="rounded-xl bg-slate-50 p-3.5 border border-slate-200/80 space-y-2">
+            <div className="rounded-xl bg-slate-50/90 px-3 py-2.5 border border-slate-200/70 space-y-1.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-900">
+                <span className="font-semibold text-slate-800">
                   Progres Belajar
                 </span>
-                <span className="font-bold text-emerald-700 tabular-nums">
-                  {progressPct}%
+                <span className="text-[11px] font-bold text-emerald-700 tabular-nums">
+                  {totalCompleted}/{flatChapters.length} bab ({progressPct}%)
                 </span>
               </div>
-              <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+              <div className="h-1.5 w-full rounded-full bg-slate-200/80 overflow-hidden">
                 <div
                   className="h-full rounded-full bg-emerald-500 transition-all duration-300"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
-              <p className="text-[11px] text-slate-500">
-                {totalCompleted} dari {flatChapters.length} bab selesai
-              </p>
             </div>
 
             {/* Sidebar Tabs */}
             <div
               role="tablist"
-              className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1"
+              className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100/90 p-1"
             >
               <button
                 type="button"
@@ -1256,17 +1277,37 @@ export function ActiveLearningClassroom({
               </button>
             </div>
 
-            {/* TAB 1: DAFTAR BAB */}
             {rightDockTab === "curriculum" && (
-              <div className="space-y-3">
+              <div className="relative flex items-center">
+                <Search
+                  size={13}
+                  className="pointer-events-none absolute left-3 text-slate-400"
+                />
                 <input
                   type="text"
                   value={curriculumSearch}
                   onChange={(e) => setCurriculumSearch(e.target.value)}
                   placeholder="Cari judul bab..."
-                  className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-900 border border-slate-200 focus:bg-white focus:border-[#4F39F6] focus:outline-none"
+                  className="w-full rounded-xl bg-slate-50 pl-8 pr-7 py-2 text-xs text-slate-900 placeholder:text-slate-400 border border-slate-200/80 focus:bg-white focus:border-[#4F39F6] focus:outline-none"
                 />
+                {curriculumSearch.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setCurriculumSearch("")}
+                    aria-label="Hapus pencarian bab"
+                    className="absolute right-2 rounded p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
+          <div className="p-3 space-y-3 flex-1 overflow-y-auto">
+            {/* TAB 1: DAFTAR BAB */}
+            {rightDockTab === "curriculum" && (
+              <div className="space-y-3">
                 {visibleSections.map((sec) => {
                   const filteredChs = sec.chapters.filter(
                     (c) =>
@@ -1276,24 +1317,42 @@ export function ActiveLearningClassroom({
                         .includes(curriculumSearch.toLowerCase())
                   );
                   if (filteredChs.length === 0) return null;
+                  const sectionCompletedCount = filteredChs.filter(
+                    (c) => c.completed
+                  ).length;
+
                   return (
                     <details
                       key={sec.id}
                       open
-                      className="group rounded-xl border border-slate-200 overflow-hidden"
+                      className="group rounded-xl border border-slate-200/80 bg-slate-50/50 overflow-hidden"
                     >
-                      <summary className="flex items-center justify-between px-3 py-2.5 bg-slate-50 text-xs font-semibold text-slate-900 cursor-pointer list-none">
-                        <span className="truncate">{sec.shortTitle || sec.sectionTitle}</span>
-                        <ChevronDown
-                          size={14}
-                          className="text-slate-500 shrink-0 transition-transform group-open:rotate-0 -rotate-90"
-                        />
+                      <summary className="flex items-center justify-between gap-2 px-3 py-2.5 bg-slate-100/70 text-[11px] font-bold text-slate-700 cursor-pointer list-none">
+                        <span className="truncate">
+                          {sec.shortTitle || sec.sectionTitle}
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200/70 tabular-nums">
+                            {sectionCompletedCount}/{filteredChs.length}
+                          </span>
+                          <ChevronDown
+                            size={13}
+                            className="text-slate-500 shrink-0 transition-transform group-open:rotate-0 -rotate-90"
+                          />
+                        </div>
                       </summary>
-                      <div className="divide-y divide-slate-100 bg-white">
+                      <div className="p-1.5 space-y-1 bg-white">
                         {filteredChs.map((ch) => {
                           const isActive = ch.id === currentChapter.id;
                           const proOnly = isChapterProOnly(ch);
                           const proLocked = proOnly && !learnerIsPro;
+                          const globalIdx = flatChapters.findIndex(
+                            (fc) => fc.id === ch.id
+                          );
+                          const globalNum = String(
+                            (globalIdx >= 0 ? globalIdx : 0) + 1
+                          ).padStart(2, "0");
+
                           return (
                             <button
                               key={ch.id}
@@ -1320,49 +1379,67 @@ export function ActiveLearningClassroom({
                                   onSelectChapter(ch.id);
                                 }
                               }}
-                              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left text-xs transition-colors cursor-pointer ${
+                              className={`w-full flex items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all cursor-pointer ${
                                 isActive
-                                  ? "bg-indigo-50 font-semibold text-[#4F39F6]"
+                                  ? "bg-[#4F39F6]/8 border border-[#4F39F6]/25 shadow-2xs"
                                   : proLocked
-                                  ? "text-slate-500 hover:bg-amber-50/60"
-                                  : "text-slate-700 hover:bg-slate-50"
+                                  ? "border border-transparent hover:bg-amber-50/60"
+                                  : "border border-transparent hover:bg-slate-50"
                               }`}
                             >
-                              <div className="flex items-center gap-2 min-w-0">
-                                {proLocked ? (
-                                  <Lock
-                                    size={12}
-                                    className="text-amber-600 shrink-0"
-                                  />
+                              {/* Step Number / Active Play / Completed / Lock Icon */}
+                              <span
+                                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold transition-colors ${
+                                  proLocked
+                                    ? "bg-amber-50 text-amber-600 border border-amber-200/70"
+                                    : ch.completed
+                                    ? "bg-emerald-500 text-white"
+                                    : ch.locked
+                                    ? "bg-slate-100 text-slate-400"
+                                    : isActive
+                                    ? "bg-[#4F39F6] text-white shadow-2xs"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {proLocked || ch.locked ? (
+                                  <Lock size={11} />
                                 ) : ch.completed ? (
-                                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-                                    <Check size={10} strokeWidth={3} />
-                                  </span>
-                                ) : ch.locked ? (
-                                  <Lock
-                                    size={12}
-                                    className="text-slate-400 shrink-0"
-                                  />
+                                  <Check size={12} strokeWidth={3} />
+                                ) : isActive ? (
+                                  <Play size={10} fill="currentColor" />
                                 ) : (
-                                  <span
-                                    className={`h-2 w-2 rounded-full shrink-0 ${
-                                      isActive
-                                        ? "bg-[#4F39F6]"
-                                        : "bg-slate-300"
-                                    }`}
-                                  />
+                                  globalNum
                                 )}
-                                <span className="truncate">{ch.title}</span>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                {proOnly && (
-                                  <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-semibold text-amber-800">
-                                    PRO
-                                  </span>
-                                )}
-                                <span className="text-[10px] text-slate-400">
-                                  {ch.duration}
-                                </span>
+                              </span>
+
+                              {/* Readable 2-line Title & Secondary Metadata Row */}
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className={`text-xs leading-snug line-clamp-2 ${
+                                    isActive
+                                      ? "font-bold text-[#4F39F6]"
+                                      : ch.completed
+                                      ? "font-medium text-slate-700"
+                                      : proLocked
+                                      ? "font-medium text-slate-500"
+                                      : "font-medium text-slate-800"
+                                  }`}
+                                >
+                                  {ch.title}
+                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400">
+                                  <span>{ch.duration}</span>
+                                  {isActive && (
+                                    <span className="rounded bg-[#4F39F6]/10 px-1.5 py-0.2 font-semibold text-[#4F39F6]">
+                                      Sedang diputar
+                                    </span>
+                                  )}
+                                  {proOnly && (
+                                    <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.2 font-semibold text-amber-800">
+                                      PRO
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </button>
                           );
