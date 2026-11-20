@@ -11,6 +11,7 @@ import {
   Inbox,
   Check,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
@@ -39,6 +40,8 @@ export function AdminMentorInbox({
   const {
     discussionThreads,
     postDiscussionMessage,
+    deleteDiscussionThread,
+    deleteDiscussionReply,
     reportedIssues,
     toggleReportedIssueStatus,
     addLearnerNotification,
@@ -52,6 +55,9 @@ export function AdminMentorInbox({
   >("all");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [confirmDeleteThreadId, setConfirmDeleteThreadId] = useState<
+    string | null
+  >(null);
 
   const [issueFilter, setIssueFilter] = useState<"all" | "Open" | "Resolved">(
     "all"
@@ -300,11 +306,21 @@ export function AdminMentorInbox({
                       (r) => !isMentorOrAdminRole(r.authorRole)
                     ) || lastMsg;
 
+                  const isConfirmingListDelete =
+                    confirmDeleteThreadId === `list:${thread.id}`;
+
                   return (
-                    <button
+                    <div
                       key={thread.id}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedThreadId(thread.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedThreadId(thread.id);
+                        }
+                      }}
                       className={`w-full text-left p-4 transition-colors cursor-pointer space-y-2 ${
                         isSelected
                           ? "bg-indigo-50/60"
@@ -349,26 +365,84 @@ export function AdminMentorInbox({
                           </div>
                         </div>
 
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 ${
-                            awaiting
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          }`}
-                        >
-                          {awaiting ? (
-                            <>
-                              <Clock size={10} />
-                              <span>Perlu Balasan</span>
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 size={10} />
-                              <span>Sudah Dibalas</span>
-                            </>
-                          )}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 ${
+                              awaiting
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            }`}
+                          >
+                            {awaiting ? (
+                              <>
+                                <Clock size={10} />
+                                <span>Perlu Balasan</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 size={10} />
+                                <span>Sudah Dibalas</span>
+                              </>
+                            )}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteThreadId(
+                                isConfirmingListDelete
+                                  ? null
+                                  : `list:${thread.id}`
+                              );
+                            }}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Hapus diskusi ini (Admin Studio)"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
+
+                      {isConfirmingListDelete && (
+                        <div
+                          className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="text-[11px] font-semibold text-rose-700">
+                            Hapus permanen dari sistem &amp; siswa?
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteDiscussionThread(thread.id);
+                                setConfirmDeleteThreadId(null);
+                                if (selectedThreadId === thread.id) {
+                                  setSelectedThreadId(null);
+                                }
+                                onShowToast(
+                                  "Diskusi berhasil dihapus permanen dan disembunyikan dari siswa."
+                                );
+                              }}
+                              className="rounded-md bg-rose-600 hover:bg-rose-700 px-2 py-0.5 text-[10px] font-bold text-white cursor-pointer"
+                            >
+                              Ya, Hapus
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteThreadId(null);
+                              }}
+                              className="rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="space-y-1">
                         <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 max-w-full truncate">
@@ -381,7 +455,7 @@ export function AdminMentorInbox({
                           {lastMsg?.message || thread.excerpt}
                         </p>
                       </div>
-                    </button>
+                    </div>
                   );
                 })
               )}
@@ -413,9 +487,56 @@ export function AdminMentorInbox({
                       {activeThread.title}
                     </h2>
                   </div>
-                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 shrink-0">
-                    {activeThread.replies.length} pesan
-                  </span>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                      {activeThread.replies.length} pesan
+                    </span>
+
+                    {confirmDeleteThreadId === `header:${activeThread.id}` ? (
+                      <div className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1">
+                        <span className="text-[11px] font-semibold text-rose-700">
+                          Yakin hapus?
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const delId = activeThread.id;
+                            deleteDiscussionThread(delId);
+                            setConfirmDeleteThreadId(null);
+                            if (selectedThreadId === delId) {
+                              setSelectedThreadId(null);
+                            }
+                            onShowToast(
+                              "Diskusi berhasil dihapus permanen dan disembunyikan dari siswa."
+                            );
+                          }}
+                          className="rounded-md bg-rose-600 hover:bg-rose-700 px-2 py-0.5 text-[11px] font-bold text-white transition-colors cursor-pointer"
+                        >
+                          Ya, Hapus
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteThreadId(null)}
+                          className="rounded-md bg-white border border-slate-200 hover:bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600 transition-colors cursor-pointer"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmDeleteThreadId(`header:${activeThread.id}`)
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title="Hapus diskusi ini (Admin Studio)"
+                      >
+                        <Trash2 size={13} />
+                        <span>Hapus Diskusi</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Chat History */}
@@ -438,36 +559,66 @@ export function AdminMentorInbox({
                           }`}
                         >
                           <div
-                            className={`flex items-center gap-2 text-[10px] font-semibold ${
+                            className={`flex items-center justify-between gap-3 text-[10px] font-semibold ${
                               isMentor ? "text-indigo-100" : "text-slate-500"
                             }`}
                           >
-                            {repAvatar ? (
-                              <img
-                                src={repAvatar}
-                                alt={rep.authorName}
-                                className="h-5 w-5 rounded-full object-cover border border-white/40 shrink-0"
-                              />
-                            ) : (
-                              <span
-                                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
-                                style={{
-                                  backgroundColor: isMentor
-                                    ? "rgba(255,255,255,0.2)"
-                                    : rep.avatarBg || "#EEF2FF",
-                                  color: isMentor
-                                    ? "#FFFFFF"
-                                    : rep.avatarText || "#4F39F6",
-                                }}
-                              >
-                                {rep.authorInitials || "U"}
-                              </span>
-                            )}
-                            <span>{rep.authorName}</span>
-                            <span>•</span>
-                            <span>{rep.authorRole}</span>
-                            <span>•</span>
-                            <span>{rep.timestamp}</span>
+                            <div className="flex items-center gap-2">
+                              {repAvatar ? (
+                                <img
+                                  src={repAvatar}
+                                  alt={rep.authorName}
+                                  className="h-5 w-5 rounded-full object-cover border border-white/40 shrink-0"
+                                />
+                              ) : (
+                                <span
+                                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold"
+                                  style={{
+                                    backgroundColor: isMentor
+                                      ? "rgba(255,255,255,0.2)"
+                                      : rep.avatarBg || "#EEF2FF",
+                                    color: isMentor
+                                      ? "#FFFFFF"
+                                      : rep.avatarText || "#4F39F6",
+                                  }}
+                                >
+                                  {rep.authorInitials || "U"}
+                                </span>
+                              )}
+                              <span>{rep.authorName}</span>
+                              <span>•</span>
+                              <span>{rep.authorRole}</span>
+                              <span>•</span>
+                              <span>{rep.timestamp}</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const deletingWholeThread =
+                                  activeThread.replies.length <= 1;
+                                deleteDiscussionReply(activeThread.id, rep.id);
+                                if (
+                                  deletingWholeThread &&
+                                  selectedThreadId === activeThread.id
+                                ) {
+                                  setSelectedThreadId(null);
+                                }
+                                onShowToast(
+                                  deletingWholeThread
+                                    ? "Diskusi berhasil dihapus permanen dan disembunyikan dari siswa."
+                                    : "Pesan berhasil dihapus dari diskusi."
+                                );
+                              }}
+                              className={`inline-flex h-5 w-5 items-center justify-center rounded transition-colors cursor-pointer ${
+                                isMentor
+                                  ? "text-indigo-200 hover:bg-white/20 hover:text-white"
+                                  : "text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              }`}
+                              title="Hapus pesan ini (Admin Studio)"
+                            >
+                              <Trash2 size={11} />
+                            </button>
                           </div>
                           <p className="leading-relaxed whitespace-pre-wrap">
                             {rep.message}

@@ -20,6 +20,7 @@ import {
   saveLessonNoteAndReviewAction,
   redeemAccessCodeAction,
   syncUserPointsAction,
+  deleteDiscussionAction,
 } from "@/app/actions/lms-actions";
 import {
   API_SECURITY_HEADERS,
@@ -70,12 +71,15 @@ export async function POST(request: Request) {
         | "post_discussion"
         | "save_lesson_note_review"
         | "redeem_access_code"
-        | "sync_user_points";
+        | "sync_user_points"
+        | "delete_discussion";
       payload: Record<string, unknown>;
     };
 
     if (
-      (action === "publish_content" || action === "grade_submission") &&
+      (action === "publish_content" ||
+        action === "grade_submission" ||
+        action === "delete_discussion") &&
       caller.role !== "admin" &&
       caller.role !== "mentor"
     ) {
@@ -160,6 +164,17 @@ export async function POST(request: Request) {
               : undefined
             : undefined,
           newPoints: Number(rawPayload.newPoints ?? 0),
+        });
+        return NextResponse.json(res, { headers: API_SECURITY_HEADERS });
+      }
+      case "delete_discussion": {
+        const rawPayload = (payload || {}) as Record<string, unknown>;
+        const res = await deleteDiscussionAction({
+          threadId: String(rawPayload.threadId || ""),
+          replyId:
+            typeof rawPayload.replyId === "string"
+              ? rawPayload.replyId
+              : undefined,
         });
         return NextResponse.json(res, { headers: API_SECURITY_HEADERS });
       }

@@ -365,6 +365,62 @@ interface PersistedGlobalState {
 }
 
 const STORAGE_KEY = "ruang_sosmed_2_0_clean_store_v6";
+const DELETED_THREADS_STORAGE_KEY = "ruang_sosmed_deleted_threads_v1";
+const DELETED_REPLIES_STORAGE_KEY = "ruang_sosmed_deleted_replies_v1";
+
+function readStoredIdSet(storageKey: string): Set<string> {
+  const result = new Set<string>();
+  if (typeof window === "undefined") return result;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return result;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      parsed.forEach((id) => {
+        if (typeof id === "string" && id.trim()) {
+          result.add(id.trim());
+        }
+      });
+    }
+  } catch {}
+  return result;
+}
+
+function persistStoredIdSet(storageKey: string, ids: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(Array.from(ids)));
+  } catch {}
+}
+
+function filterDeletedDiscussionThreads(
+  threads: DiscussionThread[],
+  deletedThreadIds: Set<string>,
+  deletedReplyIds: Set<string>
+): DiscussionThread[] {
+  return (threads || []).reduce<DiscussionThread[]>((acc, thread) => {
+    if (!thread?.id || deletedThreadIds.has(thread.id)) return acc;
+    const originalReplies = Array.isArray(thread.replies) ? thread.replies : [];
+    const remainingReplies = originalReplies.filter(
+      (rep) => rep?.id && !deletedReplyIds.has(rep.id)
+    );
+    if (originalReplies.length > 0 && remainingReplies.length === 0) {
+      return acc;
+    }
+    if (remainingReplies.length !== originalReplies.length) {
+      const latestReply = remainingReplies[remainingReplies.length - 1];
+      acc.push({
+        ...thread,
+        replies: remainingReplies,
+        repliesCount: remainingReplies.length,
+        excerpt: latestReply?.message || thread.excerpt,
+      });
+    } else {
+      acc.push(thread);
+    }
+    return acc;
+  }, []);
+}
 
 const LEGACY_DUMMY_TITLES = new Set([
   "social media strategy: 10 principles to boost brand engagement",
@@ -1184,6 +1240,79 @@ async function pushInboxThreadToSupabase(
   }
 }
 
+async function deleteInboxThreadFromSupabase(
+  threadId: string,
+  replyId?: string
+): Promise<void> {
+  if (!isSupabaseConfigured || !threadId) return;
+
+  if (typeof window !== "undefined") {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (accessToken) {
+        const res = await fetch("/api/lms", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            action: "delete_discussion",
+            payload: { threadId, replyId },
+          }),
+        });
+        if (res.ok) {
+          const parsed = await res.json().catch(() => null);
+          if (parsed?.ok) return;
+        }
+      }
+    } catch {}
+  }
+
+  try {
+    if (!replyId) {
+      await Promise.allSettled([
+        supabase.from("mentor_inbox_threads").delete().eq("id", threadId),
+        supabase.from("discussions").delete().eq("id", threadId),
+        supabase.from("forum_threads").delete().eq("id", threadId),
+      ]);
+      return;
+    }
+
+    const { data: row } = await supabase
+      .from("mentor_inbox_threads")
+      .select("id, replies")
+      .eq("id", threadId)
+      .maybeSingle();
+
+    if (row) {
+      const currentReplies = Array.isArray((row as any).replies)
+        ? (row as any).replies
+        : [];
+      const filteredReplies = currentReplies.filter(
+        (r: any) => String(r?.id || "") !== replyId
+      );
+      if (filteredReplies.length === 0) {
+        await supabase.from("mentor_inbox_threads").delete().eq("id", threadId);
+      } else {
+        const lastReply = filteredReplies[filteredReplies.length - 1];
+        await supabase
+          .from("mentor_inbox_threads")
+          .update({
+            replies: filteredReplies,
+            replies_count: filteredReplies.length,
+            excerpt: String(lastReply?.message || ""),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", threadId);
+      }
+    }
+  } catch {
+    // Ignore when migration 007 has not been applied yet or offline
+  }
+}
+
 async function pushReportedIssueToSupabase(
   issue: ReportedIssueItem
 ): Promise<void> {
@@ -1702,6 +1831,8 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     avatarText: string;
     message: string;
   }) => void;
+  deleteDiscussionThread: (threadId: string) => void;
+  deleteDiscussionReply: (threadId: string, replyId: string) => void;
   reportContentIssueFromLearner: (
     chapterTitle: string,
     issueDescription: string,
@@ -1932,6 +2063,10 @@ export function RuangSosmedProvider({
   const recentAssignmentLocksRef = useRef<
     Map<string, { assignedLearners: string[]; expiresAt: number }>
   >(new Map());
+  const deletedThreadIdsRef = useRef<Set<string>>(new Set());
+  const deletedReplyIdsRef = useRef<Set<string>>(new Set());
+  const recentLocalThreadPostsRef = useRef<Map<string, number>>(new Map());
+  const recentLocalReplyPostsRef = useRef<Map<string, number>>(new Map());
   const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
   const adminNotifHydratedRef = useRef(false);
   const lastSyncAtRef = useRef<number>(0);
@@ -2061,6 +2196,8 @@ export function RuangSosmedProvider({
   // Hydrate from localStorage on mount
   useEffect(() => {
     try {
+      deletedThreadIdsRef.current = readStoredIdSet(DELETED_THREADS_STORAGE_KEY);
+      deletedReplyIdsRef.current = readStoredIdSet(DELETED_REPLIES_STORAGE_KEY);
       let parsed: Partial<PersistedGlobalState> | null = null;
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -2285,8 +2422,12 @@ export function RuangSosmedProvider({
               )
             : [],
           discussionThreads: Array.isArray(parsed.discussionThreads)
-            ? parsed.discussionThreads.filter(
-                (t) => !["thread-1", "thread-2", "thread-3"].includes(t.id)
+            ? filterDeletedDiscussionThreads(
+                parsed.discussionThreads.filter(
+                  (t) => !["thread-1", "thread-2", "thread-3"].includes(t.id)
+                ),
+                deletedThreadIdsRef.current,
+                deletedReplyIdsRef.current
               )
             : [],
           reportedIssues: Array.isArray(parsed.reportedIssues)
@@ -2593,13 +2734,39 @@ export function RuangSosmedProvider({
       if (e.key === STORAGE_KEY && e.newValue) {
         try {
           const nextParsed = JSON.parse(e.newValue) as Partial<PersistedGlobalState>;
+          const delThreads = readStoredIdSet(DELETED_THREADS_STORAGE_KEY);
+          const delReplies = readStoredIdSet(DELETED_REPLIES_STORAGE_KEY);
+          deletedThreadIdsRef.current = delThreads;
+          deletedReplyIdsRef.current = delReplies;
           setState((prev) => ({
             ...prev,
             ...nextParsed,
+            discussionThreads: filterDeletedDiscussionThreads(
+              nextParsed.discussionThreads ?? prev.discussionThreads ?? [],
+              delThreads,
+              delReplies
+            ),
           }));
         } catch {
           // Ignore parse errors
         }
+      } else if (
+        (e.key === DELETED_THREADS_STORAGE_KEY ||
+          e.key === DELETED_REPLIES_STORAGE_KEY) &&
+        e.newValue
+      ) {
+        const delThreads = readStoredIdSet(DELETED_THREADS_STORAGE_KEY);
+        const delReplies = readStoredIdSet(DELETED_REPLIES_STORAGE_KEY);
+        deletedThreadIdsRef.current = delThreads;
+        deletedReplyIdsRef.current = delReplies;
+        setState((prev) => ({
+          ...prev,
+          discussionThreads: filterDeletedDiscussionThreads(
+            prev.discussionThreads ?? [],
+            delThreads,
+            delReplies
+          ),
+        }));
       }
     };
     window.addEventListener("storage", handleStorageSync);
@@ -2719,6 +2886,37 @@ export function RuangSosmedProvider({
                 })
               );
             }
+          } else if (
+            event.data?.type === "DISCUSSION_DELETED" &&
+            event.data.threadId
+          ) {
+            const delThreadId = String(event.data.threadId);
+            const delReplyId = event.data.replyId
+              ? String(event.data.replyId)
+              : undefined;
+            if (delReplyId) {
+              deletedReplyIdsRef.current.add(delReplyId);
+              persistStoredIdSet(
+                DELETED_REPLIES_STORAGE_KEY,
+                deletedReplyIdsRef.current
+              );
+              recentLocalReplyPostsRef.current.delete(delReplyId);
+            } else {
+              deletedThreadIdsRef.current.add(delThreadId);
+              persistStoredIdSet(
+                DELETED_THREADS_STORAGE_KEY,
+                deletedThreadIdsRef.current
+              );
+              recentLocalThreadPostsRef.current.delete(delThreadId);
+            }
+            setState((prev) => ({
+              ...prev,
+              discussionThreads: filterDeletedDiscussionThreads(
+                prev.discussionThreads ?? [],
+                deletedThreadIdsRef.current,
+                deletedReplyIdsRef.current
+              ),
+            }));
           }
         };
       } catch {}
@@ -4164,66 +4362,130 @@ export function RuangSosmedProvider({
           // 5) Sinkronisasi Inbox Pesan Mentor & Laporan Kendala dari Supabase
           let nextThreads = prev.discussionThreads ?? [];
           let threadsChanged = false;
-          if (!inboxThreadsRes.error && Array.isArray(inboxThreadsRes.data)) {
+          const nowSyncMs = Date.now();
+          for (const [tid, ts] of recentLocalThreadPostsRef.current.entries()) {
+            if (nowSyncMs - ts > 20_000) recentLocalThreadPostsRef.current.delete(tid);
+          }
+          for (const [rid, ts] of recentLocalReplyPostsRef.current.entries()) {
+            if (nowSyncMs - ts > 20_000) recentLocalReplyPostsRef.current.delete(rid);
+          }
+
+          if (
+            authUserId &&
+            !inboxThreadsRes.error &&
+            Array.isArray(inboxThreadsRes.data)
+          ) {
+            const localById = new Map<string, DiscussionThread>();
+            nextThreads.forEach((t) => {
+              if (t?.id) localById.set(t.id, t);
+            });
+
             const threadMap = new Map<string, DiscussionThread>();
-            nextThreads.forEach((t) => threadMap.set(t.id, t));
-
-            (inboxThreadsRes.data as any[]).forEach((row) => {
-              if (!row?.id) return;
-              const remoteReplies = Array.isArray(row.replies) ? row.replies : [];
-              const remoteParticipants = Array.isArray(row.participants)
-                ? row.participants
-                : [];
-              const existing = threadMap.get(row.id);
-
-              if (!existing) {
-                threadMap.set(row.id, {
-                  id: row.id,
-                  chapterBadge: row.chapter_badge || "",
-                  title: row.title || "",
-                  excerpt: row.excerpt || "",
-                  repliesCount: Number(row.replies_count ?? remoteReplies.length),
-                  viewsCount: Number(row.views_count ?? 1),
-                  lastReplyLabel: row.last_reply_label || "Baru saja",
-                  participants: remoteParticipants,
-                  replies: remoteReplies,
-                });
-              } else {
-                // Gabungkan replies unik berdasarkan id agar tidak ada pesan lokal/remote yang hilang
-                const replyIds = new Set(existing.replies.map((r) => r.id));
-                const mergedReplies = [...existing.replies];
-                remoteReplies.forEach((rr: any) => {
-                  if (rr?.id && !replyIds.has(rr.id)) {
-                    mergedReplies.push(rr);
-                    replyIds.add(rr.id);
-                  }
-                });
-                const lastReplyMsg =
-                  mergedReplies[mergedReplies.length - 1]?.message ||
-                  row.excerpt ||
-                  existing.excerpt;
-                threadMap.set(row.id, {
-                  ...existing,
-                  title: row.title || existing.title,
-                  chapterBadge: row.chapter_badge || existing.chapterBadge,
-                  excerpt: lastReplyMsg,
-                  repliesCount: mergedReplies.length,
-                  lastReplyLabel: row.last_reply_label || existing.lastReplyLabel,
-                  participants:
-                    remoteParticipants.length >= existing.participants.length
-                      ? remoteParticipants
-                      : existing.participants,
-                  replies: mergedReplies,
-                });
+            // Pertahankan sementara thread yang baru diposting lokal (<20 detik) sebelum masuk DB
+            nextThreads.forEach((t) => {
+              const postTs = recentLocalThreadPostsRef.current.get(t.id);
+              if (
+                t?.id &&
+                postTs &&
+                nowSyncMs - postTs <= 20_000 &&
+                !deletedThreadIdsRef.current.has(t.id)
+              ) {
+                threadMap.set(t.id, t);
               }
             });
 
-            const candidateThreads = Array.from(threadMap.values());
+            (inboxThreadsRes.data as any[]).forEach((row) => {
+              if (!row?.id || deletedThreadIdsRef.current.has(row.id)) return;
+              const rawRemoteReplies = Array.isArray(row.replies)
+                ? row.replies
+                : [];
+              const filteredRemoteReplies = rawRemoteReplies.filter(
+                (rr: any) =>
+                  rr?.id && !deletedReplyIdsRef.current.has(String(rr.id))
+              );
+              if (
+                rawRemoteReplies.length > 0 &&
+                filteredRemoteReplies.length === 0
+              ) {
+                return;
+              }
+
+              const remoteParticipants = Array.isArray(row.participants)
+                ? row.participants
+                : [];
+              const localThread = localById.get(row.id);
+
+              const mergedReplies = [...filteredRemoteReplies];
+              const seenReplyIds = new Set(
+                filteredRemoteReplies.map((r: any) => String(r.id))
+              );
+              if (localThread?.replies) {
+                localThread.replies.forEach((lr) => {
+                  const repTs = recentLocalReplyPostsRef.current.get(lr.id);
+                  if (
+                    lr?.id &&
+                    repTs &&
+                    nowSyncMs - repTs <= 20_000 &&
+                    !deletedReplyIdsRef.current.has(lr.id) &&
+                    !seenReplyIds.has(lr.id)
+                  ) {
+                    mergedReplies.push(lr);
+                    seenReplyIds.add(lr.id);
+                  }
+                });
+              }
+
+              const lastReplyMsg =
+                mergedReplies[mergedReplies.length - 1]?.message ||
+                row.excerpt ||
+                localThread?.excerpt ||
+                "";
+
+              threadMap.set(row.id, {
+                id: row.id,
+                chapterBadge:
+                  row.chapter_badge || localThread?.chapterBadge || "",
+                title: row.title || localThread?.title || "",
+                excerpt: lastReplyMsg,
+                repliesCount: mergedReplies.length,
+                viewsCount: Number(
+                  row.views_count ?? localThread?.viewsCount ?? 1
+                ),
+                lastReplyLabel:
+                  row.last_reply_label ||
+                  localThread?.lastReplyLabel ||
+                  "Baru saja",
+                participants:
+                  remoteParticipants.length > 0
+                    ? remoteParticipants
+                    : localThread?.participants || [],
+                replies: mergedReplies,
+              });
+            });
+
+            const candidateThreads = filterDeletedDiscussionThreads(
+              Array.from(threadMap.values()),
+              deletedThreadIdsRef.current,
+              deletedReplyIdsRef.current
+            );
             if (
               JSON.stringify(candidateThreads) !==
               JSON.stringify(prev.discussionThreads ?? [])
             ) {
               nextThreads = candidateThreads;
+              threadsChanged = true;
+            }
+          } else {
+            const cleanedLocalThreads = filterDeletedDiscussionThreads(
+              nextThreads,
+              deletedThreadIdsRef.current,
+              deletedReplyIdsRef.current
+            );
+            if (
+              JSON.stringify(cleanedLocalThreads) !==
+              JSON.stringify(prev.discussionThreads ?? [])
+            ) {
+              nextThreads = cleanedLocalThreads;
               threadsChanged = true;
             }
           }
@@ -6879,6 +7141,16 @@ export function RuangSosmedProvider({
         };
       }
 
+      const postTs = Date.now();
+      recentLocalThreadPostsRef.current.set(syncedThread.id, postTs);
+      recentLocalReplyPostsRef.current.set(newReply.id, postTs);
+      if (deletedThreadIdsRef.current.delete(syncedThread.id)) {
+        persistStoredIdSet(
+          DELETED_THREADS_STORAGE_KEY,
+          deletedThreadIdsRef.current
+        );
+      }
+
       setState((prev) => {
         const prevThreads = prev.discussionThreads ?? [];
         const existingIndex = prevThreads.findIndex((t) =>
@@ -6906,6 +7178,90 @@ export function RuangSosmedProvider({
       void pushInboxThreadToSupabase(syncedThread);
     },
     []
+  );
+
+  const broadcastDiscussionDeleted = useCallback(
+    (threadId: string, replyId?: string) => {
+      if (typeof window === "undefined") return;
+      if ("BroadcastChannel" in window) {
+        try {
+          const bc = new BroadcastChannel("ruang_sosmed_channel");
+          bc.postMessage({ type: "DISCUSSION_DELETED", threadId, replyId });
+          bc.close();
+        } catch {}
+      }
+      window.dispatchEvent(
+        new CustomEvent("ruang_sosmed_discussion_deleted", {
+          detail: { threadId, replyId },
+        })
+      );
+    },
+    []
+  );
+
+  const deleteDiscussionThread = useCallback(
+    (threadId: string) => {
+      const cleanId = (threadId || "").trim();
+      if (!cleanId) return;
+
+      deletedThreadIdsRef.current.add(cleanId);
+      persistStoredIdSet(
+        DELETED_THREADS_STORAGE_KEY,
+        deletedThreadIdsRef.current
+      );
+      recentLocalThreadPostsRef.current.delete(cleanId);
+
+      setState((prev) => ({
+        ...prev,
+        discussionThreads: (prev.discussionThreads ?? []).filter(
+          (t) => t.id !== cleanId
+        ),
+      }));
+
+      broadcastDiscussionDeleted(cleanId);
+      void deleteInboxThreadFromSupabase(cleanId);
+    },
+    [broadcastDiscussionDeleted]
+  );
+
+  const deleteDiscussionReply = useCallback(
+    (threadId: string, replyId: string) => {
+      const cleanThreadId = (threadId || "").trim();
+      const cleanReplyId = (replyId || "").trim();
+      if (!cleanThreadId || !cleanReplyId) return;
+
+      const targetThread = (stateRef.current.discussionThreads ?? []).find(
+        (t) => t.id === cleanThreadId
+      );
+      const remainingCount = targetThread
+        ? targetThread.replies.filter((r) => r.id !== cleanReplyId).length
+        : 0;
+
+      deletedReplyIdsRef.current.add(cleanReplyId);
+      persistStoredIdSet(
+        DELETED_REPLIES_STORAGE_KEY,
+        deletedReplyIdsRef.current
+      );
+      recentLocalReplyPostsRef.current.delete(cleanReplyId);
+
+      if (targetThread && remainingCount === 0) {
+        deleteDiscussionThread(cleanThreadId);
+        return;
+      }
+
+      setState((prev) => ({
+        ...prev,
+        discussionThreads: filterDeletedDiscussionThreads(
+          prev.discussionThreads ?? [],
+          deletedThreadIdsRef.current,
+          deletedReplyIdsRef.current
+        ),
+      }));
+
+      broadcastDiscussionDeleted(cleanThreadId, cleanReplyId);
+      void deleteInboxThreadFromSupabase(cleanThreadId, cleanReplyId);
+    },
+    [broadcastDiscussionDeleted, deleteDiscussionThread]
   );
 
   const reportContentIssueFromLearner = useCallback(
@@ -8667,6 +9023,8 @@ export function RuangSosmedProvider({
     evaluateSubmissionInGradingCenter,
     quickGradeDashboardQuiz,
     postDiscussionMessage,
+    deleteDiscussionThread,
+    deleteDiscussionReply,
     reportContentIssueFromLearner,
     toggleReportedIssueStatus,
     setTodos,

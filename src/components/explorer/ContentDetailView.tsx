@@ -158,6 +158,8 @@ export function ContentDetailView({
     explorerItems,
     versions,
     postDiscussionMessage,
+    deleteDiscussionThread,
+    deleteDiscussionReply,
     toggleReportedIssueStatus,
     manageAssigneeAction,
     restoreContentVersion,
@@ -638,6 +640,9 @@ export function ContentDetailView({
     "thread-1"
   );
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [confirmDeleteThreadId, setConfirmDeleteThreadId] = useState<
+    string | null
+  >(null);
 
   // Right Panel UI state
   const [assigneeSearch, setAssigneeSearch] = useState("");
@@ -2015,172 +2020,269 @@ export function ContentDetailView({
             </div>
 
             <div className="space-y-3.5">
-              {filteredThreads.map((thread) => {
-                const isExpanded = expandedThreadId === thread.id;
+              {filteredThreads.length === 0 ? (
+                <div className="rounded-xl bg-[#FFFFFF] border border-dashed border-[#EAECEF] p-10 text-center space-y-1.5">
+                  <MessageSquare
+                    size={24}
+                    className="mx-auto text-[#CBD5E1]"
+                  />
+                  <p className="text-xs font-bold text-[#121215]">
+                    Belum ada diskusi pada materi ini
+                  </p>
+                  <p className="text-[11px] text-[#5E5E5E]">
+                    Diskusi dari siswa di ruang belajar akan muncul di sini.
+                  </p>
+                </div>
+              ) : (
+                filteredThreads.map((thread) => {
+                  const isExpanded = expandedThreadId === thread.id;
+                  const isConfirmingDelete = confirmDeleteThreadId === thread.id;
 
-                return (
-                  <article
-                    key={thread.id}
-                    className={`rounded-xl bg-[#FFFFFF] border transition-all shadow-[0_2px_8px_rgba(16,15,17,0.04)] ${
-                      isExpanded
-                        ? "border-[#4F39F6]/50"
-                        : "border-[#EAECEF] hover:border-[#D1D5DB]"
-                    }`}
-                  >
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      aria-expanded={isExpanded}
-                      onClick={() =>
-                        setExpandedThreadId(isExpanded ? null : thread.id)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setExpandedThreadId(isExpanded ? null : thread.id);
-                        }
-                      }}
-                      className="p-5 cursor-pointer"
+                  return (
+                    <article
+                      key={thread.id}
+                      className={`rounded-xl bg-[#FFFFFF] border transition-all shadow-[0_2px_8px_rgba(16,15,17,0.04)] ${
+                        isExpanded
+                          ? "border-[#4F39F6]/50"
+                          : "border-[#EAECEF] hover:border-[#D1D5DB]"
+                      }`}
                     >
-                      <div className="flex items-center justify-between gap-2 mb-2.5">
-                        <span className="inline-flex items-center gap-1.5 rounded-md bg-[#6366F1]/10 border border-[#6366F1]/20 px-2.5 py-0.5 text-[11px] font-semibold text-[#4F46E5]">
-                          {thread.chapterBadge}
-                        </span>
-                        <span className="text-[11px] font-medium text-[#9CA3AF]">
-                          {thread.lastReplyLabel}
-                        </span>
-                      </div>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isExpanded}
+                        onClick={() =>
+                          setExpandedThreadId(isExpanded ? null : thread.id)
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setExpandedThreadId(isExpanded ? null : thread.id);
+                          }
+                        }}
+                        className="p-5 cursor-pointer"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                          <span className="inline-flex items-center gap-1.5 rounded-md bg-[#6366F1]/10 border border-[#6366F1]/20 px-2.5 py-0.5 text-[11px] font-semibold text-[#4F46E5]">
+                            {thread.chapterBadge}
+                          </span>
 
-                      <h2 className="text-sm font-bold text-[#121215] mb-1.5">
-                        {thread.title}
-                      </h2>
-                      <p className="text-xs text-[#5E5E5E] leading-relaxed">
-                        {thread.excerpt}
-                      </p>
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-[11px] font-medium text-[#9CA3AF]">
+                              {thread.lastReplyLabel}
+                            </span>
 
-                      <div className="mt-4 pt-3 border-t border-[#EAECEF] flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex -space-x-1.5">
-                            {thread.participants.map((p, idx) => (
-                              <span
-                                key={`${thread.id}-p-${idx}`}
-                                className="inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-[#FFFFFF] text-[10px] font-bold"
-                                style={{
-                                  backgroundColor: p.bg,
-                                  color: p.text,
-                                }}
+                            {isConfirmingDelete ? (
+                              <div
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-2 py-1"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                {p.initials}
-                              </span>
-                            ))}
+                                <span className="text-[11px] font-semibold text-[#B91C1C]">
+                                  Yakin hapus?
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteDiscussionThread(thread.id);
+                                    setConfirmDeleteThreadId(null);
+                                    if (expandedThreadId === thread.id) {
+                                      setExpandedThreadId(null);
+                                    }
+                                    onShowToast(
+                                      "Diskusi berhasil dihapus dan tidak lagi ditampilkan ke siswa."
+                                    );
+                                  }}
+                                  className="rounded-md bg-[#DC2626] hover:bg-[#B91C1C] px-2 py-0.5 text-[11px] font-bold text-white transition-colors cursor-pointer"
+                                >
+                                  Ya, Hapus
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmDeleteThreadId(null);
+                                  }}
+                                  className="rounded-md bg-white border border-[#EAECEF] hover:bg-[#F8F9FB] px-2 py-0.5 text-[11px] font-semibold text-[#5E5E5E] transition-colors cursor-pointer"
+                                >
+                                  Batal
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteThreadId(thread.id);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-[#EAECEF] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#DC2626] hover:border-[#FECACA] hover:bg-[#FEF2F2] transition-colors cursor-pointer"
+                                title="Hapus diskusi ini (hanya Admin Studio)"
+                              >
+                                <Trash2 size={13} />
+                                <span>Hapus Diskusi</span>
+                              </button>
+                            )}
                           </div>
-                          <span className="text-[11px] font-medium text-[#5E5E5E]">
-                            Active participants
-                          </span>
                         </div>
 
-                        <div className="flex items-center gap-4 text-xs font-medium text-[#5E5E5E]">
-                          <span className="inline-flex items-center gap-1 text-[#4F39F6] font-semibold">
-                            <MessageSquare size={13} />
-                            {thread.repliesCount} replies
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <Eye size={13} className="text-[#9CA3AF]" />
-                            {thread.viewsCount} views
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="border-t border-[#EAECEF] bg-[#F8F9FB]/70 px-5 py-4 rounded-b-xl space-y-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                          Discussion Replies ({thread.replies.length})
+                        <h2 className="text-sm font-bold text-[#121215] mb-1.5">
+                          {thread.title}
+                        </h2>
+                        <p className="text-xs text-[#5E5E5E] leading-relaxed">
+                          {thread.excerpt}
                         </p>
 
-                        <div className="space-y-2.5">
-                          {thread.replies.map((reply) => (
-                            <div
-                              key={reply.id}
-                              className="rounded-lg bg-[#FFFFFF] p-3.5 border border-[#EAECEF]"
-                            >
-                              <div className="flex items-center justify-between gap-2 mb-1.5">
-                                <div className="flex items-center gap-2">
-                                  {(() => {
-                                    const repAvatar = resolveUserAvatar(
-                                      reply.authorName
-                                    );
-                                    if (repAvatar) {
-                                      return (
-                                        <img
-                                          src={repAvatar}
-                                          alt={reply.authorName}
-                                          className="h-6 w-6 shrink-0 rounded-full object-cover border border-[#EAECEF]"
-                                        />
-                                      );
-                                    }
-                                    return (
-                                      <span
-                                        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold"
-                                        style={{
-                                          backgroundColor: reply.avatarBg,
-                                          color: reply.avatarText,
-                                        }}
-                                      >
-                                        {reply.authorInitials}
-                                      </span>
-                                    );
-                                  })()}
-                                  <span className="text-xs font-semibold text-[#121215]">
-                                    {reply.authorName}
-                                  </span>
-                                  <span className="rounded bg-[#F8F9FB] border border-[#EAECEF] px-1.5 py-0.2 text-[10px] font-medium text-[#5E5E5E]">
-                                    {reply.authorRole}
-                                  </span>
-                                </div>
-                                <span className="text-[10px] text-[#9CA3AF]">
-                                  {reply.timestamp}
+                        <div className="mt-4 pt-3 border-t border-[#EAECEF] flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex -space-x-1.5">
+                              {thread.participants.map((p, idx) => (
+                                <span
+                                  key={`${thread.id}-p-${idx}`}
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-[#FFFFFF] text-[10px] font-bold"
+                                  style={{
+                                    backgroundColor: p.bg,
+                                    color: p.text,
+                                  }}
+                                >
+                                  {p.initials}
                                 </span>
-                              </div>
-                              <p className="text-xs text-[#121215] leading-relaxed pl-8">
-                                {reply.message}
-                              </p>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                            <span className="text-[11px] font-medium text-[#5E5E5E]">
+                              Active participants
+                            </span>
+                          </div>
 
-                        <form
-                          onSubmit={(e) => handleAddReply(thread.id, e)}
-                          className="pt-2 flex items-center gap-2"
-                        >
-                          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FDE68A] text-[#92400E] text-[10px] font-bold">
-                            DP
-                          </span>
-                          <input
-                            type="text"
-                            value={replyDrafts[thread.id] ?? ""}
-                            onChange={(e) =>
-                              setReplyDrafts((prev) => ({
-                                ...prev,
-                                [thread.id]: e.target.value,
-                              }))
-                            }
-                            placeholder="Write a mentor reply to this thread..."
-                            className="flex-1 rounded-lg bg-[#FFFFFF] px-3 py-2 text-xs text-[#121215] placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
-                          />
-                          <button
-                            type="submit"
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-2 text-xs font-semibold text-white transition-colors cursor-pointer"
-                          >
-                            <Send size={12} />
-                            <span>Reply</span>
-                          </button>
-                        </form>
+                          <div className="flex items-center gap-4 text-xs font-medium text-[#5E5E5E]">
+                            <span className="inline-flex items-center gap-1 text-[#4F39F6] font-semibold">
+                              <MessageSquare size={13} />
+                              {thread.repliesCount} replies
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Eye size={13} className="text-[#9CA3AF]" />
+                              {thread.viewsCount} views
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </article>
-                );
-              })}
+
+                      {isExpanded && (
+                        <div className="border-t border-[#EAECEF] bg-[#F8F9FB]/70 px-5 py-4 rounded-b-xl space-y-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                            Discussion Replies ({thread.replies.length})
+                          </p>
+
+                          <div className="space-y-2.5">
+                            {thread.replies.map((reply) => (
+                              <div
+                                key={reply.id}
+                                className="rounded-lg bg-[#FFFFFF] p-3.5 border border-[#EAECEF]"
+                              >
+                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                  <div className="flex items-center gap-2">
+                                    {(() => {
+                                      const repAvatar = resolveUserAvatar(
+                                        reply.authorName
+                                      );
+                                      if (repAvatar) {
+                                        return (
+                                          <img
+                                            src={repAvatar}
+                                            alt={reply.authorName}
+                                            className="h-6 w-6 shrink-0 rounded-full object-cover border border-[#EAECEF]"
+                                          />
+                                        );
+                                      }
+                                      return (
+                                        <span
+                                          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold"
+                                          style={{
+                                            backgroundColor: reply.avatarBg,
+                                            color: reply.avatarText,
+                                          }}
+                                        >
+                                          {reply.authorInitials}
+                                        </span>
+                                      );
+                                    })()}
+                                    <span className="text-xs font-semibold text-[#121215]">
+                                      {reply.authorName}
+                                    </span>
+                                    <span className="rounded bg-[#F8F9FB] border border-[#EAECEF] px-1.5 py-0.2 text-[10px] font-medium text-[#5E5E5E]">
+                                      {reply.authorRole}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-[#9CA3AF]">
+                                      {reply.timestamp}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const deletingWholeThread =
+                                          thread.replies.length <= 1;
+                                        deleteDiscussionReply(
+                                          thread.id,
+                                          reply.id
+                                        );
+                                        if (deletingWholeThread) {
+                                          setExpandedThreadId(null);
+                                        }
+                                        onShowToast(
+                                          deletingWholeThread
+                                            ? "Diskusi berhasil dihapus dan tidak lagi ditampilkan ke siswa."
+                                            : "Balasan berhasil dihapus dari diskusi."
+                                        );
+                                      }}
+                                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-[#9CA3AF] hover:bg-[#FEF2F2] hover:text-[#DC2626] transition-colors cursor-pointer"
+                                      title="Hapus balasan ini (hanya Admin)"
+                                    >
+                                      <Trash2 size={12} />
+                                      <span>Hapus</span>
+                                    </button>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-[#121215] leading-relaxed pl-8">
+                                  {reply.message}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+
+                          <form
+                            onSubmit={(e) => handleAddReply(thread.id, e)}
+                            className="pt-2 flex items-center gap-2"
+                          >
+                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FDE68A] text-[#92400E] text-[10px] font-bold">
+                              DP
+                            </span>
+                            <input
+                              type="text"
+                              value={replyDrafts[thread.id] ?? ""}
+                              onChange={(e) =>
+                                setReplyDrafts((prev) => ({
+                                  ...prev,
+                                  [thread.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Write a mentor reply to this thread..."
+                              className="flex-1 rounded-lg bg-[#FFFFFF] px-3 py-2 text-xs text-[#121215] placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
+                            />
+                            <button
+                              type="submit"
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-2 text-xs font-semibold text-white transition-colors cursor-pointer"
+                            >
+                              <Send size={12} />
+                              <span>Reply</span>
+                            </button>
+                          </form>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })
+              )}
             </div>
           </section>
         )}

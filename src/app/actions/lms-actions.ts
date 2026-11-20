@@ -631,3 +631,83 @@ export async function syncUserPointsAction(payload: SyncUserPointsPayload) {
     updatedUserProfiles,
   };
 }
+
+export interface DeleteDiscussionPayload {
+  threadId: string;
+  replyId?: string;
+}
+
+export async function deleteDiscussionAction(payload: DeleteDiscussionPayload) {
+  const threadId = (payload.threadId || "").trim();
+  const replyId = (payload.replyId || "").trim() || undefined;
+
+  if (!threadId) {
+    return {
+      ok: false,
+      error: "ID diskusi tidak valid.",
+      threadId: "",
+      replyId,
+    };
+  }
+
+  const client =
+    createServiceRoleClient() ?? (isSupabaseConfigured ? supabase : null);
+  if (!client) {
+    revalidatePath("/");
+    return {
+      ok: true,
+      threadId,
+      replyId,
+      localOnly: true,
+    };
+  }
+
+  try {
+    if (!replyId) {
+      await Promise.allSettled([
+        client.from("mentor_inbox_threads").delete().eq("id", threadId),
+        client.from("discussions").delete().eq("id", threadId),
+        client.from("forum_threads").delete().eq("id", threadId),
+      ]);
+    } else {
+      const { data: row } = await client
+        .from("mentor_inbox_threads")
+        .select("id, replies")
+        .eq("id", threadId)
+        .maybeSingle();
+
+      const currentReplies = Array.isArray(row?.replies) ? row.replies : [];
+      const filteredReplies = currentReplies.filter(
+        (r: any) => String(r?.id || "") !== replyId
+      );
+
+      if (filteredReplies.length === 0) {
+        await Promise.allSettled([
+          client.from("mentor_inbox_threads").delete().eq("id", threadId),
+          client.from("discussions").delete().eq("id", threadId),
+          client.from("forum_threads").delete().eq("id", threadId),
+        ]);
+      } else {
+        const lastReply = filteredReplies[filteredReplies.length - 1];
+        await client
+          .from("mentor_inbox_threads")
+          .update({
+            replies: filteredReplies,
+            replies_count: filteredReplies.length,
+            excerpt: String(lastReply?.message || ""),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", threadId);
+      }
+    }
+  } catch {
+    // Ignore optional table errors
+  }
+
+  revalidatePath("/");
+  return {
+    ok: true,
+    threadId,
+    replyId,
+  };
+}
