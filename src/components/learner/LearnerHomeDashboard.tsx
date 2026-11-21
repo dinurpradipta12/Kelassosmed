@@ -4,8 +4,11 @@ import React, { useMemo, useState } from "react";
 import {
   ArrowRight,
   Award,
+  BarChart3,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Compass,
   Flame,
   FolderOpen,
@@ -144,6 +147,7 @@ export function LearnerHomeDashboard({
   const [hoveredCourseId, setHoveredCourseId] = useState<string | null>(null);
   const [mascotPaused, setMascotPaused] = useState(false);
   const [evolutionModalOpen, setEvolutionModalOpen] = useState(false);
+  const [mobileStatsOpen, setMobileStatsOpen] = useState(false);
 
   // Exclude unfoldered zero-progress spam items from Home KPIs & charts whenever real folders exist
   const dashboardCourses = useMemo(() => {
@@ -455,12 +459,12 @@ export function LearnerHomeDashboard({
     null;
 
   return (
-    <div className="rs-dashboard-container space-y-5">
+    <div className="rs-dashboard-container flex flex-col gap-4 sm:gap-5">
       {/* Live Search Preview when searching from Top Navbar on Home */}
       {searchResults && (
         <section
           aria-label="Hasil Pencarian Cepat"
-          className="rounded-2xl bg-[#FFFFFF] border border-[#4F39F6]/30 p-4 sm:p-5 shadow-[0_4px_16px_rgba(79,57,246,0.08)] space-y-3"
+          className="order-0 rounded-2xl bg-[#FFFFFF] border border-[#4F39F6]/30 p-4 sm:p-5 shadow-[0_4px_16px_rgba(79,57,246,0.08)] space-y-3"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -540,11 +544,11 @@ export function LearnerHomeDashboard({
       {/* 1. Playful Hero Welcome Card + Cute Mascot "Rumi" + XP Level Bar */}
       <section
         aria-label="Dashboard Belajar Ruang Sosmed"
-        className="rs-hero-pastel relative overflow-hidden rounded-3xl p-5 sm:p-6 shadow-[0_4px_20px_rgba(79,57,246,0.06)]"
+        className="order-1 rs-hero-pastel relative overflow-hidden rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-[0_4px_20px_rgba(79,57,246,0.06)]"
       >
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-5">
           {/* Left Mascot + Greeting + Level Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5 min-w-0 flex-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5 min-w-0 flex-1">
             <div className="flex items-center gap-3 sm:block shrink-0">
               <button
                 type="button"
@@ -564,7 +568,7 @@ export function LearnerHomeDashboard({
                 <RumiMascotIllustration
                   stage={levelInfo.stage}
                   paused={mascotPaused}
-                  sizeClass="w-36 h-36 sm:w-40 sm:h-40 lg:w-44 lg:h-44"
+                  sizeClass="w-20 h-20 sm:w-40 sm:h-40 lg:w-44 lg:h-44"
                 />
               </button>
               <div className="sm:hidden space-y-1">
@@ -739,7 +743,7 @@ export function LearnerHomeDashboard({
       </section>
 
       {/* 2. 4 Playful Learning KPI Indicator Cards */}
-      <section aria-label="Indikator Belajar" className="rs-dash-kpi-grid">
+      <section aria-label="Indikator Belajar" className="order-3 md:order-2 rs-dash-kpi-grid">
         {/* KPI 1: Progres Belajar */}
         <div className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-4 shadow-[0_2px_8px_rgba(16,15,17,0.03)] flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -840,8 +844,37 @@ export function LearnerHomeDashboard({
         </button>
       </section>
 
-      {/* 3. Visual Charts & Progress Ring Row */}
-      <section aria-label="Grafik dan Indikator Progres" className="rs-dash-charts-grid">
+      {/* Mobile Fold/Expand Toggle for Charts, Missions & Badges */}
+      <div className="order-4 md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileStatsOpen((prev) => !prev)}
+          aria-expanded={mobileStatsOpen}
+          className="w-full flex items-center justify-between gap-2 rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] px-4 py-3 text-xs font-bold text-[#121215] shadow-2xs hover:border-[#4F39F6]/40 transition-colors cursor-pointer"
+        >
+          <span className="flex items-center gap-2">
+            <BarChart3 size={15} className="text-[#4F39F6]" />
+            <span>
+              {mobileStatsOpen
+                ? "Sembunyikan Grafik, Misi & Lencana"
+                : "Lihat Grafik Progres, Misi & Lencana"}
+            </span>
+          </span>
+          {mobileStatsOpen ? (
+            <ChevronUp size={15} className="text-[#4F39F6] shrink-0" />
+          ) : (
+            <ChevronDown size={15} className="text-[#64748B] shrink-0" />
+          )}
+        </button>
+      </div>
+
+      {/* 3. Visual Charts & Progress Ring Row (Folded by default on mobile; always visible on md+) */}
+      <section
+        aria-label="Grafik dan Indikator Progres"
+        className={`order-5 md:order-3 rs-dash-charts-grid ${
+          mobileStatsOpen ? "" : "!hidden md:!grid"
+        }`}
+      >
         {/* Left Chart Card: Accessible Native Progress Ring + Status/Folder Breakdown */}
         <article className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex flex-col justify-between gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1240,7 +1273,10 @@ export function LearnerHomeDashboard({
       </section>
 
       {/* 4. Bottom Row: Folder Series & Priority Courses + Playful Missions, Badges & Reward Target */}
-      <section aria-label="Seri Kelas dan Misi Belajar" className="rs-dash-bottom-grid">
+      <section
+        aria-label="Seri Kelas dan Misi Belajar"
+        className="order-2 md:order-4 rs-dash-bottom-grid"
+      >
         {/* Left: Folder Series + Priority Courses */}
         <article className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1415,8 +1451,12 @@ export function LearnerHomeDashboard({
           )}
         </article>
 
-        {/* Right: Playful Missions Checklist + Cute Badges + Reward & Mini Leaderboard */}
-        <article className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4">
+        {/* Right: Playful Missions Checklist + Cute Badges + Reward & Mini Leaderboard (Folded on mobile unless expanded) */}
+        <article
+          className={`rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4 ${
+            mobileStatsOpen ? "block" : "hidden md:block"
+          }`}
+        >
           {/* Missions */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between gap-2">

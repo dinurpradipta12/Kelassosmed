@@ -29,6 +29,7 @@ import {
   Award,
   MessageSquare,
   BookOpen,
+  Menu,
 } from "lucide-react";
 import { type ContentType } from "@/lib/design-tokens";
 import { type ExplorerItemType } from "@/lib/phase2-data";
@@ -246,6 +247,7 @@ export function AdminLeftRail({
   const [deletingCohort, setDeletingCohort] = useState<CohortProjectItem | null>(null);
   const [cohortMenuOpen, setCohortMenuOpen] = useState(false);
   const [favoritesMenuOpen, setFavoritesMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dockRef = useRef<HTMLDivElement | null>(null);
 
   // Close floating dock popovers on outside click or Escape
@@ -433,16 +435,18 @@ export function AdminLeftRail({
   ];
 
   const handleNavClick = (id: AdminNavId) => {
+    setMobileMenuOpen(false);
     onSelectNav(id);
   };
 
   return (
-    <div className="fixed inset-y-0 left-0 z-50 flex select-none">
-      {/* Primary Left Icon Rail (Fixed 56px width, #FFFFFF, right border #EAECEF) */}
-      <aside
-        aria-label="Admin primary navigation"
-        className="relative flex w-[56px] flex-col items-center justify-between bg-[#FFFFFF] border-r border-[#EAECEF] py-3 z-20"
-      >
+    <>
+      <div className="hidden md:flex fixed inset-y-0 left-0 z-50 select-none">
+        {/* Primary Left Icon Rail (Fixed 56px width, #FFFFFF, right border #EAECEF) */}
+        <aside
+          aria-label="Admin primary navigation"
+          className="relative flex w-[56px] flex-col items-center justify-between bg-[#FFFFFF] border-r border-[#EAECEF] py-3 z-20"
+        >
           {/* Top: Official Brand Logo Mark */}
         <div className="relative flex w-full flex-col items-center">
           <button
@@ -565,7 +569,8 @@ export function AdminLeftRail({
             </div>
           </div>
         </div>
-      </aside>
+        </aside>
+      </div>
 
       {/* Floating Bottom-Center Dock for Learning Content (replaces Secondary Sidebar) */}
       {(activeNav === "content" || activeNav === "archive") && secondarySidebarOpen && (
@@ -573,7 +578,7 @@ export function AdminLeftRail({
           ref={dockRef}
           role="region"
           aria-label="Learning Content Floating Dock"
-          className="fixed bottom-4 left-[calc(50%+28px)] -translate-x-1/2 z-40 max-w-[calc(100vw-80px)]"
+          className="fixed bottom-20 md:bottom-4 left-1/2 md:left-[calc(50%+28px)] -translate-x-1/2 z-40 max-w-[calc(100vw-1.5rem)] md:max-w-[calc(100vw-80px)]"
         >
           <div className="relative flex items-center gap-1 rounded-2xl bg-white/95 backdrop-blur-md border border-[#EAECEF] px-2 py-1.5 shadow-[0_8px_30px_rgba(16,15,17,0.12)]">
             {/* 1. Cohort / Project Switcher Pill + Upward Popover */}
@@ -1118,6 +1123,222 @@ export function AdminLeftRail({
         onClose={() => setMentorGuideOpen(false)}
         onShowToast={onShowToast}
       />
-    </div>
+
+      {/* Mobile Admin More Menu Sheet */}
+      {mobileMenuOpen && (
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          className="md:hidden fixed inset-0 z-40 bg-black/35 backdrop-blur-[1px]"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-20 right-3 left-3 max-w-md mx-auto rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] p-3 shadow-[0_16px_44px_rgba(16,15,17,0.18)] space-y-2.5 animate-in fade-in slide-in-from-bottom-2 duration-150"
+          >
+            <div className="flex items-center justify-between px-1 pb-1 border-b border-[#EAECEF]">
+              <span className="text-xs font-extrabold text-[#121215]">
+                Menu Studio Lainnya
+              </span>
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Tutup menu studio"
+                className="p-1 text-[#64748B] hover:text-[#121215] cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(
+                [
+                  {
+                    id: "inbox" as AdminNavId,
+                    label: "Inbox Siswa",
+                    icon: MessageSquare,
+                    badge: unreadInboxCount,
+                  },
+                  {
+                    id: "analytics" as AdminNavId,
+                    label: "Analitik",
+                    icon: BarChart3,
+                  },
+                  {
+                    id: "certificates" as AdminNavId,
+                    label: "Sertifikat",
+                    icon: Award,
+                  },
+                  {
+                    id: "rewards" as AdminNavId,
+                    label: "Hadiah Poin",
+                    icon: Gift,
+                  },
+                  {
+                    id: "landing-builder" as AdminNavId,
+                    label: "Landing Page",
+                    icon: Layout,
+                  },
+                  {
+                    id: "archive" as AdminNavId,
+                    label: "Arsip",
+                    icon: Archive,
+                  },
+                  {
+                    id: "settings" as AdminNavId,
+                    label: "Pengaturan",
+                    icon: Settings,
+                  },
+                  {
+                    id: "profile" as AdminNavId,
+                    label: "Profil Saya",
+                    icon: User,
+                  },
+                ] as {
+                  id: AdminNavId;
+                  label: string;
+                  icon: React.ComponentType<{ size?: number }>;
+                  badge?: number;
+                }[]
+              ).map((entry) => {
+                const IconComp = entry.icon;
+                const active = activeNav === entry.id;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => handleNavClick(entry.id)}
+                    className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-colors cursor-pointer ${
+                      active
+                        ? "bg-[#EEF2FF] border-[#4F39F6]/40 text-[#4F39F6]"
+                        : "bg-[#F8F9FB] border-[#EAECEF] text-[#121215] hover:bg-[#FFFFFF]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <IconComp size={14} />
+                      <span className="truncate">{entry.label}</span>
+                    </span>
+                    {entry.badge && entry.badge > 0 ? (
+                      <span className="rounded-full bg-rose-500 px-1.5 py-0.5 text-[9px] font-bold text-white leading-none">
+                        {entry.badge > 9 ? "9+" : entry.badge}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Admin 5-Tab Bottom Navigation Bar (Overview, Materi, + Buat, Member, Menu) */}
+      <nav
+        aria-label="Navigasi Mobile Admin"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[#EAECEF] bg-[#FFFFFF]/95 backdrop-blur-md px-1 pt-1.5 pb-[calc(0.45rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(16,15,17,0.06)]"
+      >
+        <div className="grid grid-cols-5 gap-0.5 max-w-md mx-auto items-center">
+          <button
+            type="button"
+            onClick={() => handleNavClick("home")}
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 cursor-pointer ${
+              activeNav === "home" ? "text-[#4F39F6]" : "text-[#64748B]"
+            }`}
+          >
+            <span
+              className={`flex h-7 w-10 items-center justify-center rounded-full ${
+                activeNav === "home" ? "bg-[#EEF2FF]" : "bg-transparent"
+              }`}
+            >
+              <Home size={17} strokeWidth={activeNav === "home" ? 2.4 : 2} />
+            </span>
+            <span className="text-[10px] font-bold leading-none">Overview</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavClick("content")}
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 cursor-pointer ${
+              activeNav === "content" ? "text-[#4F39F6]" : "text-[#64748B]"
+            }`}
+          >
+            <span
+              className={`flex h-7 w-10 items-center justify-center rounded-full ${
+                activeNav === "content" ? "bg-[#EEF2FF]" : "bg-transparent"
+              }`}
+            >
+              <FolderOpen
+                size={17}
+                strokeWidth={activeNav === "content" ? 2.4 : 2}
+              />
+            </span>
+            <span className="text-[10px] font-bold leading-none">Materi</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              onOpenCreateModal();
+            }}
+            aria-label="Buat Materi Baru"
+            className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-0.5 cursor-pointer text-[#4F39F6]"
+          >
+            <span className="flex h-9 w-11 items-center justify-center rounded-xl bg-[#4F39F6] text-white shadow-[0_3px_10px_rgba(79,57,246,0.32)]">
+              <Plus size={19} strokeWidth={2.5} />
+            </span>
+            <span className="text-[10px] font-extrabold leading-none">
+              Buat
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavClick("learners")}
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 cursor-pointer ${
+              activeNav === "learners" ? "text-[#4F39F6]" : "text-[#64748B]"
+            }`}
+          >
+            <span
+              className={`flex h-7 w-10 items-center justify-center rounded-full ${
+                activeNav === "learners" ? "bg-[#EEF2FF]" : "bg-transparent"
+              }`}
+            >
+              <Users
+                size={17}
+                strokeWidth={activeNav === "learners" ? 2.4 : 2}
+              />
+            </span>
+            <span className="text-[10px] font-bold leading-none">Member</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            aria-expanded={mobileMenuOpen}
+            className={`relative flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 cursor-pointer ${
+              mobileMenuOpen ||
+              ![
+                "home",
+                "content",
+                "learners",
+              ].includes(activeNav)
+                ? "text-[#4F39F6]"
+                : "text-[#64748B]"
+            }`}
+          >
+            <span
+              className={`relative flex h-7 w-10 items-center justify-center rounded-full ${
+                mobileMenuOpen ? "bg-[#EEF2FF]" : "bg-transparent"
+              }`}
+            >
+              <Menu size={17} />
+              {unreadInboxCount > 0 && (
+                <span className="absolute -top-0.5 right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-rose-500 px-1 text-[8px] font-bold text-white leading-none">
+                  {unreadInboxCount > 9 ? "9+" : unreadInboxCount}
+                </span>
+              )}
+            </span>
+            <span className="text-[10px] font-bold leading-none">Menu</span>
+          </button>
+        </div>
+      </nav>
+    </>
   );
 }

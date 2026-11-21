@@ -151,15 +151,15 @@ interface RumiFloatingAssistantProps {
 }
 
 const LEARNER_SIZE_CLASSES: Record<RumiAssistantSize, string> = {
-  sm: "w-28 h-28 sm:w-36 sm:h-36",
-  md: "w-36 h-36 sm:w-48 sm:h-48",
-  lg: "w-44 h-44 sm:w-56 sm:h-56",
+  sm: "w-20 h-20 sm:w-36 sm:h-36",
+  md: "w-24 h-24 sm:w-48 sm:h-48",
+  lg: "w-28 h-28 sm:w-56 sm:h-56",
 };
 
 const ADMIN_SIZE_CLASSES: Record<RumiAssistantSize, string> = {
-  sm: "w-24 h-24 sm:w-28 sm:h-28",
-  md: "w-32 h-32 sm:w-40 sm:h-40",
-  lg: "w-40 h-40 sm:w-48 sm:h-48",
+  sm: "w-20 h-20 sm:w-28 sm:h-28",
+  md: "w-24 h-24 sm:w-40 sm:h-40",
+  lg: "w-28 h-28 sm:w-48 sm:h-48",
 };
 
 export function RumiFloatingAssistant({
@@ -202,6 +202,7 @@ export function RumiFloatingAssistant({
   const peekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastActivityStampRef = useRef<number>(0);
+  const lastRevealAtRef = useRef<number>(0);
 
   // Sync per-user preferences from localStorage + listen for changes from Profile
   useEffect(() => {
@@ -486,19 +487,24 @@ export function RumiFloatingAssistant({
     displayMood = "happy";
   }
 
+  const revealFromHiding = () => {
+    lastRevealAtRef.current = Date.now();
+    setIsHiding(false);
+    triggerHop();
+    if (prefs.peekSoundEnabled) {
+      playRumiPeekABooSound();
+    }
+    setPeekGreeting(true);
+    if (peekTimerRef.current) clearTimeout(peekTimerRef.current);
+    peekTimerRef.current = setTimeout(() => {
+      setPeekGreeting(false);
+    }, 1500);
+  };
+
   const handleMouseEnterMascot = () => {
     setIsHovered(true);
     if (isHiding) {
-      setIsHiding(false);
-      triggerHop();
-      if (prefs.peekSoundEnabled) {
-        playRumiPeekABooSound();
-      }
-      setPeekGreeting(true);
-      if (peekTimerRef.current) clearTimeout(peekTimerRef.current);
-      peekTimerRef.current = setTimeout(() => {
-        setPeekGreeting(false);
-      }, 1350);
+      revealFromHiding();
     }
   };
 
@@ -516,10 +522,10 @@ export function RumiFloatingAssistant({
     setBubbleMessage(null);
     dismissActiveNotifBubble();
     if (isHiding) {
-      setIsHiding(false);
-      triggerHop();
-      setActiveModalTab("deck");
-      setIsOpen(true);
+      revealFromHiding();
+      return;
+    }
+    if (Date.now() - lastRevealAtRef.current < 450) {
       return;
     }
     setIsOpen((prev) => {
@@ -566,7 +572,7 @@ export function RumiFloatingAssistant({
     }
   > = {
     "bottom-right": {
-      container: "right-0 bottom-5 flex-col items-end",
+      container: "right-0 bottom-20 md:bottom-5 flex-col items-end",
       popover: "mr-4 mb-3",
       bubble: "mr-4 mb-2 rounded-br-sm",
       standbyPad: "pr-4",

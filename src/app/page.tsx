@@ -1721,7 +1721,7 @@ function RuangSosmedStudioInner() {
             handleRoleModeChange("admin");
             handleSelectNav("learners");
           }}
-          leftOffsetClass={roleMode === "admin" ? "pl-[56px]" : ""}
+          leftOffsetClass={roleMode === "admin" ? "pl-0 md:pl-[56px]" : ""}
         />
       )}
 
@@ -1820,12 +1820,12 @@ function RuangSosmedStudioInner() {
 
           {/* Main Workspace Canvas (#F8F9FB) */}
           <main
-            className={`min-w-0 flex-1 pl-[56px] transition-[padding] duration-150 ease-out ${
+            className={`min-w-0 flex-1 pl-0 md:pl-[56px] transition-[padding] duration-150 ease-out ${
               (activeNav === "content" || activeNav === "archive") &&
               secondarySidebarOpen &&
               !authoringMode
-                ? "pb-24"
-                : ""
+                ? "pb-32 md:pb-24"
+                : "pb-20 md:pb-0"
             }`}
           >
             <div

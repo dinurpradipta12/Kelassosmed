@@ -744,9 +744,9 @@ export function LearnerTopNavbar({
 
   return (
     <header className="sticky top-0 z-30 bg-[#FFFFFF] border-b border-[#EAECEF] shadow-[0_1px_4px_rgba(16,15,17,0.03)]">
-      <div className="w-full px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <div className="w-full px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
         {/* LEFT: Full 'ruang sosmed 2.0' brand logo (with rs. icon badge) + Global Search Bar + Horizontal Nav Tabs */}
-        <div className="flex items-center gap-5 min-w-0 flex-1">
+        <div className="flex items-center gap-3 sm:gap-5 min-w-0 flex-1">
           <button
             type="button"
             onClick={() => onSelectTab("home")}
@@ -755,7 +755,7 @@ export function LearnerTopNavbar({
             <img
               src="/logo1.png"
               alt="Ruang Sosmed 2.0"
-              className="h-9 w-auto max-w-[160px] object-contain"
+              className="h-8 sm:h-9 w-auto max-w-[125px] sm:max-w-[160px] object-contain"
             />
           </button>
 
@@ -824,13 +824,23 @@ export function LearnerTopNavbar({
           </nav>
         </div>
 
-        {/* RIGHT: Learner PRO Badge/Upgrade Button, Gamification Points Pill (⭐ 1,240 pts), Notification Bell Popover, Learner Profile */}
-        <div className="flex items-center gap-2.5 shrink-0 z-10 bg-[#FFFFFF] pl-2">
+        {/* RIGHT: Mobile Search Icon, Learner PRO Badge/Upgrade Button, Gamification Points Pill, Notification Bell Popover, Learner Profile */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 z-10 bg-[#FFFFFF] pl-1 sm:pl-2">
+          <button
+            type="button"
+            onClick={() => setAiSearchOpen(true)}
+            aria-label="Cari kursus atau materi"
+            title="Cari kursus atau materi"
+            className="md:hidden flex h-8 w-8 items-center justify-center rounded-lg bg-[#F8F9FB] border border-[#EAECEF] text-[#5E5E5E] hover:text-[#4F39F6] cursor-pointer"
+          >
+            <Search size={15} />
+          </button>
+
           {onOpenUpgradeModal && (
             <button
               type="button"
               onClick={onOpenUpgradeModal}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold border transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-lg px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-bold border transition-all cursor-pointer ${
                 learnerAccess.isPro
                   ? "bg-[#ECFDF5] border-[#10B981]/35 text-[#059669] hover:bg-[#D1FAE5]"
                   : learnerAccess.isBasic
@@ -839,12 +849,15 @@ export function LearnerTopNavbar({
               }`}
             >
               <Zap size={13} fill="currentColor" />
-              <span>
+              <span className="hidden sm:inline">
                 {learnerAccess.isPro
                   ? `${learnerAccess.activePackage.name}`
                   : learnerAccess.isBasic
                   ? `${learnerAccess.activePackage.name} • Upgrade Pro`
                   : "Upgrade Paket"}
+              </span>
+              <span className="sm:hidden">
+                {learnerAccess.isPro ? "PRO" : "Upgrade"}
               </span>
             </button>
           )}
@@ -854,11 +867,12 @@ export function LearnerTopNavbar({
             type="button"
             onClick={onOpenRewardsModal}
             title="Klik untuk membuka Ruang Sosmed Rewards Shop (Tukar Poin Hadiah)"
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#FEF3C7] hover:bg-[#FDE68A] border border-[#F59E0B]/35 px-2.5 py-1 text-xs font-bold text-[#B45309] shadow-2xs transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 rounded-md bg-[#FEF3C7] hover:bg-[#FDE68A] border border-[#F59E0B]/35 px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-bold text-[#B45309] shadow-2xs transition-colors cursor-pointer"
           >
-            <Star size={13} className="text-[#F59E0B]" fill="#F59E0B" />
+            <Star size={12} className="text-[#F59E0B] shrink-0" fill="#F59E0B" />
             <span className="tabular-nums">
-              {totalPoints.toLocaleString()} pts
+              {totalPoints.toLocaleString()}
+              <span className="hidden sm:inline"> pts</span>
             </span>
           </button>
 
@@ -1291,7 +1305,7 @@ export function LearnerTopNavbar({
             type="button"
             onClick={() => onSelectTab("profile")}
             aria-current={activeTab === "profile" ? "page" : undefined}
-            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1 border transition-colors cursor-pointer ${
+            className={`flex items-center gap-2 rounded-lg px-1.5 sm:px-2.5 py-1 border transition-colors cursor-pointer ${
               activeTab === "profile"
                 ? "bg-[#FEF3C7]/60 border-[#F59E0B]"
                 : "bg-[#F8F9FB] border-[#EAECEF] hover:border-[#D1D5DB]"
@@ -1320,8 +1334,8 @@ export function LearnerTopNavbar({
         </div>
       </div>
 
-      {/* Mobile / Tablet Sub-navigation strip */}
-      <div className="flex lg:hidden items-center gap-1 overflow-x-auto px-4 py-2 border-t border-[#EAECEF] bg-[#F9FAFB]">
+      {/* Tablet Sub-navigation strip (hidden on mobile where 5-tab Bottom Nav is active) */}
+      <div className="hidden md:flex lg:hidden items-center gap-1 overflow-x-auto px-4 py-2 border-t border-[#EAECEF] bg-[#F9FAFB]">
         {navTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

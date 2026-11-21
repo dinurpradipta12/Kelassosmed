@@ -33,6 +33,9 @@ import {
   ArrowUpDown,
   LogOut,
   BookOpen,
+  Compass,
+  Home,
+  User,
 } from "lucide-react";
 import {
   LearnerTopNavbar,
@@ -2166,7 +2169,7 @@ export function LearnerPortalView({
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FB] text-[#121215]">
+    <div className="min-h-screen bg-[#F8F9FB] text-[#121215] pb-20 md:pb-0">
       {/* A. Learner Top Horizontal Navbar */}
       <LearnerTopNavbar
         currentUser={currentUser}
@@ -4781,11 +4784,11 @@ export function LearnerPortalView({
         </div>
       )}
 
-      {/* Bottom-Left Sidebar Quick Profile & Settings Dock (Hidden on Profile/Settings to keep page unobstructed) */}
+      {/* Bottom-Left Sidebar Quick Profile & Settings Dock (Desktop/Tablet only; hidden on mobile & Profile screen) */}
       {activeNavTab !== "profile" && (
         <aside
           aria-label="Learner Quick Profile & Settings Rail"
-          className="fixed bottom-4 left-3 z-40 flex flex-col items-center gap-2 rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-2 shadow-[0_4px_16px_rgba(16,15,17,0.08)]"
+          className="hidden md:flex fixed bottom-4 left-3 z-40 flex-col items-center gap-2 rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-2 shadow-[0_4px_16px_rgba(16,15,17,0.08)]"
         >
           <ThemeSwitchDockButton />
 
@@ -4996,6 +4999,88 @@ export function LearnerPortalView({
           />
         );
       })()}
+
+      {/* Mobile App 5-Tab Bottom Navigation Bar (Katalog, Belajar, Simpanan, Dashboard, Profil) */}
+      <nav
+        aria-label="Navigasi Mobile Siswa"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[#EAECEF] bg-[#FFFFFF]/95 backdrop-blur-md px-1 pt-1.5 pb-[calc(0.45rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(16,15,17,0.06)]"
+      >
+        <div className="grid grid-cols-5 gap-0.5 max-w-md mx-auto">
+          {(
+            [
+              {
+                id: "catalog" as LearnerNavTabId,
+                label: "Katalog",
+                icon: Compass,
+              },
+              {
+                id: "my-learning" as LearnerNavTabId,
+                label: "Belajar",
+                icon: BookOpen,
+              },
+              {
+                id: "favorites" as LearnerNavTabId,
+                label: "Simpanan",
+                icon: Heart,
+              },
+              {
+                id: "home" as LearnerNavTabId,
+                label: "Dashboard",
+                icon: Home,
+              },
+              {
+                id: "profile" as LearnerNavTabId,
+                label: "Profil",
+                icon: User,
+              },
+            ]
+          ).map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              screenState.screen === "dashboard"
+                ? activeNavTab === item.id
+                : item.id === "my-learning";
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleSelectNavTab(item.id)}
+                aria-current={isActive ? "page" : undefined}
+                className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-colors cursor-pointer ${
+                  isActive
+                    ? "text-[#4F39F6]"
+                    : "text-[#64748B] hover:text-[#121215]"
+                }`}
+              >
+                <span
+                  className={`flex h-7 w-10 items-center justify-center rounded-full transition-colors ${
+                    isActive ? "bg-[#EEF2FF]" : "bg-transparent"
+                  }`}
+                >
+                  {item.id === "profile" && activeLearnerAvatar ? (
+                    <img
+                      src={activeLearnerAvatar}
+                      alt={activeLearnerDisplayName}
+                      className={`h-5 w-5 rounded-full object-cover border ${
+                        isActive ? "border-[#4F39F6]" : "border-[#EAECEF]"
+                      }`}
+                    />
+                  ) : (
+                    <Icon size={17} strokeWidth={isActive ? 2.4 : 2} />
+                  )}
+                </span>
+                <span
+                  className={`text-[10px] leading-none truncate max-w-full px-0.5 ${
+                    isActive ? "font-extrabold" : "font-semibold"
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

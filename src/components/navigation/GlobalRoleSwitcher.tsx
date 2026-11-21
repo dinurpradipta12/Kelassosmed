@@ -69,17 +69,22 @@ export function GlobalRoleSwitcher({
       aria-label="Workspace navigation and user status"
       className={`sticky top-0 z-40 h-10 bg-[#FFFFFF]/95 backdrop-blur-xs border-b border-[#EAECEF] transition-[padding-left] duration-150 ease-out ${leftOffsetClass}`}
     >
-      <div className="w-full h-full px-4 sm:px-5 flex items-center justify-between gap-3">
+      <div className="w-full h-full px-2.5 sm:px-5 flex items-center justify-between gap-2 sm:gap-3">
         {/* Left: Workspace Mode Status Indicator */}
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#5E5E5E] min-w-0">
             <span className="h-2 w-2 rounded-full bg-[#10B981] shrink-0" />
             <span className="truncate">
-              Ruang Sosmed 2.0 •{" "}
+              <span className="hidden sm:inline">Ruang Sosmed 2.0 • </span>
               <strong className="text-[#121215]">
-                {mode === "admin" && isAdmin
-                  ? "Admin & Mentor Studio"
-                  : "Student Learner Portal"}
+                <span className="sm:hidden">
+                  {mode === "admin" && isAdmin ? "Admin" : "Learner"}
+                </span>
+                <span className="hidden sm:inline">
+                  {mode === "admin" && isAdmin
+                    ? "Admin & Mentor Studio"
+                    : "Student Learner Portal"}
+                </span>
               </strong>
             </span>
           </span>
@@ -89,37 +94,39 @@ export function GlobalRoleSwitcher({
         <div
           role="group"
           aria-label="Navigasi dan status profil pengguna"
-          className="flex items-center gap-1.5 shrink-0"
+          className="flex items-center gap-1 sm:gap-1.5 shrink-0"
         >
           {/* Role Switcher Pill: HANYA tampil untuk role Admin Developer. Learner sama sekali TIDAK BISA melihat / mengakses Admin Studio */}
           {isAdmin && (
-            <div className="inline-flex items-center gap-1 rounded-lg bg-[#F8F9FB] p-0.5 border border-[#EAECEF]">
+            <div className="inline-flex items-center gap-0.5 sm:gap-1 rounded-lg bg-[#F8F9FB] p-0.5 border border-[#EAECEF]">
               <button
                 type="button"
                 onClick={() => onChange("admin")}
                 aria-pressed={mode === "admin"}
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
                   mode === "admin"
                     ? "bg-[#4F39F6] text-white shadow-2xs"
                     : "text-[#5E5E5E] hover:text-[#121215]"
                 }`}
               >
                 <ShieldCheck size={12} strokeWidth={2.2} />
-                <span>Admin Studio</span>
+                <span className="sm:hidden">Admin</span>
+                <span className="hidden sm:inline">Admin Studio</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onChange("learner")}
                 aria-pressed={mode === "learner"}
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
                   mode === "learner"
                     ? "bg-[#4F39F6] text-white shadow-2xs"
                     : "text-[#5E5E5E] hover:text-[#121215]"
                 }`}
               >
                 <GraduationCap size={12} strokeWidth={2.2} />
-                <span>Learner Portal</span>
+                <span className="sm:hidden">Siswa</span>
+                <span className="hidden sm:inline">Learner Portal</span>
               </button>
             </div>
           )}
@@ -130,11 +137,11 @@ export function GlobalRoleSwitcher({
               onClick={onOpenSearch}
               title="Global Search (Cmd/Ctrl + K)"
               aria-label="Open Global Search (Cmd/Ctrl + K)"
-              className="inline-flex items-center gap-1 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/70 px-2.5 py-1 text-[11px] font-semibold text-[#5E5E5E] hover:text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/70 px-2 sm:px-2.5 py-1 text-[11px] font-semibold text-[#5E5E5E] hover:text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
             >
               <Search size={11} />
               <span className="hidden sm:inline">Search</span>
-              <kbd className="rounded bg-[#FFFFFF] px-1 py-0.2 text-[10px] text-[#9CA3AF] border border-[#EAECEF]">
+              <kbd className="hidden sm:inline rounded bg-[#FFFFFF] px-1 py-0.2 text-[10px] text-[#9CA3AF] border border-[#EAECEF]">
                 ⌘K
               </kbd>
             </button>
@@ -178,7 +185,7 @@ export function GlobalRoleSwitcher({
                 ) : (
                   <User size={12} />
                 )}
-                <span className="max-w-[100px] truncate">
+                <span className="hidden sm:inline max-w-[100px] truncate">
                   {currentUser.name
                     ? `@${currentUser.name.split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g, "")}`
                     : `@${currentUser.username || "user"}`}

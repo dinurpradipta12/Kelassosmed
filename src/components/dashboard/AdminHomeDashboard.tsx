@@ -5,10 +5,13 @@ import {
   AlertTriangle,
   ArrowRight,
   Award,
+  BarChart3,
   Bot,
   Calendar,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardCheck,
   Clock,
   CreditCard,
@@ -199,6 +202,7 @@ export function AdminHomeDashboard({
   const [proSearch, setProSearch] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [selectedDue, setSelectedDue] = useState<"Today" | "Tomorrow">("Tomorrow");
+  const [mobileExtraOpen, setMobileExtraOpen] = useState(false);
 
   // Live Supabase + Telegram state
   const [liveProfiles, setLiveProfiles] = useState<LiveProfileRow[]>([]);
@@ -1032,11 +1036,104 @@ export function AdminHomeDashboard({
         </button>
       </section>
 
-      {/* 4. Visual Charts & Live Subscription Row */}
-      <section
-        aria-label="Grafik Katalog dan Langganan"
-        className="rs-dash-charts-grid"
-      >
+      {/* 4. Visual Charts & Live Subscription Row (Simple mobile summary + full desktop charts) */}
+      <section aria-label="Grafik Katalog dan Langganan" className="space-y-4">
+        {/* Simple Mobile Studio Charts Card (< md) */}
+        <article className="md:hidden rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-4 rs-admin-card space-y-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#4F39F6]">
+                <BarChart3 size={14} />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-xs font-bold text-[#121215] truncate">
+                  Grafik Ringkas Studio
+                </h2>
+                <p className="text-[10px] text-[#64748B] truncate">
+                  {activeCatalogItems.length} materi aktif • {foldersSummary.length} folder
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateNav("analytics")}
+              className="shrink-0 text-[11px] font-bold text-[#4F39F6] hover:underline cursor-pointer"
+            >
+              Analitik →
+            </button>
+          </div>
+
+          <div className="space-y-2.5">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] font-semibold">
+                <span className="text-[#475569]">Ketuntasan Belajar</span>
+                <span className="font-extrabold text-[#059669] tabular-nums">
+                  {learningProgressStats.avgCompletionPct}%
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-[#F1F5F9] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#10B981] transition-all duration-300"
+                  style={{ width: `${learningProgressStats.avgCompletionPct}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] font-semibold">
+                <span className="text-[#475569]">Konversi Member PRO</span>
+                <span className="font-extrabold text-[#4F39F6] tabular-nums">
+                  {proConversionPct}% ({proMembersCount}/{totalMembersCount})
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-[#F1F5F9] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#4F39F6] transition-all duration-300"
+                  style={{ width: `${proConversionPct}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {chartFolders.length > 0 && (
+            <div className="pt-2 border-t border-[#EAECEF] space-y-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+                Materi per Seri Folder
+              </p>
+              <div className="space-y-1.5">
+                {chartFolders.slice(0, 4).map((folder, idx) => {
+                  const pct = Math.max(
+                    10,
+                    Math.round((folder.count / maxFolderCount) * 100)
+                  );
+                  const barColor =
+                    CHART_BAR_COLORS[idx % CHART_BAR_COLORS.length];
+                  return (
+                    <div
+                      key={`mob-folder-bar-${folder.name}`}
+                      className="flex items-center gap-2 text-[11px]"
+                    >
+                      <span className="w-24 truncate font-semibold text-[#121215]">
+                        {folder.name}
+                      </span>
+                      <div className="flex-1 h-2 rounded-full bg-[#F1F5F9] overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${pct}%`, backgroundColor: barColor }}
+                        />
+                      </div>
+                      <span className="w-12 text-right font-bold text-[#64748B] tabular-nums shrink-0">
+                        {folder.count} mat
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </article>
+
+        <div className="rs-dash-charts-grid !hidden md:!grid">
         {/* Left Chart Card: Distribusi Katalog & Progres Studio */}
         <article className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 rs-admin-card flex flex-col justify-between gap-4">
           <header className="flex flex-wrap items-center justify-between gap-2">
@@ -1596,6 +1693,7 @@ export function AdminHomeDashboard({
             </button>
           </footer>
         </article>
+        </div>
       </section>
 
       {/* 5. Main Operational Bento Grid (Left Ops + Right Leaderboard/PRO/Todo) */}
@@ -2004,8 +2102,12 @@ export function AdminHomeDashboard({
             )}
           </article>
 
-          {/* Card 3: Ulasan Learner & Status Sistem Studio */}
-          <article className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 rs-admin-card">
+          {/* Card 3: Ulasan Learner & Status Sistem Studio (Folded on mobile unless expanded) */}
+          <article
+            className={`rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 rs-admin-card ${
+              mobileExtraOpen ? "block" : "hidden md:block"
+            }`}
+          >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Left Sub-section: Ulasan Learner Terbaru */}
               <div className="space-y-3">
@@ -2171,8 +2273,12 @@ export function AdminHomeDashboard({
 
         {/* Right Column */}
         <div className="space-y-5 min-w-0">
-          {/* Right Card 1: Top Learner Leaderboard */}
-          <article className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 rs-admin-card space-y-3.5">
+          {/* Right Card 1: Top Learner Leaderboard (Folded on mobile unless expanded) */}
+          <article
+            className={`rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 rs-admin-card space-y-3.5 ${
+              mobileExtraOpen ? "block" : "hidden md:block"
+            }`}
+          >
             <header className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FEF3C7] text-[#D97706]">
@@ -2384,8 +2490,12 @@ export function AdminHomeDashboard({
             </div>
           </article>
 
-          {/* Right Card 3: Studio To Do List */}
-          <article className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 rs-admin-card">
+          {/* Right Card 3: Studio To Do List (Folded on mobile unless expanded) */}
+          <article
+            className={`rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-5 rs-admin-card ${
+              mobileExtraOpen ? "block" : "hidden md:block"
+            }`}
+          >
             <div className="flex items-center justify-between gap-2 mb-3.5">
               <div>
                 <h2 className="text-sm font-bold text-[#121215]">
@@ -2520,6 +2630,27 @@ export function AdminHomeDashboard({
           </article>
         </div>
       </section>
+
+      {/* Mobile Toggle for Secondary Admin Widgets (Leaderboard, Reviews, System Status, To-Do) */}
+      <div className="md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileExtraOpen((prev) => !prev)}
+          aria-expanded={mobileExtraOpen}
+          className="w-full flex items-center justify-between gap-2 rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] px-4 py-3 text-xs font-bold text-[#121215] shadow-2xs hover:border-[#4F39F6]/40 transition-colors cursor-pointer"
+        >
+          <span>
+            {mobileExtraOpen
+              ? "Sembunyikan Leaderboard, Status Sistem & To-Do"
+              : "Tampilkan Leaderboard, Status Sistem & To-Do"}
+          </span>
+          {mobileExtraOpen ? (
+            <ChevronUp size={15} className="text-[#4F39F6] shrink-0" />
+          ) : (
+            <ChevronDown size={15} className="text-[#64748B] shrink-0" />
+          )}
+        </button>
+      </div>
     </div>
   );
 }
