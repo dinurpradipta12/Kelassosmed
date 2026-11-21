@@ -26,9 +26,12 @@ import {
   DEFAULT_RUMI_ASSISTANT_PREFS,
   RUMI_DELIVER_NOTIF_EVENT,
   RUMI_PREFS_EVENT,
+  getRumiHideTransform,
   loadRumiAssistantPrefs,
   playRumiNotificationSound,
+  playRumiPeekABooSound,
   saveRumiAssistantPrefs,
+  type RumiAssistantPosition,
   type RumiAssistantPrefs,
   type RumiAssistantSize,
   type RumiDeliveredNotificationPayload,
@@ -361,6 +364,9 @@ export function RumiFloatingAssistant({
     if (isHiding) {
       setIsHiding(false);
       triggerHop();
+      if (prefs.peekSoundEnabled) {
+        playRumiPeekABooSound();
+      }
       setPeekGreeting(true);
       if (peekTimerRef.current) clearTimeout(peekTimerRef.current);
       peekTimerRef.current = setTimeout(() => {
@@ -417,20 +423,66 @@ export function RumiFloatingAssistant({
   const effectiveStage: RumiEvolutionStage =
     roleMode === "admin" ? 5 : learnerStage;
 
+  const positionLayoutMap: Record<
+    RumiAssistantPosition,
+    {
+      container: string;
+      popover: string;
+      bubble: string;
+      standbyPad: string;
+      tuckBtnPos: string;
+    }
+  > = {
+    "bottom-right": {
+      container: "right-0 bottom-5 flex-col items-end",
+      popover: "mr-4 mb-3",
+      bubble: "mr-4 mb-2 rounded-br-sm",
+      standbyPad: "pr-4",
+      tuckBtnPos: "-top-2 -left-1",
+    },
+    "top-right": {
+      container: "right-0 top-16 flex-col-reverse items-end",
+      popover: "mr-4 mt-3",
+      bubble: "mr-4 mt-2 rounded-tr-sm",
+      standbyPad: "pr-4",
+      tuckBtnPos: "-bottom-1 -left-1",
+    },
+    "top-center": {
+      container: "left-1/2 top-0 flex-col-reverse items-center",
+      popover: "mx-2 mt-3",
+      bubble: "mx-2 mt-2",
+      standbyPad: "",
+      tuckBtnPos: "-bottom-1 -right-1",
+    },
+    "top-left": {
+      container: "left-0 top-16 flex-col-reverse items-start",
+      popover: "ml-4 mt-3",
+      bubble: "ml-4 mt-2 rounded-tl-sm",
+      standbyPad: "pl-4",
+      tuckBtnPos: "-bottom-1 -right-1",
+    },
+  };
+  const layout =
+    positionLayoutMap[prefs.position] || positionLayoutMap["bottom-right"];
+
   return (
     <div
       aria-live="polite"
-      className={`fixed right-0 bottom-5 z-40 flex flex-col items-end transition-all duration-300 ${
+      style={{
+        transform:
+          prefs.position === "top-center" ? "translateX(-50%)" : undefined,
+      }}
+      className={`fixed z-40 flex transition-opacity duration-300 ${layout.container} ${
         isVisibleOnPage
-          ? "opacity-100 pointer-events-auto translate-y-0"
-          : "opacity-0 pointer-events-none translate-y-4"
+          ? "opacity-100 pointer-events-auto"
+          : "opacity-0 pointer-events-none"
       }`}
     >
       {/* Contextual Assistant Popover */}
       {isOpen && (
         <section
           aria-label="Asisten Rumi"
-          className="rs-rumi-popover-in mr-4 mb-3 w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] shadow-[0_20px_50px_rgba(16,15,17,0.16)] overflow-hidden"
+          className={`rs-rumi-popover-in ${layout.popover} w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] shadow-[0_20px_50px_rgba(16,15,17,0.16)] overflow-hidden`}
         >
           {/* Header */}
           <div className="flex items-start justify-between gap-2.5 border-b border-[#EAECEF] bg-[#F8F9FB] px-4 py-3">
@@ -614,7 +666,7 @@ export function RumiFloatingAssistant({
       {!isOpen && !isHiding && activeNotifBubble && (
         <div
           role="status"
-          className="rs-rumi-bubble-in mr-4 mb-2 w-[min(290px,calc(100vw-2rem))] rounded-2xl rounded-br-sm border border-[#4F39F6]/30 bg-[#FFFFFF] px-3.5 py-3 shadow-[0_14px_34px_rgba(79,57,246,0.18)]"
+          className={`rs-rumi-bubble-in ${layout.bubble} w-[min(290px,calc(100vw-2rem))] rounded-2xl border border-[#4F39F6]/30 bg-[#FFFFFF] px-3.5 py-3 shadow-[0_14px_34px_rgba(79,57,246,0.18)]`}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="space-y-1 min-w-0">
@@ -645,7 +697,7 @@ export function RumiFloatingAssistant({
       {!isOpen && !isHiding && !activeNotifBubble && (bubbleMessage || peekGreeting) && (
         <div
           role="status"
-          className="rs-rumi-bubble-in mr-4 mb-2 max-w-[260px] rounded-2xl rounded-br-sm border border-[#EAECEF] bg-[#FFFFFF] px-3 py-2.5 shadow-[0_10px_28px_rgba(16,15,17,0.14)]"
+          className={`rs-rumi-bubble-in ${layout.bubble} max-w-[260px] rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] px-3 py-2.5 shadow-[0_10px_28px_rgba(16,15,17,0.14)]`}
         >
           <div className="flex items-start justify-between gap-2">
             <p className="text-[11px] font-medium text-[#121215] leading-snug">
@@ -686,14 +738,19 @@ export function RumiFloatingAssistant({
         </div>
       )}
 
-      {/* Floating Mascot Trigger + Right-Edge Peek-a-Boo Dock */}
+      {/* Floating Mascot Trigger + Screen-Edge Peek-a-Boo Dock */}
       <div
         onMouseEnter={handleMouseEnterMascot}
         onMouseLeave={handleMouseLeaveMascot}
+        style={{
+          transform: getRumiHideTransform(
+            prefs.position,
+            isHiding,
+            prefs.hideDepthPercent
+          ),
+        }}
         className={`group relative flex items-center transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] will-change-transform ${
-          isHiding
-            ? "translate-x-[60%] translate-y-[10%] -rotate-[20deg] scale-[0.80]"
-            : "pr-4 translate-x-0 translate-y-0 rotate-0 scale-100"
+          isHiding ? "" : layout.standbyPad
         }`}
       >
         {/* Subtle manual hide chip visible only on standby hover */}
@@ -702,7 +759,7 @@ export function RumiFloatingAssistant({
             type="button"
             onClick={handleManualTuckHide}
             title="Sembunyikan ke pinggir layar"
-            className="absolute -top-2 -left-1 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-[#EAECEF] bg-[#FFFFFF] text-[#5E5E5E] shadow-xs hover:text-[#121215] cursor-pointer"
+            className={`absolute ${layout.tuckBtnPos} z-10 flex h-5 w-5 items-center justify-center rounded-full border border-[#EAECEF] bg-[#FFFFFF] text-[#5E5E5E] shadow-xs hover:text-[#121215] cursor-pointer`}
           >
             <EyeOff size={10} />
           </button>

@@ -33,10 +33,14 @@ import { RumiMascotIllustration } from "@/components/learner/RumiEvolutionMascot
 import {
   DEFAULT_RUMI_ASSISTANT_PREFS,
   RUMI_PREFS_EVENT,
+  clampHideDepthPercent,
   clampIdleSeconds,
+  getRumiHideTransform,
   loadRumiAssistantPrefs,
   playRumiNotificationSound,
+  playRumiPeekABooSound,
   saveRumiAssistantPrefs,
+  type RumiAssistantPosition,
   type RumiAssistantPrefs,
   type RumiAssistantSize,
 } from "@/lib/rumi-assistant-prefs";
@@ -1397,7 +1401,7 @@ export function UserProfileScreen({
                       <span>Pengaturan Rumi Assistant</span>
                     </h2>
                     <p className="text-[11px] text-[#5E5E5E] mt-0.5">
-                      Atur waktu idle sebelum Rumi bersembunyi di sisi kanan layar (mode ngintip), ukuran, dan sapaan otomatis.
+                      Atur posisi bersembunyi, seberapa dalam Rumi ngintip, waktu idle, notifikasi lewat Rumi, serta suara robot Peek-a-Boo.
                     </p>
                   </div>
 
@@ -1417,7 +1421,7 @@ export function UserProfileScreen({
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 rounded-xl border border-[#EAECEF] bg-[#F8F9FB] p-4">
                   {/* Live Mini Peek Preview */}
-                  <div className="lg:col-span-4 flex flex-col items-center justify-between rounded-xl border border-[#EAECEF] bg-[#FFFFFF] p-3 overflow-hidden relative min-h-[155px]">
+                  <div className="lg:col-span-4 flex flex-col items-center justify-between rounded-xl border border-[#EAECEF] bg-[#FFFFFF] p-3 overflow-hidden relative min-h-[175px]">
                     <div className="w-full flex items-center justify-between text-[10px] font-semibold text-[#5E5E5E]">
                       <span>Preview Posisi Layar</span>
                       <button
@@ -1430,13 +1434,26 @@ export function UserProfileScreen({
                       </button>
                     </div>
 
-                    <div className="relative w-full h-32 flex items-end justify-end overflow-hidden border-r-4 border-[#4F39F6]/30 pr-1">
+                    <div
+                      className={`relative w-full h-36 flex overflow-hidden rounded-lg bg-[#F8F9FB]/60 ${
+                        rumiPrefs.position === "top-left"
+                          ? "items-start justify-start border-l-4 border-[#4F39F6]/35 pl-1 pt-1"
+                          : rumiPrefs.position === "top-center"
+                          ? "items-start justify-center border-t-4 border-[#4F39F6]/35"
+                          : rumiPrefs.position === "top-right"
+                          ? "items-start justify-end border-r-4 border-[#4F39F6]/35 pr-1 pt-1"
+                          : "items-end justify-end border-r-4 border-[#4F39F6]/35 pr-1 pb-1"
+                      }`}
+                    >
                       <div
-                        className={`transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-                          rumiPreviewPeek
-                            ? "translate-x-[60%] translate-y-[10%] -rotate-[20deg] scale-[0.80]"
-                            : "translate-x-0 translate-y-0 rotate-0 scale-100"
-                        }`}
+                        style={{
+                          transform: getRumiHideTransform(
+                            rumiPrefs.position,
+                            rumiPreviewPeek,
+                            rumiPrefs.hideDepthPercent
+                          ),
+                        }}
+                        className="transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] will-change-transform"
                       >
                         <RumiMascotIllustration
                           stage={5}
@@ -1453,10 +1470,18 @@ export function UserProfileScreen({
                       </div>
                     </div>
 
-                    <p className="text-[10px] text-[#9CA3AF] text-center">
+                    <p className="text-[10px] text-[#9CA3AF] text-center leading-snug mt-1">
                       {rumiPreviewPeek
-                        ? "Separuh wajah mengintip di tepi kanan — muncul lagi saat di-hover!"
-                        : `Ukuran aktif: ${
+                        ? `Ngintip ${rumiPrefs.hideDepthPercent}% di tepi (${
+                            rumiPrefs.position === "top-left"
+                              ? "Kiri Atas"
+                              : rumiPrefs.position === "top-center"
+                              ? "Tengah Atas"
+                              : rumiPrefs.position === "top-right"
+                              ? "Kanan Atas"
+                              : "Kanan Bawah"
+                          })`
+                        : `Standby • ${
                             rumiPrefs.size === "sm"
                               ? "Kecil"
                               : rumiPrefs.size === "lg"
@@ -1628,6 +1653,121 @@ export function UserProfileScreen({
                       </div>
                     </div>
 
+                    {/* Screen Dock Position Selector */}
+                    <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2.5 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-[#121215]">
+                          Posisi Bersembunyi & Standby di Layar
+                        </span>
+                        <span className="text-[10px] font-bold text-[#4F39F6]">
+                          {rumiPrefs.position === "top-left"
+                            ? "Kiri Atas"
+                            : rumiPrefs.position === "top-center"
+                            ? "Tengah Atas"
+                            : rumiPrefs.position === "top-right"
+                            ? "Kanan Atas"
+                            : "Kanan Bawah"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {(
+                          [
+                            { id: "top-left", label: "Kiri Atas" },
+                            { id: "top-center", label: "Tengah Atas" },
+                            { id: "top-right", label: "Kanan Atas" },
+                            { id: "bottom-right", label: "Kanan Bawah" },
+                          ] as { id: RumiAssistantPosition; label: string }[]
+                        ).map((pos) => (
+                          <button
+                            key={pos.id}
+                            type="button"
+                            onClick={() =>
+                              handleUpdateRumiPrefs(
+                                { position: pos.id },
+                                `Posisi Rumi dipindah ke ${pos.label}.`
+                              )
+                            }
+                            className={`rounded-md py-1.5 px-2 text-[11px] font-bold border transition-colors cursor-pointer ${
+                              rumiPrefs.position === pos.id
+                                ? "bg-[#4F39F6] border-[#4F39F6] text-white"
+                                : "bg-[#F8F9FB] border-[#EAECEF] text-[#5E5E5E] hover:text-[#121215] hover:border-[#CBD5E1]"
+                            }`}
+                          >
+                            {pos.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Hide / Peek Depth Slider */}
+                    <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2.5 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-semibold text-[#121215]">
+                            Seberapa Dalam Rumi Bersembunyi
+                          </span>
+                          <p className="text-[10px] text-[#5E5E5E]">
+                            Geser untuk mengatur seberapa banyak wajah Rumi yang mengintip saat idle.
+                          </p>
+                        </div>
+                        <span className="rounded-md bg-[#EEF2FF] border border-[#4F39F6]/20 px-2 py-0.5 text-[11px] font-extrabold text-[#4F39F6] tabular-nums">
+                          {rumiPrefs.hideDepthPercent}%
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-semibold text-[#9CA3AF] shrink-0">
+                          Terlihat
+                        </span>
+                        <input
+                          type="range"
+                          min={20}
+                          max={75}
+                          step={1}
+                          value={rumiPrefs.hideDepthPercent}
+                          onChange={(e) => {
+                            setRumiPreviewPeek(true);
+                            handleUpdateRumiPrefs({
+                              hideDepthPercent: clampHideDepthPercent(
+                                Number(e.target.value)
+                              ),
+                            });
+                          }}
+                          className="w-full accent-[#4F39F6] cursor-pointer"
+                          aria-label="Kedalaman Rumi bersembunyi"
+                        />
+                        <span className="text-[10px] font-semibold text-[#9CA3AF] shrink-0">
+                          Masuk
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[
+                          { val: 35, label: "35% Santai" },
+                          { val: 48, label: "48% Pas (Default)" },
+                          { val: 62, label: "62% Dalam" },
+                        ].map((preset) => (
+                          <button
+                            key={preset.val}
+                            type="button"
+                            onClick={() => {
+                              setRumiPreviewPeek(true);
+                              handleUpdateRumiPrefs({
+                                hideDepthPercent: preset.val,
+                              });
+                            }}
+                            className={`rounded-md px-2.5 py-1 text-[10px] font-semibold border transition-colors cursor-pointer ${
+                              rumiPrefs.hideDepthPercent === preset.val
+                                ? "bg-[#4F39F6]/10 border-[#4F39F6] text-[#4F39F6]"
+                                : "bg-[#F8F9FB] border-[#EAECEF] text-[#5E5E5E] hover:border-[#CBD5E1]"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Notify via Rumi Toggle + Distinct Rumi Sound Preview */}
                     <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div className="min-w-0">
@@ -1669,6 +1809,49 @@ export function UserProfileScreen({
                           }`}
                         >
                           {rumiPrefs.notifyViaRumi ? "Aktif" : "Nonaktif"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Robotic Peek-a-Boo Voice Effect Toggle & Test */}
+                    <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-[#121215]">
+                          Suara Robot &quot;Peek-a-Boo!&quot; Saat Muncul
+                        </p>
+                        <p className="text-[10px] text-[#5E5E5E] leading-relaxed mt-0.5">
+                          Bunyi robot lucu saat kursor diarahkan ke Rumi yang sedang bersembunyi.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => playRumiPeekABooSound()}
+                          title="Dengarkan suara robot Peek-a-Boo Rumi"
+                          className="inline-flex items-center gap-1 rounded-full border border-[#EAECEF] bg-[#F8F9FB] hover:border-[#4F39F6] px-2.5 py-1 text-[11px] font-semibold text-[#4F39F6] transition-colors cursor-pointer"
+                        >
+                          <Volume2 size={11} />
+                          <span>Tes Peek-a-Boo</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateRumiPrefs(
+                              {
+                                peekSoundEnabled: !rumiPrefs.peekSoundEnabled,
+                              },
+                              !rumiPrefs.peekSoundEnabled
+                                ? "Suara robot Peek-a-Boo diaktifkan!"
+                                : "Suara robot Peek-a-Boo dinonaktifkan."
+                            )
+                          }
+                          className={`rounded-full px-3 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                            rumiPrefs.peekSoundEnabled
+                              ? "bg-[#4F39F6] text-white"
+                              : "bg-[#EAECEF] text-[#5E5E5E]"
+                          }`}
+                        >
+                          {rumiPrefs.peekSoundEnabled ? "Aktif" : "Nonaktif"}
                         </button>
                       </div>
                     </div>
