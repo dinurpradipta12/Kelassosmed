@@ -53,9 +53,9 @@ interface RumiFloatingAssistantProps {
 }
 
 const SIZE_CLASSES: Record<RumiAssistantSize, string> = {
-  sm: "w-14 h-14",
-  md: "w-16 h-16 sm:w-20 sm:h-20",
-  lg: "w-20 h-20 sm:w-24 sm:h-24",
+  sm: "w-24 h-24 sm:w-28 sm:h-28",
+  md: "w-28 h-28 sm:w-36 sm:h-36",
+  lg: "w-36 h-36 sm:w-44 sm:h-44",
 };
 
 export function RumiFloatingAssistant({
@@ -346,7 +346,7 @@ export function RumiFloatingAssistant({
                   stage={effectiveStage}
                   variant={mascotVariant}
                   mood={displayMood}
-                  sizeClass="w-11 h-11"
+                  sizeClass="w-14 h-14"
                 />
               </div>
               <div className="min-w-0">
@@ -567,7 +567,7 @@ export function RumiFloatingAssistant({
         onMouseLeave={handleMouseLeaveMascot}
         className={`group relative flex items-center transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] will-change-transform ${
           isHiding
-            ? "translate-x-[46%] -rotate-12 scale-[0.80]"
+            ? "translate-x-[42%] -rotate-12 scale-[0.84]"
             : "pr-4 translate-x-0 rotate-0 scale-100"
         }`}
       >

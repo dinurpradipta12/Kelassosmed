@@ -1426,11 +1426,11 @@ export function UserProfileScreen({
                       </button>
                     </div>
 
-                    <div className="relative w-full h-24 flex items-end justify-end overflow-hidden border-r-4 border-[#4F39F6]/30 pr-1">
+                    <div className="relative w-full h-32 flex items-end justify-end overflow-hidden border-r-4 border-[#4F39F6]/30 pr-1">
                       <div
                         className={`transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
                           rumiPreviewPeek
-                            ? "translate-x-[42%] -rotate-12 scale-85"
+                            ? "translate-x-[42%] -rotate-12 scale-[0.84]"
                             : "translate-x-0 rotate-0 scale-100"
                         }`}
                       >
@@ -1440,10 +1440,10 @@ export function UserProfileScreen({
                           mood={rumiPreviewPeek ? "peeking" : "happy"}
                           sizeClass={
                             rumiPrefs.size === "sm"
-                              ? "w-14 h-14"
-                              : rumiPrefs.size === "lg"
                               ? "w-20 h-20"
-                              : "w-16 h-16"
+                              : rumiPrefs.size === "lg"
+                              ? "w-28 h-28"
+                              : "w-24 h-24"
                           }
                         />
                       </div>
@@ -2260,7 +2260,7 @@ export function UserProfileScreen({
                   stage={5}
                   variant={mode === "admin" ? "admin-superior" : "learner"}
                   mood={rumiPrefs.autoHideOnIdle ? "peeking" : "happy"}
-                  sizeClass="w-12 h-12"
+                  sizeClass="w-16 h-16"
                 />
                 <div className="min-w-0">
                   <h4 className="text-xs font-bold text-[#121215] flex items-center gap-1.5">
