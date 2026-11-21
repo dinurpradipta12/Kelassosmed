@@ -33,10 +33,12 @@ import {
   Coins,
   Layers,
   Tag,
+  Ticket,
   Lock,
   Bot,
 } from "lucide-react";
 import { AdminTelegramSettingsPanel } from "@/components/admin/AdminTelegramSettingsPanel";
+import { AdminProVoucherCodesPanel } from "@/components/admin/AdminProVoucherCodesPanel";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
@@ -203,6 +205,7 @@ interface AdminSettingsScreenProps {
 
 type SettingsSectionId =
   | "pro-packages"
+  | "pro-voucher-codes"
   | "pro-modal-banner"
   | "pro-qris"
   | "learner-pages"
@@ -655,6 +658,15 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
           icon: Zap,
         },
         {
+          id: "pro-voucher-codes",
+          label: "Kode Akses Premium",
+          subtitle:
+            "Buat kode khusus untuk membuka akses PRO berdurasi hari atau bulan yang bisa diatur bebas.",
+          detail: "Hari / Bulan",
+          iconBg: "bg-violet-600 text-white",
+          icon: Ticket,
+        },
+        {
           id: "pro-modal-banner",
           label: "Modal & Banner Siswa",
           subtitle:
@@ -874,7 +886,8 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
               </div>
             </div>
 
-            {activeSection !== "telegram-bot" && (
+            {activeSection !== "telegram-bot" &&
+              activeSection !== "pro-voucher-codes" && (
               <button
                 type="submit"
                 className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer shrink-0"
@@ -2617,6 +2630,14 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* SECTION 1B: KODE AKSES PREMIUM BERJANGKA WAKTU */}
+          {activeSection === "pro-voucher-codes" && (
+            <AdminProVoucherCodesPanel
+              onShowToast={onShowToast}
+              packages={packagesList}
+            />
           )}
 
           {/* SECTION 7: BOT TELEGRAM & NOTIFIKASI */}

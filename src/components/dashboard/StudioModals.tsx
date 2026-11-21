@@ -18,7 +18,9 @@ import {
   XCircle,
   Clock,
   Lock,
+  Ticket,
 } from "lucide-react";
+import { formatIndoDate } from "@/lib/subscription-utils";
 import {
   CONTENT_TYPES_LIST,
   CONTENT_TYPE_CONFIGS,
@@ -263,6 +265,20 @@ export function GlobalSearchModal({
   );
 }
 
+export interface ProVoucherRedeemResult {
+  code: string;
+  durationValue: number;
+  durationUnit: "days" | "months";
+  grantedDays: number;
+  extended: boolean;
+  packageId: string;
+  packageName: string;
+  billingCycle: string;
+  startedAt: string | null;
+  expiresAt: string | null;
+  dueDate: string | null;
+}
+
 interface UpgradePlanModalProps {
   open: boolean;
   onClose: () => void;
@@ -278,6 +294,7 @@ interface UpgradePlanModalProps {
     paymentMethod?: "qris" | "bank";
     proofUrl?: string;
   }) => Promise<void> | void;
+  onVoucherRedeemed?: (res: ProVoucherRedeemResult) => void;
   isProActive?: boolean;
   hasUsedTrial?: boolean;
   activePackageId?: string | null;
@@ -300,6 +317,7 @@ export function UpgradePlanModal({
   open,
   onClose,
   onConfirmUpgrade,
+  onVoucherRedeemed,
   isProActive = false,
   hasUsedTrial = false,
   activePackageId = null,
@@ -342,6 +360,10 @@ export function UpgradePlanModal({
   const [copiedAcc, setCopiedAcc] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmittingUpgrade, setIsSubmittingUpgrade] = useState(false);
+  const [voucherCode, setVoucherCode] = useState("");
+  const [isRedeemingVoucher, setIsRedeemingVoucher] = useState(false);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [voucherSuccess, setVoucherSuccess] = useState<string | null>(null);
 
   const selectedPkg: LearnerProPackageItem =
     packages.find((p) => p.id === selectedPackageId) || defaultPaidPkg;
@@ -450,6 +472,9 @@ export function UpgradePlanModal({
       setProofPreview("");
       setFormError(null);
       setCopiedAcc(false);
+      setVoucherCode("");
+      setVoucherError(null);
+      setVoucherSuccess(null);
     }
   }, [
     open,
@@ -462,6 +487,57 @@ export function UpgradePlanModal({
     defaultBuyerName,
     defaultBuyerEmail,
   ]);
+
+  const handleRedeemVoucher = async () => {
+    const clean = voucherCode.trim().toUpperCase().replace(/\s+/g, "-");
+    if (!clean) {
+      setVoucherError("Masukkan kode akses premium terlebih dahulu.");
+      setVoucherSuccess(null);
+      return;
+    }
+    setIsRedeemingVoucher(true);
+    setVoucherError(null);
+    setVoucherSuccess(null);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) {
+        setVoucherError(
+          "Silakan masuk ke akun Anda terlebih dahulu untuk menukarkan kode."
+        );
+        return;
+      }
+      const res = await fetch("/api/pro-vouchers/redeem", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ code: clean }),
+      });
+      const json = await res.json();
+      if (!json?.ok || !json.redemption) {
+        setVoucherError(
+          json?.error || "Kode akses premium tidak valid atau sudah habis."
+        );
+        return;
+      }
+      const r = json.redemption as ProVoucherRedeemResult;
+      const unitLabel = r.durationUnit === "months" ? "bulan" : "hari";
+      const expiryText = formatIndoDate(r.expiresAt || r.dueDate);
+      setVoucherSuccess(
+        `${r.packageName} berhasil diaktifkan (${r.extended ? "diperpanjang" : "aktif"} +${r.durationValue} ${unitLabel}, berlaku hingga ${expiryText}).`
+      );
+      setVoucherCode("");
+      onVoucherRedeemed?.(r);
+    } catch {
+      setVoucherError(
+        "Gagal memproses kode akses premium. Periksa koneksi internet Anda lalu coba lagi."
+      );
+    } finally {
+      setIsRedeemingVoucher(false);
+    }
+  };
 
   const handleCopyAccount = () => {
     if (!cfg.accountNumber) return;
@@ -1210,6 +1286,66 @@ export function UpgradePlanModal({
                 </div>
               );
             })}
+          </div>
+
+          {/* Redeem Kode Akses Premium (Voucher Berdurasi Hari / Bulan) */}
+          <div className="rounded-xl border border-[#4F39F6]/25 bg-[#F8F9FB] p-3.5 space-y-2.5">
+            <div className="flex items-center gap-2">
+              <span className="h-6 w-6 rounded-lg bg-[#4F39F6]/10 text-[#4F39F6] flex items-center justify-center shrink-0">
+                <Ticket size={13} />
+              </span>
+              <div>
+                <p className="text-xs font-bold text-[#121215]">
+                  Punya Kode Akses Premium?
+                </p>
+                <p className="text-[11px] text-[#5E5E5E]">
+                  Masukkan kode dari Admin untuk langsung membuka akses PRO sesuai jangka waktu kode.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <input
+                type="text"
+                value={voucherCode}
+                onChange={(e) => {
+                  setVoucherCode(
+                    e.target.value.toUpperCase().replace(/\s+/g, "-")
+                  );
+                  if (voucherError) setVoucherError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleRedeemVoucher();
+                  }
+                }}
+                placeholder="Masukkan kode premium (contoh: VIP-30HARI)"
+                className="flex-1 rounded-lg bg-white px-3 py-2 text-xs font-mono font-bold uppercase tracking-wider text-[#121215] placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
+              />
+              <button
+                type="button"
+                disabled={isRedeemingVoucher || !voucherCode.trim()}
+                onClick={() => void handleRedeemVoucher()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] disabled:opacity-50 px-4 py-2 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer shrink-0"
+              >
+                <Ticket size={12} />
+                <span>
+                  {isRedeemingVoucher ? "Memproses..." : "Aktifkan Kode"}
+                </span>
+              </button>
+            </div>
+
+            {voucherError && (
+              <p className="text-[11px] font-semibold text-[#DC2626]">
+                {voucherError}
+              </p>
+            )}
+            {voucherSuccess && (
+              <p className="text-[11px] font-semibold text-[#059669]">
+                {voucherSuccess}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#EAECEF]">

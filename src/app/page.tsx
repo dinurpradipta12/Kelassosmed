@@ -23,6 +23,7 @@ import {
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
 import {
+  formatIndoDate,
   isProSubscriptionActive,
   isMissingSubDateColumnError,
 } from "@/lib/subscription-utils";
@@ -76,6 +77,7 @@ import {
   GlobalSearchModal,
   UpgradePlanModal,
   GradeQuizModal,
+  type ProVoucherRedeemResult,
 } from "@/components/dashboard/StudioModals";
 import { LearningContentExplorer } from "@/components/explorer/LearningContentExplorer";
 import { ContentDetailView } from "@/components/explorer/ContentDetailView";
@@ -2166,6 +2168,22 @@ function RuangSosmedStudioInner() {
           }
           triggerToast(
             "⏳ Konfirmasi pembayaran terkirim! Admin akan memverifikasi pembayaran sebelum mengaktifkan Learner PRO."
+          );
+        }}
+        onVoucherRedeemed={(res: ProVoucherRedeemResult) => {
+          setActiveSubMeta({
+            startedAt: res.startedAt,
+            expiresAt: res.expiresAt,
+            packageName: res.packageName,
+            packageId: res.packageId,
+            billingCycle: res.billingCycle,
+          });
+          setLearnerProStatus(true, currentUser);
+          window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
+          const unitLabel = res.durationUnit === "months" ? "bulan" : "hari";
+          const expiryLabel = formatIndoDate(res.expiresAt || res.dueDate);
+          triggerToast(
+            `Kode "${res.code}" aktif! ${res.packageName} +${res.durationValue} ${unitLabel} (berlaku s/d ${expiryLabel}).`
           );
         }}
         onSwitchToFree={() => {
