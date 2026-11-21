@@ -96,13 +96,15 @@ const LEVEL_TIERS = [
 ] as const;
 
 /**
- * Playful LMS Mascot ("Rumi") rendered as crisp scalable SVG.
+ * Playful animated LMS Mascot ("Rumi") rendered framelessly without a box.
  */
-function RumiMascotIllustration() {
+function RumiMascotIllustration({ paused = false }: { paused?: boolean }) {
   return (
     <svg
       viewBox="0 0 132 132"
-      className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 rs-mascot-float select-none"
+      className={`w-28 h-28 sm:w-32 sm:h-32 shrink-0 select-none overflow-visible drop-shadow-[0_6px_12px_rgba(79,57,246,0.18)] ${
+        paused ? "rs-rumi-paused" : ""
+      }`}
       aria-hidden="true"
     >
       <defs>
@@ -117,115 +119,169 @@ function RumiMascotIllustration() {
         </linearGradient>
       </defs>
 
-      {/* Soft Aura Halo */}
-      <circle cx="66" cy="70" r="52" fill="#4F39F6" fillOpacity="0.1" />
-      <circle cx="66" cy="70" r="41" fill="#EC4899" fillOpacity="0.08" />
+      {/* Synced Soft Ground Shadow */}
+      <ellipse
+        className="rs-rumi-shadow"
+        cx="66"
+        cy="118"
+        rx="23"
+        ry="4.5"
+        fill="#4F39F6"
+        fillOpacity="0.22"
+      />
 
-      {/* Sparkles */}
+      {/* Ambient Floating Sparkles & Pastel Dots */}
       <g className="rs-sparkle-bob" style={{ transformOrigin: "24px 32px" }}>
         <path
           d="M24 22 L26.5 29.5 L34 32 L26.5 34.5 L24 42 L21.5 34.5 L14 32 L21.5 29.5 Z"
           fill="#F59E0B"
         />
       </g>
-      <g className="rs-sparkle-bob" style={{ transformOrigin: "108px 28px" }}>
+      <g
+        className="rs-sparkle-bob-delayed"
+        style={{ transformOrigin: "108px 28px" }}
+      >
         <path
           d="M108 20 L110 26 L116 28 L110 30 L108 36 L106 30 L100 28 L106 26 Z"
           fill="#EC4899"
         />
       </g>
-      <circle cx="110" cy="96" r="4" fill="#10B981" fillOpacity="0.7" />
-      <circle cx="20" cy="94" r="3.5" fill="#0EA5E9" fillOpacity="0.7" />
-
-      {/* Cute Headphones Arc */}
-      <path
-        d="M32 68 C32 42, 100 42, 100 68"
-        fill="none"
-        stroke="#1E293B"
-        strokeWidth="6"
-        strokeLinecap="round"
+      <circle
+        className="rs-dot-float-a"
+        cx="110"
+        cy="96"
+        r="4"
+        fill="#10B981"
+        fillOpacity="0.8"
+      />
+      <circle
+        className="rs-dot-float-b"
+        cx="20"
+        cy="94"
+        r="3.5"
+        fill="#0EA5E9"
+        fillOpacity="0.8"
       />
 
-      {/* Rounded Cloud/Bean Mascot Body */}
-      <rect
-        x="34"
-        y="46"
-        width="64"
-        height="62"
-        rx="30"
-        fill="url(#rumiBodyGrad)"
-      />
-      {/* Forehead highlight */}
-      <ellipse
-        cx="55"
-        cy="58"
-        rx="12"
-        ry="5"
-        fill="#FFFFFF"
-        fillOpacity="0.22"
-        transform="rotate(-14 55 58)"
-      />
+      {/* Animated Floating Mascot Body */}
+      <g className="rs-rumi-character">
+        {/* Cute Headphones Arc */}
+        <path
+          d="M32 68 C32 42, 100 42, 100 68"
+          fill="none"
+          stroke="#1E293B"
+          strokeWidth="6"
+          strokeLinecap="round"
+        />
 
-      {/* Little Star Sprout on Top */}
-      <path
-        d="M66 46 L66 35"
-        stroke="#4F39F6"
-        strokeWidth="3.5"
-        strokeLinecap="round"
-      />
-      <circle cx="66" cy="31" r="6" fill="#FBBF24" />
-      <circle cx="64.5" cy="29.5" r="2" fill="#FEF3C7" />
+        {/* Little Star Sprout Antenna */}
+        <g className="rs-rumi-antenna">
+          <path
+            d="M66 46 L66 35"
+            stroke="#4F39F6"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+          />
+          <circle
+            className="rs-rumi-orb-glow"
+            cx="66"
+            cy="31"
+            r="9.5"
+            fill="#FBBF24"
+          />
+          <circle cx="66" cy="31" r="6" fill="#FBBF24" />
+          <circle cx="64.5" cy="29.5" r="2" fill="#FEF3C7" />
+        </g>
 
-      {/* Headphone Cups */}
-      <rect
-        x="24"
-        y="63"
-        width="13"
-        height="24"
-        rx="6.5"
-        fill="url(#rumiEarGrad)"
-        stroke="#FFFFFF"
-        strokeWidth="2"
-      />
-      <rect
-        x="95"
-        y="63"
-        width="13"
-        height="24"
-        rx="6.5"
-        fill="url(#rumiEarGrad)"
-        stroke="#FFFFFF"
-        strokeWidth="2"
-      />
+        {/* Rounded Cloud/Bean Mascot Body */}
+        <rect
+          x="34"
+          y="46"
+          width="64"
+          height="62"
+          rx="30"
+          fill="url(#rumiBodyGrad)"
+        />
+        {/* Forehead highlight */}
+        <ellipse
+          cx="55"
+          cy="58"
+          rx="12"
+          ry="5"
+          fill="#FFFFFF"
+          fillOpacity="0.22"
+          transform="rotate(-14 55 58)"
+        />
 
-      {/* Rosy Cheeks */}
-      <ellipse cx="47" cy="83" rx="6" ry="3.6" fill="#FDA4AF" fillOpacity="0.85" />
-      <ellipse cx="85" cy="83" rx="6" ry="3.6" fill="#FDA4AF" fillOpacity="0.85" />
+        {/* Headphone Cups */}
+        <rect
+          x="24"
+          y="63"
+          width="13"
+          height="24"
+          rx="6.5"
+          fill="url(#rumiEarGrad)"
+          stroke="#FFFFFF"
+          strokeWidth="2"
+        />
+        <rect
+          x="95"
+          y="63"
+          width="13"
+          height="24"
+          rx="6.5"
+          fill="url(#rumiEarGrad)"
+          stroke="#FFFFFF"
+          strokeWidth="2"
+        />
 
-      {/* Happy Eyes */}
-      <circle cx="53" cy="74" r="4.8" fill="#121215" />
-      <circle cx="79" cy="74" r="4.8" fill="#121215" />
-      <circle cx="54.6" cy="72.3" r="1.8" fill="#FFFFFF" />
-      <circle cx="80.6" cy="72.3" r="1.8" fill="#FFFFFF" />
+        {/* Rosy Cheeks */}
+        <ellipse
+          cx="47"
+          cy="83"
+          rx="6"
+          ry="3.6"
+          fill="#FDA4AF"
+          fillOpacity="0.85"
+        />
+        <ellipse
+          cx="85"
+          cy="83"
+          rx="6"
+          ry="3.6"
+          fill="#FDA4AF"
+          fillOpacity="0.85"
+        />
 
-      {/* Cheerful Smile */}
-      <path
-        d="M59 84 Q66 91 73 84"
-        fill="none"
-        stroke="#FFFFFF"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
+        {/* Blinking Happy Eyes */}
+        <g className="rs-rumi-eyes">
+          <circle cx="53" cy="74" r="4.8" fill="#121215" />
+          <circle cx="79" cy="74" r="4.8" fill="#121215" />
+          <circle cx="54.6" cy="72.3" r="1.8" fill="#FFFFFF" />
+          <circle cx="80.6" cy="72.3" r="1.8" fill="#FFFFFF" />
+        </g>
 
-      {/* Tiny Waving Arm */}
-      <path
-        d="M97 86 Q111 79 109 67"
-        fill="none"
-        stroke="#6366F1"
-        strokeWidth="7"
-        strokeLinecap="round"
-      />
-      <circle cx="109" cy="66" r="4.5" fill="#FDE68A" />
+        {/* Cheerful Smile */}
+        <path
+          d="M59 84 Q66 91 73 84"
+          fill="none"
+          stroke="#FFFFFF"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+
+        {/* Friendly Waving Arm */}
+        <g className="rs-rumi-arm">
+          <path
+            d="M97 86 Q111 79 109 67"
+            fill="none"
+            stroke="#6366F1"
+            strokeWidth="7"
+            strokeLinecap="round"
+          />
+          <circle cx="109" cy="66" r="4.5" fill="#FDE68A" />
+        </g>
+      </g>
     </svg>
   );
 }
@@ -269,6 +325,7 @@ export function LearnerHomeDashboard({
   const [ringMode, setRingMode] = useState<"status" | "folder">("status");
   const [chartMode, setChartMode] = useState<"courses" | "skills">("courses");
   const [hoveredCourseId, setHoveredCourseId] = useState<string | null>(null);
+  const [mascotPaused, setMascotPaused] = useState(false);
 
   // Exclude unfoldered zero-progress spam items from Home KPIs & charts whenever real folders exist
   const dashboardCourses = useMemo(() => {
@@ -685,9 +742,23 @@ export function LearnerHomeDashboard({
           {/* Left Mascot + Greeting + Level Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5 min-w-0 flex-1">
             <div className="flex items-center gap-3 sm:block shrink-0">
-              <div className="inline-flex items-center justify-center rounded-2xl bg-white/80 p-1.5 border border-white shadow-xs">
-                <RumiMascotIllustration />
-              </div>
+              <button
+                type="button"
+                onClick={() => setMascotPaused((p) => !p)}
+                aria-label={
+                  mascotPaused
+                    ? "Putar animasi maskot Rumi"
+                    : "Jeda animasi maskot Rumi"
+                }
+                title={
+                  mascotPaused
+                    ? "Klik Rumi untuk memutar animasi"
+                    : "Klik Rumi untuk jeda animasi"
+                }
+                className="rs-rumi-trigger inline-flex items-center justify-center bg-transparent border-0 p-0 rounded-full hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F39F6] cursor-pointer"
+              >
+                <RumiMascotIllustration paused={mascotPaused} />
+              </button>
               <div className="sm:hidden space-y-1">
                 <span className="inline-flex items-center gap-1 rounded-full bg-white/90 border border-[#E2E8F0] px-2.5 py-0.5 text-[11px] font-bold text-[#4F39F6]">
                   <span>{levelInfo.emoji}</span>

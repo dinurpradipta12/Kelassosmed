@@ -976,11 +976,132 @@ html[data-theme-mode="dark"] progress.rs-progress-bar {
   }
 }
 
+@keyframes rs-rumi-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(1.8deg);
+  }
+}
+
+@keyframes rs-rumi-shadow-pulse {
+  0%, 100% {
+    transform: scaleX(1);
+    opacity: 0.22;
+  }
+  50% {
+    transform: scaleX(0.76);
+    opacity: 0.11;
+  }
+}
+
+@keyframes rs-rumi-blink {
+  0%, 44%, 49%, 93%, 100% {
+    transform: scaleY(1);
+  }
+  46.5%, 96% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes rs-rumi-wave {
+  0%, 100% {
+    transform: rotate(-10deg);
+  }
+  50% {
+    transform: rotate(18deg);
+  }
+}
+
+@keyframes rs-rumi-antenna-sway {
+  0%, 100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(7deg);
+  }
+}
+
+@keyframes rs-rumi-orb-glow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.42);
+    opacity: 0.15;
+  }
+}
+
+@keyframes rs-dot-drift {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translateY(-5px) scale(1.15);
+    opacity: 0.55;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .rs-mascot-float {
     animation: rs-float-gentle 3.8s ease-in-out infinite;
   }
   .rs-sparkle-bob {
-    animation: rs-sparkle-pop 2.8s ease-in-out infinite;
+    animation: rs-sparkle-pop 2.6s ease-in-out infinite;
   }
+  .rs-sparkle-bob-delayed {
+    animation: rs-sparkle-pop 3.1s ease-in-out -1.2s infinite;
+  }
+  .rs-rumi-trigger {
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .rs-rumi-trigger:hover .rs-rumi-arm {
+    animation-duration: 0.7s;
+  }
+  .rs-rumi-character {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-float 3.2s ease-in-out infinite;
+  }
+  .rs-rumi-shadow {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-shadow-pulse 3.2s ease-in-out infinite;
+  }
+  .rs-rumi-eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-blink 4.2s ease-in-out infinite;
+  }
+  .rs-rumi-arm {
+    transform-origin: 96px 86px;
+    animation: rs-rumi-wave 1.35s ease-in-out infinite;
+  }
+  .rs-rumi-antenna {
+    transform-origin: 66px 46px;
+    animation: rs-rumi-antenna-sway 2.6s ease-in-out infinite;
+  }
+  .rs-rumi-orb-glow {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-orb-glow 2.2s ease-in-out infinite;
+  }
+  .rs-dot-float-a {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-dot-drift 3.4s ease-in-out infinite;
+  }
+  .rs-dot-float-b {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-dot-drift 3.9s ease-in-out -1.6s infinite;
+  }
+}
+
+.rs-rumi-paused,
+.rs-rumi-paused * {
+  animation-play-state: paused !important;
 }
