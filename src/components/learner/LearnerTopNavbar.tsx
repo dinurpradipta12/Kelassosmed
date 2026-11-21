@@ -236,6 +236,7 @@ export function LearnerTopNavbar({
     markLearnerNotificationRead,
     clearLearnerNotifications,
     learnerIsPro,
+    learnerPagesConfig,
     certificateUnlocked,
     learnerAssignedItems,
     explorerItems,
@@ -679,17 +680,30 @@ export function LearnerTopNavbar({
     [markLearnerNotificationRead, dismissPopup, onOpenUpgradeModal, onSelectTab]
   );
 
+  const showWikiPage = learnerPagesConfig?.showWikiPage ?? true;
+  const showFavoritesPage = learnerPagesConfig?.showFavoritesPage ?? true;
+
   const navTabs: {
     id: LearnerNavTabId;
     label: string;
     icon: React.ComponentType<{ size?: number }>;
-  }[] = [
-    { id: "home", label: "Home", icon: Home },
-    { id: "my-learning", label: "My Learning", icon: BookOpen },
-    { id: "catalog", label: "Catalog", icon: Compass },
-    { id: "wiki", label: "Wiki", icon: Library },
-    { id: "favorites", label: "Favorites", icon: Heart },
-  ];
+  }[] = (
+    [
+      { id: "home" as const, label: "Home", icon: Home },
+      { id: "my-learning" as const, label: "My Learning", icon: BookOpen },
+      { id: "catalog" as const, label: "Catalog", icon: Compass },
+      ...(showWikiPage
+        ? [{ id: "wiki" as const, label: "Wiki", icon: Library }]
+        : []),
+      ...(showFavoritesPage
+        ? [{ id: "favorites" as const, label: "Favorites", icon: Heart }]
+        : []),
+    ]
+  );
+
+  const visibleSearchAssignedItems = showWikiPage
+    ? learnerAssignedItems
+    : learnerAssignedItems.filter((item) => item.type !== "Wiki");
 
   return (
     <header className="sticky top-0 z-30 bg-[#FFFFFF] border-b border-[#EAECEF] shadow-[0_1px_4px_rgba(16,15,17,0.03)]">
@@ -720,8 +734,16 @@ export function LearnerTopNavbar({
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
                 onFocus={() => setAiSearchOpen(true)}
-                placeholder="Search courses, paths, or wikis..."
-                aria-label="Search courses, paths, or wikis"
+                placeholder={
+                  showWikiPage
+                    ? "Search courses, paths, or wikis..."
+                    : "Search courses or paths..."
+                }
+                aria-label={
+                  showWikiPage
+                    ? "Search courses, paths, or wikis"
+                    : "Search courses or paths"
+                }
                 className="w-full rounded-lg bg-[#F8F9FB] pl-8 pr-11 py-1.5 text-xs text-[#121215] placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] focus:outline-none transition-colors"
               />
               <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex items-center rounded bg-[#FFFFFF] px-1.5 py-0.5 text-[10px] font-semibold text-[#9CA3AF] border border-[#EAECEF]">
@@ -1299,7 +1321,11 @@ export function LearnerTopNavbar({
                   setAiQueryText(e.target.value);
                   onSearchChange(e.target.value);
                 }}
-                placeholder="Search courses, pages, or wikis..."
+                placeholder={
+                  showWikiPage
+                    ? "Search courses, pages, or wikis..."
+                    : "Search courses or pages..."
+                }
                 className="flex-1 text-xs font-semibold text-[#121215] bg-transparent focus:outline-none"
               />
               <button
@@ -1330,19 +1356,20 @@ export function LearnerTopNavbar({
 
             {/* Categorized Search Results */}
             <div className="px-4 py-4 space-y-3 max-h-60 overflow-y-auto">
-              {learnerAssignedItems.length === 0 && wikiResources.length === 0 ? (
+              {visibleSearchAssignedItems.length === 0 &&
+              (!showWikiPage || wikiResources.length === 0) ? (
                 <div className="py-6 text-center text-xs text-[#9CA3AF]">
-                  Belum ada materi kursus, kuis, atau wiki yang tersedia.
+                  Belum ada materi kursus atau kuis yang tersedia.
                 </div>
               ) : (
                 <>
-                  {learnerAssignedItems.length > 0 && (
+                  {visibleSearchAssignedItems.length > 0 && (
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5">
                         Courses &amp; Assessments
                       </p>
                       <div className="space-y-1">
-                        {learnerAssignedItems.map((item) => (
+                        {visibleSearchAssignedItems.map((item) => (
                           <button
                             key={item.id}
                             type="button"
@@ -1369,7 +1396,7 @@ export function LearnerTopNavbar({
                     </div>
                   )}
 
-                  {wikiResources.length > 0 && (
+                  {showWikiPage && wikiResources.length > 0 && (
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5">
                         Wiki Directory

@@ -305,6 +305,7 @@ export function LearnerPortalView({
     certificateUnlocked,
     learnerIsPro,
     learnerProConfig,
+    learnerPagesConfig,
     markLearnerChapterComplete,
     toggleLearnerItemFavorite,
     getCourseCurriculum,
@@ -508,10 +509,15 @@ export function LearnerPortalView({
     [assignedFolderItems]
   );
 
+  const showWikiPage = learnerPagesConfig?.showWikiPage ?? true;
+  const showFavoritesPage = learnerPagesConfig?.showFavoritesPage ?? true;
+
   // Pastikan daftar materi di Learner Portal hanya menampilkan materi yang di-assign oleh Admin
   // (baik di-assign langsung maupun via Folder Series yang dibagikan ke user)
   const assignedItems: LearnerAssignedItem[] = React.useMemo(() => {
-    const validExplorer = explorerItems.filter((e) => e.type !== "Folder");
+    const validExplorer = explorerItems.filter(
+      (e) => e.type !== "Folder" && (showWikiPage || e.type !== "Wiki")
+    );
     if (validExplorer.length === 0) return [];
 
     const filteredExplorer = validExplorer.filter((exp) => {
@@ -590,12 +596,16 @@ export function LearnerPortalView({
     getCourseCurriculum,
     matchesCurrentLearner,
     assignedFolderNames,
+    showWikiPage,
   ]);
 
-  // Published Notion-style Wiki & Playbook articles (synced across all students)
+  // Published Notion-style Wiki & Playbook articles (hidden globally when showWikiPage is false)
   const publishedWikiArticles = React.useMemo(
-    () => explorerItems.filter((e) => e.type === "Wiki" && !e.isArchived),
-    [explorerItems]
+    () =>
+      showWikiPage
+        ? explorerItems.filter((e) => e.type === "Wiki" && !e.isArchived)
+        : [],
+    [explorerItems, showWikiPage]
   );
   const [wikiCategoryFilter, setWikiCategoryFilter] = useState<string>("All");
 
@@ -1229,6 +1239,19 @@ export function LearnerPortalView({
     }
   }, [screenState]);
 
+  // Guard: jika halaman Wiki/Favorites dinonaktifkan oleh Admin, arahkan keluar dari halaman tersebut
+  useEffect(() => {
+    if (!showWikiPage && activeNavTab === "wiki") {
+      setActiveNavTab("home");
+    }
+    if (!showWikiPage && screenState.screen === "wiki-reader") {
+      setScreenState({ screen: "dashboard" });
+    }
+    if (!showFavoritesPage && activeNavTab === "favorites") {
+      setActiveNavTab("home");
+    }
+  }, [showWikiPage, showFavoritesPage, activeNavTab, screenState.screen]);
+
   // Guard: jika halaman yang tersimpan adalah kelas yang belum/tidak di-assign ke user ini, kembalikan ke dashboard
   useEffect(() => {
     if (
@@ -1698,6 +1721,7 @@ export function LearnerPortalView({
             getCourseCurriculum(screenState.courseTitle) || courseSections
           }
           isFavorite={courseFavorite}
+          showFavoriteButton={showFavoritesPage}
           onToggleFavorite={() => {
             if (!learnerIsPro) {
               onShowToast(
@@ -2012,7 +2036,7 @@ export function LearnerPortalView({
           )}
 
           {/* WIKI TAB VIEW (Notion-Style Published Articles + Resource Cards Directory) */}
-          {activeNavTab === "wiki" ? (
+          {activeNavTab === "wiki" && showWikiPage ? (
             (() => {
               const wikiCategoriesList = Array.from(
                 new Set(
@@ -2333,7 +2357,7 @@ export function LearnerPortalView({
                 </section>
               );
             })()
-          ) : activeNavTab === "favorites" && !learnerIsPro ? (
+          ) : activeNavTab === "favorites" && showFavoritesPage && !learnerIsPro ? (
             /* FAVORITES TAB LOCKED WHEN FREE TIER */
             <section
               aria-label="Learner PRO Favorites Lock"
@@ -3817,36 +3841,38 @@ export function LearnerPortalView({
                                 </div>
                               </div>
 
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!learnerIsPro) {
-                                    onShowToast(
-                                      "🔒 Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
-                                    );
-                                    onOpenUpgradeModal?.();
-                                    return;
-                                  }
-                                  toggleLearnerItemFavorite(item.id);
-                                }}
-                                aria-label={`Favorite ${item.title}`}
-                                className="p-1.5 rounded-lg bg-[#F8F9FB] hover:bg-white border border-[#EAECEF] text-[#9CA3AF] hover:text-[#EC4899] transition-colors cursor-pointer"
-                              >
-                                <Heart
-                                  size={13}
-                                  className={
-                                    item.isFavorite && learnerIsPro
-                                      ? "text-[#EC4899]"
-                                      : ""
-                                  }
-                                  fill={
-                                    item.isFavorite && learnerIsPro
-                                      ? "#EC4899"
-                                      : "transparent"
-                                  }
-                                />
-                              </button>
+                              {showFavoritesPage && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!learnerIsPro) {
+                                      onShowToast(
+                                        "🔒 Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
+                                      );
+                                      onOpenUpgradeModal?.();
+                                      return;
+                                    }
+                                    toggleLearnerItemFavorite(item.id);
+                                  }}
+                                  aria-label={`Favorite ${item.title}`}
+                                  className="p-1.5 rounded-lg bg-[#F8F9FB] hover:bg-white border border-[#EAECEF] text-[#9CA3AF] hover:text-[#EC4899] transition-colors cursor-pointer"
+                                >
+                                  <Heart
+                                    size={13}
+                                    className={
+                                      item.isFavorite && learnerIsPro
+                                        ? "text-[#EC4899]"
+                                        : ""
+                                    }
+                                    fill={
+                                      item.isFavorite && learnerIsPro
+                                        ? "#EC4899"
+                                        : "transparent"
+                                    }
+                                  />
+                                </button>
+                              )}
 
                               <span className="inline-flex items-center gap-1 rounded-lg bg-[#4F39F6] text-white px-3 py-1.5 text-xs font-bold">
                                 <span>
@@ -3915,36 +3941,38 @@ export function LearnerPortalView({
                               </div>
 
                               {/* Top-Right Favorite Heart on Banner */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!learnerIsPro) {
-                                    onShowToast(
-                                      "🔒 Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
-                                    );
-                                    onOpenUpgradeModal?.();
-                                    return;
-                                  }
-                                  toggleLearnerItemFavorite(item.id);
-                                }}
-                                aria-label={`Favorite ${item.title}`}
-                                className="absolute top-3 right-3 p-1.5 rounded-full bg-white/85 backdrop-blur-xs hover:bg-white text-[#9CA3AF] hover:text-[#EC4899] shadow-sm transition-all cursor-pointer z-10"
-                              >
-                                <Heart
-                                  size={14}
-                                  className={
-                                    item.isFavorite && learnerIsPro
-                                      ? "text-[#EC4899]"
-                                      : ""
-                                  }
-                                  fill={
-                                    item.isFavorite && learnerIsPro
-                                      ? "#EC4899"
-                                      : "transparent"
-                                  }
-                                />
-                              </button>
+                              {showFavoritesPage && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!learnerIsPro) {
+                                      onShowToast(
+                                        "🔒 Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
+                                      );
+                                      onOpenUpgradeModal?.();
+                                      return;
+                                    }
+                                    toggleLearnerItemFavorite(item.id);
+                                  }}
+                                  aria-label={`Favorite ${item.title}`}
+                                  className="absolute top-3 right-3 p-1.5 rounded-full bg-white/85 backdrop-blur-xs hover:bg-white text-[#9CA3AF] hover:text-[#EC4899] shadow-sm transition-all cursor-pointer z-10"
+                                >
+                                  <Heart
+                                    size={14}
+                                    className={
+                                      item.isFavorite && learnerIsPro
+                                        ? "text-[#EC4899]"
+                                        : ""
+                                    }
+                                    fill={
+                                      item.isFavorite && learnerIsPro
+                                        ? "#EC4899"
+                                        : "transparent"
+                                    }
+                                  />
+                                </button>
+                              )}
                             </>
                           )}
 

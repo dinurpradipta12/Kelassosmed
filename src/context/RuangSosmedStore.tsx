@@ -167,6 +167,16 @@ export const DEFAULT_MAINTENANCE_CONFIG: MaintenanceConfig = {
   displayMode: "card",
 };
 
+export interface LearnerPagesVisibilityConfig {
+  showWikiPage: boolean;
+  showFavoritesPage: boolean;
+}
+
+export const DEFAULT_LEARNER_PAGES_CONFIG: LearnerPagesVisibilityConfig = {
+  showWikiPage: true,
+  showFavoritesPage: true,
+};
+
 export const DEFAULT_LEARNER_PRO_CONFIG: LearnerProPlanConfig = {
   modalTitle: "Upgrade to Ruang Sosmed 2.0 Learner PRO",
   modalSubtitle:
@@ -358,6 +368,9 @@ interface PersistedGlobalState {
 
   // Web Under Construction (404) Maintenance Mode & Custom Design
   maintenanceConfig: MaintenanceConfig;
+
+  // Visibility toggles for Learner Portal pages (Wiki & Favorites)
+  learnerPagesConfig: LearnerPagesVisibilityConfig;
 
   // Global Synchronized User Avatars & Points maps (keyed by lowercase email / name / username / id)
   userAvatars: Record<string, string>;
@@ -1033,6 +1046,54 @@ async function syncMaintenanceConfigToSupabase(config: MaintenanceConfig) {
     if (process.env.NODE_ENV !== "production") {
       console.warn(
         "[RuangSosmed] Failed to sync maintenanceConfig to Supabase:",
+        err
+      );
+    }
+  }
+}
+
+async function syncLearnerPagesConfigToSupabase(
+  config: LearnerPagesVisibilityConfig
+) {
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const existing = await getLatestSystemContentRow(
+      "__SYSTEM_LEARNER_PAGES_CONFIG__"
+    );
+
+    const payload = {
+      learnerPagesConfig: config,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (existing?.id) {
+      await supabase
+        .from("contents")
+        .update({
+          settings_json: payload,
+          status: "published",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("contents").insert({
+        id: newUuid(),
+        title: "__SYSTEM_LEARNER_PAGES_CONFIG__",
+        type: "page",
+        status: "published",
+        description:
+          "System storage for Learner Portal page visibility toggles (Wiki & Favorites)",
+        urgency: "not_urgent",
+        estimated_minutes: 0,
+        points_reward: 0,
+        settings_json: payload,
+      });
+    }
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        "[RuangSosmed] Failed to sync learnerPagesConfig to Supabase:",
         err
       );
     }
@@ -2124,6 +2185,7 @@ export const DEMO_GLOBAL_STATE: PersistedGlobalState = {
   courseCertificateConfigs: {},
   learnerProConfig: DEFAULT_LEARNER_PRO_CONFIG,
   maintenanceConfig: DEFAULT_MAINTENANCE_CONFIG,
+  learnerPagesConfig: DEFAULT_LEARNER_PAGES_CONFIG,
   userAvatars: {},
   userPointsMap: {},
   adminNotifications: [],
@@ -2176,6 +2238,7 @@ const DEFAULT_GLOBAL_STATE: PersistedGlobalState = {
   courseCertificateConfigs: {},
   learnerProConfig: DEFAULT_LEARNER_PRO_CONFIG,
   maintenanceConfig: DEFAULT_MAINTENANCE_CONFIG,
+  learnerPagesConfig: DEFAULT_LEARNER_PAGES_CONFIG,
   userAvatars: {},
   userPointsMap: {},
   adminNotifications: [],
@@ -2410,6 +2473,9 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
 
   // 12b. Web Under Construction (404) Maintenance Mode Configuration (Admin Settings)
   updateMaintenanceConfig: (patch: Partial<MaintenanceConfig>) => void;
+
+  // 12c. Learner Portal Pages Visibility Configuration (Wiki & Favorites)
+  updateLearnerPagesConfig: (patch: Partial<LearnerPagesVisibilityConfig>) => void;
 
   // 13. Cross-User Avatar Synchronization Registry
   updateUserAvatarInStore: (
@@ -3102,6 +3168,22 @@ export function RuangSosmedProvider({
                 })()
               : {}),
           },
+          learnerPagesConfig: {
+            ...DEFAULT_LEARNER_PAGES_CONFIG,
+            ...(parsed.learnerPagesConfig || {}),
+            ...(typeof window !== "undefined"
+              ? (() => {
+                  try {
+                    const rawPages = window.localStorage.getItem(
+                      "ruang_sosmed_learner_pages_config_v1"
+                    );
+                    return rawPages ? JSON.parse(rawPages) : {};
+                  } catch {
+                    return {};
+                  }
+                })()
+              : {}),
+          },
           userAvatars: (() => {
             const merged: Record<string, string> = {
               ...(parsed.userAvatars || {}),
@@ -3231,6 +3313,21 @@ export function RuangSosmedProvider({
                   }
                 })()
               : DEFAULT_MAINTENANCE_CONFIG,
+          learnerPagesConfig:
+            typeof window !== "undefined"
+              ? (() => {
+                  try {
+                    const rawPages = window.localStorage.getItem(
+                      "ruang_sosmed_learner_pages_config_v1"
+                    );
+                    return rawPages
+                      ? { ...DEFAULT_LEARNER_PAGES_CONFIG, ...JSON.parse(rawPages) }
+                      : DEFAULT_LEARNER_PAGES_CONFIG;
+                  } catch {
+                    return DEFAULT_LEARNER_PAGES_CONFIG;
+                  }
+                })()
+              : DEFAULT_LEARNER_PAGES_CONFIG,
           userAvatars:
             typeof window !== "undefined"
               ? (() => {
@@ -3293,6 +3390,17 @@ export function RuangSosmedProvider({
         } catch {
           // Ignore parse errors
         }
+      } else if (e.key === "ruang_sosmed_learner_pages_config_v1" && e.newValue) {
+        try {
+          const parsedCfg = JSON.parse(e.newValue);
+          setState((prev) => ({
+            ...prev,
+            learnerPagesConfig: {
+              ...DEFAULT_LEARNER_PAGES_CONFIG,
+              ...parsedCfg,
+            },
+          }));
+        } catch {}
       } else if (
         (e.key === DELETED_THREADS_STORAGE_KEY ||
           e.key === DELETED_REPLIES_STORAGE_KEY) &&
@@ -3474,6 +3582,24 @@ export function RuangSosmedProvider({
                 learnerAssignedItems: nextCatalog,
               };
             });
+          } else if (
+            event.data?.type === "LEARNER_PAGES_CONFIG_UPDATED" &&
+            event.data.config
+          ) {
+            const incomingCfg = {
+              ...DEFAULT_LEARNER_PAGES_CONFIG,
+              ...event.data.config,
+            } as LearnerPagesVisibilityConfig;
+            try {
+              window.localStorage.setItem(
+                "ruang_sosmed_learner_pages_config_v1",
+                JSON.stringify(incomingCfg)
+              );
+            } catch {}
+            setState((prev) => ({
+              ...prev,
+              learnerPagesConfig: incomingCfg,
+            }));
           } else if (
             event.data?.type === "ADMIN_NOTIFICATION_NEW" &&
             event.data.notification
@@ -4410,6 +4536,17 @@ export function RuangSosmedProvider({
                 }
               : null;
 
+          const systemLearnerPagesRow = pickLatestSystemRow(
+            "__SYSTEM_LEARNER_PAGES_CONFIG__"
+          );
+          const remoteLearnerPagesConfig: LearnerPagesVisibilityConfig | null =
+            systemLearnerPagesRow?.settings_json?.learnerPagesConfig
+              ? {
+                  ...DEFAULT_LEARNER_PAGES_CONFIG,
+                  ...systemLearnerPagesRow.settings_json.learnerPagesConfig,
+                }
+              : null;
+
           const systemCohortProjectsRow = pickLatestSystemRow(
             "__SYSTEM_COHORT_PROJECTS__"
           );
@@ -5208,6 +5345,28 @@ export function RuangSosmedProvider({
             void syncMaintenanceConfigToSupabase(prev.maintenanceConfig);
           }
 
+          // 4d) Sinkronisasi Visibilitas Halaman Siswa (Wiki & Favorites)
+          let nextLearnerPagesConfig =
+            prev.learnerPagesConfig || DEFAULT_LEARNER_PAGES_CONFIG;
+          let learnerPagesConfigChanged = false;
+          if (remoteLearnerPagesConfig) {
+            if (
+              JSON.stringify(prev.learnerPagesConfig) !==
+              JSON.stringify(remoteLearnerPagesConfig)
+            ) {
+              nextLearnerPagesConfig = remoteLearnerPagesConfig;
+              learnerPagesConfigChanged = true;
+              try {
+                window.localStorage.setItem(
+                  "ruang_sosmed_learner_pages_config_v1",
+                  JSON.stringify(remoteLearnerPagesConfig)
+                );
+              } catch {}
+            }
+          } else if (isStaffSession && prev.learnerPagesConfig) {
+            void syncLearnerPagesConfigToSupabase(prev.learnerPagesConfig);
+          }
+
           // 5) Sinkronisasi Inbox Pesan Mentor & Laporan Kendala dari Supabase
           let nextThreads = prev.discussionThreads ?? [];
           let threadsChanged = false;
@@ -5706,6 +5865,7 @@ export function RuangSosmedProvider({
             !certChanged &&
             !proConfigChanged &&
             !maintenanceConfigChanged &&
+            !learnerPagesConfigChanged &&
             !threadsChanged &&
             !issuesChanged &&
             !avatarsChanged &&
@@ -5727,6 +5887,7 @@ export function RuangSosmedProvider({
             courseCertificateConfigs: nextCourseCertConfigs,
             learnerProConfig: nextLearnerProConfig,
             maintenanceConfig: nextMaintenanceConfig,
+            learnerPagesConfig: nextLearnerPagesConfig,
             cohortProjects: nextCohortProjects,
             learnerPoints: activeUserPoints,
             learnerNotifications: nextNotifications,
@@ -10015,6 +10176,46 @@ export function RuangSosmedProvider({
     []
   );
 
+  const updateLearnerPagesConfig = useCallback(
+    (patch: Partial<LearnerPagesVisibilityConfig>) => {
+      const nextConfig: LearnerPagesVisibilityConfig = {
+        ...(stateRef.current.learnerPagesConfig || DEFAULT_LEARNER_PAGES_CONFIG),
+        ...patch,
+      };
+
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            "ruang_sosmed_learner_pages_config_v1",
+            JSON.stringify(nextConfig)
+          );
+        } catch {}
+
+        if ("BroadcastChannel" in window) {
+          try {
+            const bc = new BroadcastChannel("ruang_sosmed_channel");
+            bc.postMessage({
+              type: "LEARNER_PAGES_CONFIG_UPDATED",
+              config: nextConfig,
+            });
+            bc.close();
+          } catch {}
+        }
+      }
+
+      cachedContentsRowsRef.current = null;
+      lastContentsWmKeyRef.current = "";
+      lastWatermarkRef.current = "";
+      void syncLearnerPagesConfigToSupabase(nextConfig);
+
+      setState((prev) => ({
+        ...prev,
+        learnerPagesConfig: nextConfig,
+      }));
+    },
+    []
+  );
+
   const resolveUserAvatar = useCallback(
     (...identifiers: (string | undefined | null)[]): string => {
       const map = state.userAvatars || stateRef.current.userAvatars || {};
@@ -10393,6 +10594,7 @@ export function RuangSosmedProvider({
     updateCertificateConfig,
     updateLearnerProConfig,
     updateMaintenanceConfig,
+    updateLearnerPagesConfig,
     updateUserAvatarInStore,
     resolveUserAvatar,
     resolveUserPoints,

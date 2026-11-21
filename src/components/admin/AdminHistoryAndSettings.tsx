@@ -24,16 +24,24 @@ import {
   Construction,
   Image as ImageIcon,
   Eye,
+  LayoutGrid,
+  Library,
+  Heart,
+  Home,
+  BookOpen,
+  Compass,
 } from "lucide-react";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
   DEFAULT_LEARNER_PRO_FEATURES,
   DEFAULT_MAINTENANCE_CONFIG,
+  DEFAULT_LEARNER_PAGES_CONFIG,
   getNormalizedProPackages,
   type LearnerProPlanConfig,
   type LearnerProPackageItem,
   type MaintenanceConfig,
+  type LearnerPagesVisibilityConfig,
 } from "@/context/RuangSosmedStore";
 import { isSupabaseConfigured, STORAGE_BUCKETS } from "@/lib/supabase/client";
 import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
@@ -183,6 +191,7 @@ type SettingsSectionId =
   | "pro-packages"
   | "pro-modal-banner"
   | "pro-qris"
+  | "learner-pages"
   | "under-construction"
   | "brand-certificate"
   | "database-sync";
@@ -228,6 +237,8 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     updateLearnerProConfig,
     maintenanceConfig,
     updateMaintenanceConfig,
+    learnerPagesConfig,
+    updateLearnerPagesConfig,
   } = useRuangSosmedStore();
 
   const [activeSection, setActiveSection] =
@@ -264,6 +275,13 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     ...(maintenanceConfig || {}),
   }));
 
+  const [pagesDraft, setPagesDraft] = useState<LearnerPagesVisibilityConfig>(
+    () => ({
+      ...DEFAULT_LEARNER_PAGES_CONFIG,
+      ...(learnerPagesConfig || {}),
+    })
+  );
+
   useEffect(() => {
     if (maintenanceConfig) {
       setMaintDraft({
@@ -272,6 +290,15 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
       });
     }
   }, [maintenanceConfig]);
+
+  useEffect(() => {
+    if (learnerPagesConfig) {
+      setPagesDraft({
+        ...DEFAULT_LEARNER_PAGES_CONFIG,
+        ...learnerPagesConfig,
+      });
+    }
+  }, [learnerPagesConfig]);
 
   const qrisFileInputRef = useRef<HTMLInputElement | null>(null);
   const maintFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -326,8 +353,9 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     setProDraft(synced);
     updateLearnerProConfig(synced);
     updateMaintenanceConfig(maintDraft);
+    updateLearnerPagesConfig(pagesDraft);
     onShowToast(
-      "Pengaturan paket, QRIS, Under Construction (404) & studio berhasil disimpan."
+      "Pengaturan paket, QRIS, Halaman Siswa (Wiki & Favorites), Under Construction (404) & studio berhasil disimpan."
     );
   };
 
@@ -553,6 +581,23 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     {
       groupTitle: "Workspace & Sistem",
       items: [
+        {
+          id: "learner-pages",
+          label: "Halaman & Menu Siswa",
+          subtitle:
+            "Aktifkan atau nonaktifkan halaman Wiki dan Favorites pada Portal Belajar Siswa.",
+          detail:
+            (pagesDraft.showWikiPage ? 1 : 0) +
+              (pagesDraft.showFavoritesPage ? 1 : 0) ===
+            0
+              ? "Nonaktif"
+              : `${
+                  (pagesDraft.showWikiPage ? 1 : 0) +
+                  (pagesDraft.showFavoritesPage ? 1 : 0)
+                }/2 Aktif`,
+          iconBg: "bg-violet-600 text-white",
+          icon: LayoutGrid,
+        },
         {
           id: "under-construction",
           label: "Web Under Construction (404)",
@@ -1395,6 +1440,184 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                       className={IOS_INPUT_CLASS}
                     />
                   </IosGroupedRow>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 4A: HALAMAN & MENU SISWA (WIKI & FAVORITES CHECKBOXES) */}
+          {activeSection === "learner-pages" && (
+            <div className="space-y-5">
+              <div className="space-y-1.5">
+                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Visibilitas Halaman di Learner Portal
+                </p>
+                <div className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
+                  {/* Checkbox 1: Halaman Wiki */}
+                  <label className="p-4 sm:p-5 flex items-start justify-between gap-4 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <span
+                        className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                          pagesDraft.showWikiPage
+                            ? "bg-violet-50 border-violet-200 text-violet-600"
+                            : "bg-slate-100 border-slate-200 text-slate-400"
+                        }`}
+                      >
+                        <Library size={17} />
+                      </span>
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs sm:text-sm font-bold text-slate-900">
+                            Aktifkan Halaman Wiki di Portal Siswa
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              pagesDraft.showWikiPage
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-slate-100 text-slate-500 border border-slate-200"
+                            }`}
+                          >
+                            {pagesDraft.showWikiPage ? "Aktif" : "Disembunyikan"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Jika centang dimatikan, menu tab <strong>Wiki</strong>{" "}
+                          dan seluruh artikel/direktori Wiki tidak akan muncul
+                          sama sekali di halaman Learners (Home, My Learning,
+                          Catalog, Folder, maupun Pencarian).
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 shrink-0 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={pagesDraft.showWikiPage}
+                        onChange={(e) => {
+                          const nextVal = e.target.checked;
+                          const nextCfg = {
+                            ...pagesDraft,
+                            showWikiPage: nextVal,
+                          };
+                          setPagesDraft(nextCfg);
+                          updateLearnerPagesConfig({ showWikiPage: nextVal });
+                          onShowToast(
+                            nextVal
+                              ? "Halaman Wiki di Learner Portal diaktifkan."
+                              : "Halaman & seluruh materi Wiki disembunyikan dari Learner Portal."
+                          );
+                        }}
+                        aria-label="Aktifkan Halaman Wiki di Portal Siswa"
+                        className="h-5 w-5 rounded border-slate-300 text-[#4F39F6] accent-[#4F39F6] cursor-pointer"
+                      />
+                    </div>
+                  </label>
+
+                  {/* Checkbox 2: Halaman Favorites */}
+                  <label className="p-4 sm:p-5 flex items-start justify-between gap-4 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <span
+                        className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                          pagesDraft.showFavoritesPage
+                            ? "bg-pink-50 border-pink-200 text-pink-600"
+                            : "bg-slate-100 border-slate-200 text-slate-400"
+                        }`}
+                      >
+                        <Heart size={17} />
+                      </span>
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs sm:text-sm font-bold text-slate-900">
+                            Aktifkan Halaman Favorites di Portal Siswa
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              pagesDraft.showFavoritesPage
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-slate-100 text-slate-500 border border-slate-200"
+                            }`}
+                          >
+                            {pagesDraft.showFavoritesPage
+                              ? "Aktif"
+                              : "Disembunyikan"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Jika centang dimatikan, menu tab{" "}
+                          <strong>Favorites</strong> dan tombol hati simpan
+                          favorit tidak akan muncul di seluruh halaman
+                          Learners.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 shrink-0 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={pagesDraft.showFavoritesPage}
+                        onChange={(e) => {
+                          const nextVal = e.target.checked;
+                          const nextCfg = {
+                            ...pagesDraft,
+                            showFavoritesPage: nextVal,
+                          };
+                          setPagesDraft(nextCfg);
+                          updateLearnerPagesConfig({
+                            showFavoritesPage: nextVal,
+                          });
+                          onShowToast(
+                            nextVal
+                              ? "Halaman Favorites di Learner Portal diaktifkan."
+                              : "Halaman & tombol Favorites disembunyikan dari Learner Portal."
+                          );
+                        }}
+                        aria-label="Aktifkan Halaman Favorites di Portal Siswa"
+                        className="h-5 w-5 rounded border-slate-300 text-[#4F39F6] accent-[#4F39F6] cursor-pointer"
+                      />
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Live Preview Navbar Siswa */}
+              <div className="space-y-1.5">
+                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Eye size={12} />
+                  <span>Preview Menu Navigasi Portal Siswa</span>
+                </p>
+                <div className="rounded-2xl bg-white border border-slate-200/80 p-4 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6]/10 px-3 py-1.5 text-xs font-semibold text-[#4F39F6]">
+                    <Home size={13} />
+                    <span>Home</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                    <BookOpen size={13} />
+                    <span>My Learning</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                    <Compass size={13} />
+                    <span>Catalog</span>
+                  </span>
+                  {pagesDraft.showWikiPage ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-violet-50 border border-violet-200 px-3 py-1.5 text-xs font-semibold text-violet-700">
+                      <Library size={13} />
+                      <span>Wiki</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-400 line-through">
+                      Wiki (Tersembunyi)
+                    </span>
+                  )}
+                  {pagesDraft.showFavoritesPage ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-pink-50 border border-pink-200 px-3 py-1.5 text-xs font-semibold text-pink-700">
+                      <Heart size={13} />
+                      <span>Favorites</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-400 line-through">
+                      Favorites (Tersembunyi)
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

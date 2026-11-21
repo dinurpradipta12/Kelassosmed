@@ -36,6 +36,7 @@ interface LearnerCourseOverviewProps {
   learnerName?: string;
   sections: CourseSectionAccordion[];
   isFavorite: boolean;
+  showFavoriteButton?: boolean;
   onToggleFavorite: () => void;
   onBackToDashboard: () => void;
   onStartClassroom: (chapterId?: string) => void;
@@ -49,6 +50,7 @@ export function LearnerCourseOverview({
   learnerName = "Learner",
   sections,
   isFavorite,
+  showFavoriteButton = true,
   onToggleFavorite,
   onBackToDashboard,
   onStartClassroom,
@@ -264,23 +266,25 @@ export function LearnerCourseOverview({
             <span>Kembali ke My Learning</span>
           </button>
 
-          <button
-            type="button"
-            onClick={onToggleFavorite}
-            aria-pressed={isFavorite}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors cursor-pointer ${
-              isFavorite
-                ? "bg-amber-50 border-amber-200 text-amber-800"
-                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            <Star
-              size={13}
-              className={isFavorite ? "text-amber-500" : "text-slate-400"}
-              fill={isFavorite ? "currentColor" : "none"}
-            />
-            <span>{isFavorite ? "Disimpan di Favorit" : "Simpan Favorit"}</span>
-          </button>
+          {showFavoriteButton && (
+            <button
+              type="button"
+              onClick={onToggleFavorite}
+              aria-pressed={isFavorite}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors cursor-pointer ${
+                isFavorite
+                  ? "bg-amber-50 border-amber-200 text-amber-800"
+                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Star
+                size={13}
+                className={isFavorite ? "text-amber-500" : "text-slate-400"}
+                fill={isFavorite ? "currentColor" : "none"}
+              />
+              <span>{isFavorite ? "Disimpan di Favorit" : "Simpan Favorit"}</span>
+            </button>
+          )}
         </div>
 
         {/* Main Header Body */}
