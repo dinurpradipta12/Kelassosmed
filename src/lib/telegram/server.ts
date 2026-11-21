@@ -6,6 +6,7 @@ import {
   getTodayIsoDate,
 } from "@/lib/subscription-utils";
 import { deletePaymentProofFromStorage } from "@/lib/supabase/proof-cleanup";
+import { getServerEnv } from "@/lib/server-env";
 
 const DEFAULT_SUPABASE_URL = "https://nigxfryaobokkvfefond.supabase.co";
 
@@ -56,19 +57,21 @@ export interface TelegramInlineKeyboardMarkup {
 
 export function resolveSupabaseUrl(): string {
   return (
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.VITE_SUPABASE_URL ||
+    getServerEnv("NEXT_PUBLIC_SUPABASE_URL") ||
+    (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim() ||
+    getServerEnv("VITE_SUPABASE_URL") ||
+    (process.env.VITE_SUPABASE_URL || "").trim() ||
     DEFAULT_SUPABASE_URL
-  ).trim();
+  );
 }
 
 export function hasServiceRoleKey(): boolean {
-  return Boolean((process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim());
+  return Boolean(getServerEnv("SUPABASE_SERVICE_ROLE_KEY"));
 }
 
 export function createTelegramServiceClient(): SupabaseClient | null {
   const url = resolveSupabaseUrl();
-  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const serviceKey = getServerEnv("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !serviceKey) return null;
 
   return createClient(url, serviceKey, {
@@ -109,9 +112,9 @@ export function isMissingTelegramTableError(error: unknown): boolean {
 export async function loadTelegramBotConfig(
   client: SupabaseClient | null
 ): Promise<TelegramBotConfig> {
-  const envToken = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
-  const envChatId = (process.env.TELEGRAM_ADMIN_CHAT_ID || "").trim();
-  const envSecret = (process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+  const envToken = getServerEnv("TELEGRAM_BOT_TOKEN");
+  const envChatId = getServerEnv("TELEGRAM_ADMIN_CHAT_ID");
+  const envSecret = getServerEnv("TELEGRAM_WEBHOOK_SECRET");
 
   if (!client) {
     const adminChatIds = parseAdminChatIds(envChatId);

@@ -274,13 +274,31 @@ export function AdminTelegramSettingsPanel({
       {!hasServiceRoleKey && (
         <div className="flex items-start gap-2.5 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] px-4 py-3 text-xs text-[#92400E]">
           <AlertTriangle size={16} className="shrink-0 mt-0.5 text-[#D97706]" />
-          <div>
+          <div className="flex-1 space-y-1.5">
             <p className="font-bold">
-              Environment Server <code>SUPABASE_SERVICE_ROLE_KEY</code> Belum Terpasang
+              Environment Server <code>SUPABASE_SERVICE_ROLE_KEY</code> Belum Terbaca di Runtime
             </p>
-            <p className="text-[11px] mt-0.5 leading-relaxed">
-              Agar server dapat menerima tombol Konfirmasi/Tolak langsung dari Webhook Telegram dan mengirim notif member baru, tambahkan <code>SUPABASE_SERVICE_ROLE_KEY</code> di file <code>.env.local</code> dan Environment Variables Vercel.
+            <p className="text-[11px] leading-relaxed">
+              Agar server dapat menerima tombol Konfirmasi/Tolak langsung dari Webhook Telegram dan mengirim notif member baru:
             </p>
+            <ul className="list-disc list-inside space-y-0.5 text-[11px] leading-relaxed">
+              <li>
+                <strong>Cloudflare Workers:</strong> tambahkan <code>SUPABASE_SERVICE_ROLE_KEY</code> di <strong>Settings → Variables and Secrets</strong> (bagian Runtime, di atas menu <em>Bindings</em>) — <strong>bukan</strong> di <strong>Settings → Builds → Variables and secrets</strong> (karena Builds hanya aktif saat build, tidak terbaca saat server berjalan), lalu deploy ulang.
+              </li>
+              <li>
+                <strong>Lokal:</strong> pastikan key ada di <code>.env.local</code> lalu restart server <code>npm run dev</code>.
+              </li>
+            </ul>
+            <div>
+              <button
+                type="button"
+                onClick={() => void loadConfig(false)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white hover:bg-amber-50 border border-amber-300 px-2.5 py-1 text-[11px] font-semibold text-[#92400E] cursor-pointer"
+              >
+                <RefreshCw size={11} />
+                <span>Cek Ulang Status</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -496,7 +514,7 @@ export function AdminTelegramSettingsPanel({
               className="w-full rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-[#4F39F6] focus:outline-none"
             />
             <p className="text-[11px] text-slate-500">
-              Telegram mewajibkan domain <strong>HTTPS publik</strong> (contoh URL deploy Vercel Anda + <code>/api/telegram/webhook</code>).
+              Telegram mewajibkan domain <strong>HTTPS publik</strong> (contoh URL deploy Cloudflare Workers / domain aktif Anda + <code>/api/telegram/webhook</code>).
             </p>
           </div>
 
@@ -559,7 +577,7 @@ export function AdminTelegramSettingsPanel({
             Centang <strong>Aktifkan Integrasi Bot Telegram</strong>, masukkan Token &amp; Chat ID, klik <strong>Simpan Pengaturan Bot</strong>, lalu tes dengan <strong>Kirim Pesan Tes</strong>.
           </li>
           <li>
-            Tambahkan <code>SUPABASE_SERVICE_ROLE_KEY</code> di Vercel / <code>.env.local</code>, lalu klik <strong>Pasang Webhook Otomatis</strong> menggunakan domain HTTPS publik agar Anda bisa langsung klik <strong>Konfirmasi / Tolak</strong> dan pakai perintah <code>/pending</code> &amp; <code>/stats</code> dari Telegram!
+            Tambahkan <code>SUPABASE_SERVICE_ROLE_KEY</code> di Cloudflare Workers (<strong>Settings → Variables and Secrets</strong> pada bagian Runtime, bukan <em>Builds</em>) / <code>.env.local</code>, lalu klik <strong>Pasang Webhook Otomatis</strong> menggunakan domain HTTPS publik agar Anda bisa langsung klik <strong>Konfirmasi / Tolak</strong> dan pakai perintah <code>/pending</code> &amp; <code>/stats</code> dari Telegram!
           </li>
         </ol>
         <div className="pt-1 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700">

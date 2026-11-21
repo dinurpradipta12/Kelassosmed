@@ -10,6 +10,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { getServerEnv } from "@/lib/server-env";
 import type { ContentType } from "@/lib/design-tokens";
 import { getItemAccessCode, type ExplorerItemType } from "@/lib/phase2-data";
 
@@ -218,12 +219,12 @@ export interface RedeemAccessCodePayload {
 }
 
 function createServiceRoleClient() {
-  const url = (
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.VITE_SUPABASE_URL ||
-    ""
-  ).trim();
-  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const url =
+    getServerEnv("NEXT_PUBLIC_SUPABASE_URL") ||
+    (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim() ||
+    getServerEnv("VITE_SUPABASE_URL") ||
+    (process.env.VITE_SUPABASE_URL || "").trim();
+  const serviceKey = getServerEnv("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !serviceKey) return null;
   return createClient(url, serviceKey, {
     auth: {

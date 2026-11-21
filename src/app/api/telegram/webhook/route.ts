@@ -17,6 +17,8 @@ import {
   type UpgradeRequestRecord,
 } from "@/lib/telegram/server";
 
+export const dynamic = "force-dynamic";
+
 interface TelegramUpdatePayload {
   callback_query?: {
     id: string;

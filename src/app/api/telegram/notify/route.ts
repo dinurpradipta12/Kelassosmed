@@ -18,6 +18,8 @@ import {
   type UpgradeRequestRecord,
 } from "@/lib/telegram/server";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request) {
   const fetchMetaErr = checkFetchMetadata(request);
   if (fetchMetaErr) return fetchMetaErr;

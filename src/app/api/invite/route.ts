@@ -5,6 +5,7 @@
 // =============================================================================
 
 import { NextResponse } from "next/server";
+import { getServerEnv } from "@/lib/server-env";
 import {
   API_SECURITY_HEADERS,
   checkFetchMetadata,
@@ -52,16 +53,18 @@ export async function POST(request: Request) {
     const safeName = escapeHtml(targetName);
     const safeNote = escapeHtml(inviteNote);
 
-    const rawSiteUrl = (
-      process.env.NEXT_PUBLIC_SITE_URL || "https://ruangsosmedid.com"
-    ).trim();
+    const rawSiteUrl =
+      getServerEnv("NEXT_PUBLIC_SITE_URL") ||
+      (process.env.NEXT_PUBLIC_SITE_URL || "").trim() ||
+      "https://ruangsosmedid.com";
     const ctaUrl = /^https?:\/\//i.test(rawSiteUrl)
       ? rawSiteUrl
       : "https://ruangsosmedid.com";
 
-    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendApiKey = getServerEnv("RESEND_API_KEY");
     const fromSender =
-      process.env.RESEND_FROM_EMAIL || "Ruang Sosmed 2.0 <invite@ruangsosmedid.com>";
+      getServerEnv("RESEND_FROM_EMAIL") ||
+      "Ruang Sosmed 2.0 <invite@ruangsosmedid.com>";
 
     // Build modern, responsive HTML email template
     const emailSubject = `Undangan Kolaborasi: ${targetRole.replace(/[\r\n]/g, " ")} di "${targetCohort.replace(/[\r\n]/g, " ")}" — Ruang Sosmed 2.0`;
