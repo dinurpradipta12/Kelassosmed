@@ -356,6 +356,7 @@ export function UserProfileScreen({
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let cancelled = false;
+    let dispatchTimer: number | null = null;
     (async () => {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
@@ -369,27 +370,28 @@ export function UserProfileScreen({
           .maybeSingle();
 
         if (cancelled || !row) return;
-        setProfile((prev) => {
-          const merged: UserProfileData = {
-            ...prev,
-            fullName:
-              row.full_name && row.full_name !== "Arunika Developer"
-                ? row.full_name
-                : prev.fullName,
-            avatarUrl: row.avatar_url || prev.avatarUrl,
-            headerBanner: row.header_url || prev.headerBanner,
-            professionalRole: row.job_title || prev.professionalRole,
-          };
-          try {
-            window.localStorage.setItem(storageKey, JSON.stringify(merged));
+        setProfile((prev) => ({
+          ...prev,
+          fullName:
+            row.full_name && row.full_name !== "Arunika Developer"
+              ? row.full_name
+              : prev.fullName,
+          avatarUrl: row.avatar_url || prev.avatarUrl,
+          headerBanner: row.header_url || prev.headerBanner,
+          professionalRole: row.job_title || prev.professionalRole,
+        }));
+        dispatchTimer = window.setTimeout(() => {
+          if (!cancelled) {
             window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
-          } catch {}
-          return merged;
-        });
+          }
+        }, 0);
       } catch {}
     })();
     return () => {
       cancelled = true;
+      if (dispatchTimer !== null) {
+        window.clearTimeout(dispatchTimer);
+      }
     };
   }, [mode, storageKey]);
 
