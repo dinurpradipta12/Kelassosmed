@@ -523,6 +523,15 @@ const LEGACY_DUMMY_TITLES = new Set([
   "meta ads manager roas diagnostic sop",
 ]);
 
+const LEGACY_GHOST_PARTIAL_TITLES = new Set([
+  "mini bootcamp s",
+  "mini bootcamp social media specialist b",
+  "mini bootcamp social media specialist ba",
+  "mini bootcamp social media specialist bat",
+  "mini bootcamp social media specialist batc",
+  "mini bootcamp social media specialist batch",
+]);
+
 const LEGACY_DUMMY_IDS = new Set([
   "lc-1",
   "lc-2",
@@ -2172,10 +2181,26 @@ function overlayLocalProgress(
   return mergedSections;
 }
 
-function isLegacyDummyItem(item: { id?: string; title?: string }): boolean {
+function isLegacyDummyItem(item: {
+  id?: string;
+  title?: string;
+  type?: string;
+  folderName?: string;
+}): boolean {
   if (!item) return true;
   if (item.id && LEGACY_DUMMY_IDS.has(item.id)) return true;
-  if (item.title && LEGACY_DUMMY_TITLES.has(item.title.trim().toLowerCase())) {
+  const normalized = item.title?.trim().toLowerCase() || "";
+  if (normalized && LEGACY_DUMMY_TITLES.has(normalized)) {
+    return true;
+  }
+  const isFolder = item.type?.toLowerCase() === "folder";
+  const hasFolder = Boolean(item.folderName?.trim());
+  if (
+    !isFolder &&
+    !hasFolder &&
+    normalized &&
+    LEGACY_GHOST_PARTIAL_TITLES.has(normalized)
+  ) {
     return true;
   }
   return false;
@@ -4926,7 +4951,20 @@ export function RuangSosmedProvider({
               if (isContentTitleTombstoned(tk, deletedContentTitlesRef.current)) {
                 return false;
               }
-              return !isLegacyDummyItem({ id: r.id, title: r.title });
+              const meta = r.settings_json?.explorer_meta || {};
+              const isFolderRow =
+                r.type === "folder" ||
+                meta.isFolder === true ||
+                meta.itemType === "Folder";
+              const rowFolderName = String(
+                r.folder_name || meta.folderName || ""
+              ).trim();
+              return !isLegacyDummyItem({
+                id: r.id,
+                title: r.title,
+                type: isFolderRow ? "Folder" : r.type,
+                folderName: rowFolderName,
+              });
             });
             const dbIds = new Set(dbRows.map((r) => r.id));
             const dbTitles = new Set(

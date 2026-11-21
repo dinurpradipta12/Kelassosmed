@@ -553,6 +553,7 @@ export function LearnerPortalView({
       explorerItems.filter(
         (e) =>
           e.type === "Folder" &&
+          !e.isArchived &&
           (matchesCurrentLearner(e.assignedLearners) ||
             isInSharedAllProject(e.cohort))
       ),
@@ -576,7 +577,10 @@ export function LearnerPortalView({
   // (baik di-assign langsung, via Folder Series, maupun Project bertipe "Bagikan ke Semua Member")
   const assignedItems: LearnerAssignedItem[] = React.useMemo(() => {
     const validExplorer = explorerItems.filter(
-      (e) => e.type !== "Folder" && (showWikiPage || e.type !== "Wiki")
+      (e) =>
+        e.type !== "Folder" &&
+        !e.isArchived &&
+        (showWikiPage || e.type !== "Wiki")
     );
     if (validExplorer.length === 0) return [];
 
@@ -1745,7 +1749,9 @@ export function LearnerPortalView({
   const learnerCertificateCourses: LearnerCourseCertificateItem[] =
     React.useMemo(() => {
       const prefix = "RS2-2026";
-      const mapped = assignedItems.map((item, idx) => {
+      const mapped = assignedItems
+        .filter((item) => item.type !== "Wiki")
+        .map((item, idx) => {
         const curr =
           getCourseCurriculum(item.title) ||
           courseCurriculums?.[item.title.trim().toLowerCase()] ||
