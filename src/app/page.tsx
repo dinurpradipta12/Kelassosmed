@@ -565,6 +565,7 @@ function RuangSosmedStudioInner() {
 
   // Non-intrusive toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastSeq, setToastSeq] = useState(0);
 
   // Verify live Supabase session & role before hydrating user/PRO state
   useEffect(() => {
@@ -1332,7 +1333,7 @@ function RuangSosmedStudioInner() {
       setToastMessage(null);
     }, 4500);
     return () => clearTimeout(timer);
-  }, [toastMessage]);
+  }, [toastMessage, toastSeq]);
 
   useEffect(() => {
     if (
@@ -1348,6 +1349,7 @@ function RuangSosmedStudioInner() {
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
+    setToastSeq((prev) => prev + 1);
   };
 
   // Automatically make Secondary Sidebar visible when "Learning Content" or "Archive" is selected, while preserving user's collapse/expand state across other screens
@@ -1626,6 +1628,26 @@ function RuangSosmedStudioInner() {
     />
   );
 
+  const toastBannerNode = toastMessage ? (
+    <div
+      key={toastSeq}
+      role="status"
+      aria-live="polite"
+      className="fixed top-4 left-1/2 z-[70] rs-top-toast-banner flex items-center gap-2.5 max-w-[min(92vw,540px)] rounded-xl bg-[#121215] px-4 py-3 text-xs font-medium text-white shadow-[0_14px_36px_rgba(16,15,17,0.24)] border border-white/10"
+    >
+      <CheckCircle2 size={15} className="text-[#10B981] shrink-0" />
+      <span>{toastMessage}</span>
+      <button
+        type="button"
+        onClick={() => setToastMessage(null)}
+        aria-label="Dismiss notification"
+        className="ml-1 text-white/60 hover:text-white cursor-pointer"
+      >
+        <X size={13} />
+      </button>
+    </div>
+  ) : null;
+
   // 2. Public Visitor & Under Construction Gate (When not logged in, or when Under Construction blocks non-Admin)
   if (
     !currentUser ||
@@ -1674,24 +1696,7 @@ function RuangSosmedStudioInner() {
 
         {welcomeProModalNode}
 
-        {toastMessage && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="fixed bottom-5 right-6 z-50 flex items-center gap-2.5 rounded-xl bg-[#121215] px-4 py-3 text-xs font-medium text-white shadow-lg border border-white/10 animate-in fade-in slide-in-from-bottom-2 duration-150"
-          >
-            <CheckCircle2 size={15} className="text-[#10B981] shrink-0" />
-            <span>{toastMessage}</span>
-            <button
-              type="button"
-              onClick={() => setToastMessage(null)}
-              aria-label="Dismiss notification"
-              className="ml-1 text-white/60 hover:text-white cursor-pointer"
-            >
-              <X size={13} />
-            </button>
-          </div>
-        )}
+        {toastBannerNode}
       </>
     );
   }
@@ -2361,25 +2366,8 @@ function RuangSosmedStudioInner() {
 
       {welcomeProModalNode}
 
-      {/* Subtle Bottom-Right Toast Notification */}
-      {toastMessage && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-5 right-6 z-50 flex items-center gap-2.5 rounded-xl bg-[#121215] px-4 py-3 text-xs font-medium text-white shadow-lg border border-white/10 animate-in fade-in slide-in-from-bottom-2 duration-150"
-        >
-          <CheckCircle2 size={15} className="text-[#10B981] shrink-0" />
-          <span>{toastMessage}</span>
-          <button
-            type="button"
-            onClick={() => setToastMessage(null)}
-            aria-label="Dismiss notification"
-            className="ml-1 text-white/60 hover:text-white cursor-pointer"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      )}
+      {/* Top-Center Toast Notification */}
+      {toastBannerNode}
     </div>
   );
 }
