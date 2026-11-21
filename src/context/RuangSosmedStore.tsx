@@ -4719,6 +4719,28 @@ export function RuangSosmedProvider({
                   packageName: ownProfile?.pro_package_name || "Learner PRO",
                 },
               });
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                  new CustomEvent("ruang_sosmed_pro_activated", {
+                    detail: {
+                      learnerName: activeLearnerName || "Learner",
+                      learnerEmail: activeLearnerEmail || "",
+                      planName:
+                        ownProfile?.pro_package_name ||
+                        activeUserPackageName ||
+                        "Ruang Sosmed Learning PRO",
+                      packageId:
+                        ownProfile?.pro_package_id || activeUserPackageId || null,
+                      billingCycle:
+                        ownProfile?.pro_billing_cycle ||
+                        activeUserBillingCycle ||
+                        null,
+                      startedAt: ownProfile?.pro_started_at || null,
+                      expiresAt: ownProfile?.pro_expires_at || null,
+                    },
+                  })
+                );
+              }
             }
             if (tierStorageKey && typeof window !== "undefined") {
               try {
@@ -4733,9 +4755,13 @@ export function RuangSosmedProvider({
             typeof window !== "undefined"
           ) {
             try {
+              const lowerEmail = activeLearnerEmail.toLowerCase().trim();
               window.localStorage.setItem(
                 `ruang_sosmed_last_known_tier_${activeLearnerEmail}`,
                 "Free"
+              );
+              window.localStorage.removeItem(
+                `rs_welcome_pro_seen_v1::${lowerEmail}`
               );
             } catch {}
           }
@@ -10230,6 +10256,19 @@ export function RuangSosmedProvider({
           unread: true,
           meta: { packageName: "Learner PRO" },
         });
+      }
+
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        try {
+          const bc = new BroadcastChannel("ruang_sosmed_channel");
+          bc.postMessage({
+            type: "SUBSCRIPTION_UPDATED",
+            email: emailKeySnap || "",
+            name: studentName,
+            tier,
+          });
+          bc.close();
+        } catch {}
       }
     },
     [addLearnerNotification]

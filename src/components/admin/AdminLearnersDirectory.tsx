@@ -1484,6 +1484,24 @@ export function AdminLearnersDirectory({
 
     setStudentProTierLocal(member.name, member.email, tier);
 
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      try {
+        const bc = new BroadcastChannel("ruang_sosmed_channel");
+        bc.postMessage({
+          type: "SUBSCRIPTION_UPDATED",
+          email: emailLower,
+          name: member.name,
+          tier,
+          startedAt,
+          expiresAt,
+          packageName,
+          packageId: packageId ?? null,
+          billingCycle: billingCycle ?? null,
+        });
+        bc.close();
+      } catch {}
+    }
+
     setInspectedMember((prev) =>
       prev && prev.email.toLowerCase().trim() === emailLower
         ? {

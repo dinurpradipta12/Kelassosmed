@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   GlobalRoleSwitcher,
   type AppRoleMode,
@@ -28,6 +28,43 @@ import {
 } from "@/lib/subscription-utils";
 
 let pageProfilesHasSubDateCols = true;
+
+interface ActiveSubMeta {
+  startedAt?: string | null;
+  expiresAt?: string | null;
+  packageName?: string | null;
+  packageId?: string | null;
+  billingCycle?: string | null;
+}
+
+function inferPaidTierKind(
+  packageName?: string | null,
+  packageId?: string | null
+): "pro" | "basic" {
+  const cleanId = String(packageId || "").trim().toLowerCase();
+  const cleanName = String(packageName || "").trim().toLowerCase();
+  if (cleanId === "pkg-basic" || cleanName.includes("basic")) {
+    return "basic";
+  }
+  return "pro";
+}
+
+function buildWelcomeProSignature(params: {
+  tierKind: "pro" | "basic";
+  packageId?: string | null;
+  planName?: string | null;
+  billingCycle?: string | null;
+  startedAt?: string | null;
+  expiresAt?: string | null;
+}): string {
+  return [
+    params.tierKind,
+    params.packageId || params.planName || params.tierKind,
+    params.billingCycle || "active",
+    params.startedAt || "",
+    params.expiresAt || "",
+  ].join(":");
+}
 import {
   AdminLeftRail,
   type AdminNavId,
@@ -296,6 +333,81 @@ function RuangSosmedStudioInner() {
   const [authReady, setAuthReady] = useState(false);
   const [welcomeProModalData, setWelcomeProModalData] =
     useState<WelcomeProModalData | null>(null);
+  const [activeSubMeta, setActiveSubMeta] = useState<ActiveSubMeta | null>(
+    null
+  );
+
+  const clearWelcomeProSeenForUser = useCallback(
+    (user?: AuthenticatedUser | null) => {
+      if (typeof window === "undefined" || !user) return;
+      const userKey = (user.email || user.username || user.name || "")
+        .trim()
+        .toLowerCase();
+      if (!userKey) return;
+      try {
+        window.localStorage.removeItem(`rs_welcome_pro_seen_v1::${userKey}`);
+      } catch {}
+    },
+    []
+  );
+
+  const triggerWelcomeProIfUnseen = useCallback(
+    (params: {
+      user: AuthenticatedUser;
+      packageId?: string | null;
+      packageName?: string | null;
+      billingCycle?: string | null;
+      startedAt?: string | null;
+      expiresAt?: string | null;
+      tierKind?: "pro" | "basic";
+    }) => {
+      if (typeof window === "undefined") return;
+      if (params.user.role === "admin") return;
+
+      const userKey = (
+        params.user.email ||
+        params.user.username ||
+        params.user.name ||
+        "guest"
+      )
+        .trim()
+        .toLowerCase();
+      const resolvedTierKind =
+        params.tierKind ||
+        inferPaidTierKind(params.packageName, params.packageId);
+      const resolvedPlanName =
+        String(params.packageName || "").trim() ||
+        (resolvedTierKind === "basic"
+          ? "Basic"
+          : "Ruang Sosmed Learning PRO");
+      const tierSig = buildWelcomeProSignature({
+        tierKind: resolvedTierKind,
+        packageId: params.packageId,
+        planName: resolvedPlanName,
+        billingCycle: params.billingCycle,
+        startedAt: params.startedAt,
+        expiresAt: params.expiresAt,
+      });
+      const storageKey = `rs_welcome_pro_seen_v1::${userKey}`;
+
+      try {
+        const seenSig = window.localStorage.getItem(storageKey);
+        if (seenSig === tierSig) return;
+        window.localStorage.setItem(storageKey, tierSig);
+      } catch {}
+
+      setWelcomeProModalData({
+        learnerName:
+          params.user.name || params.user.username || "Learner",
+        planName: resolvedPlanName,
+        tierKind: resolvedTierKind,
+        billingCycle: params.billingCycle ?? null,
+        expiresAt: params.expiresAt ?? null,
+        isPreview: false,
+      });
+    },
+    []
+  );
 
   const handleOpenAuth = (tab: "login" | "register" = "login") => {
     setAuthModalTab(tab);
@@ -434,7 +546,11 @@ function RuangSosmedStudioInner() {
 
     const resolveUserWithDbRole = async (
       sessionUser: any
-    ): Promise<{ user: AuthenticatedUser; isPro: boolean }> => {
+    ): Promise<{
+      user: AuthenticatedUser;
+      isPro: boolean;
+      subMeta: ActiveSubMeta;
+    }> => {
       const meta = sessionUser.user_metadata || {};
       const email = sessionUser.email || "";
 
@@ -443,18 +559,34 @@ function RuangSosmedStudioInner() {
       let dbUsername: string | null = null;
       let dbAvatarUrl: string | null = null;
       let dbSubTier = "free";
+      let dbProStartedAt: string | null = null;
       let dbProExpiresAt: string | null = null;
+      let dbProPackageName: string | null = null;
+      let dbProPackageId: string | null = null;
+      let dbProBillingCycle: string | null = null;
       try {
         const fetchOwnProfile = async () => {
           if (pageProfilesHasSubDateCols) {
-            const res = await supabase
+            const fullRes = await supabase
               .from("profiles")
-              .select("role, full_name, avatar_url, subscription_tier, pro_expires_at")
+              .select(
+                "role, full_name, avatar_url, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, pro_package_id, pro_billing_cycle"
+              )
               .eq("id", sessionUser.id)
               .maybeSingle();
-            if (!res.error) return res;
-            if (isMissingSubDateColumnError(res.error)) {
-              pageProfilesHasSubDateCols = false;
+            if (!fullRes.error) return fullRes;
+            if (isMissingSubDateColumnError(fullRes.error)) {
+              const midRes = await supabase
+                .from("profiles")
+                .select(
+                  "role, full_name, avatar_url, subscription_tier, pro_expires_at"
+                )
+                .eq("id", sessionUser.id)
+                .maybeSingle();
+              if (!midRes.error) return midRes;
+              if (isMissingSubDateColumnError(midRes.error)) {
+                pageProfilesHasSubDateCols = false;
+              }
             }
           }
           return supabase
@@ -486,8 +618,21 @@ function RuangSosmedStudioInner() {
         if (prof?.subscription_tier) {
           dbSubTier = String(prof.subscription_tier).toLowerCase();
         }
-        if ((prof as any)?.pro_expires_at) {
-          dbProExpiresAt = String((prof as any).pro_expires_at);
+        const profAny = prof as Record<string, unknown> | null | undefined;
+        if (profAny?.pro_started_at) {
+          dbProStartedAt = String(profAny.pro_started_at);
+        }
+        if (profAny?.pro_expires_at) {
+          dbProExpiresAt = String(profAny.pro_expires_at);
+        }
+        if (profAny?.pro_package_name) {
+          dbProPackageName = String(profAny.pro_package_name);
+        }
+        if (profAny?.pro_package_id) {
+          dbProPackageId = String(profAny.pro_package_id);
+        }
+        if (profAny?.pro_billing_cycle) {
+          dbProBillingCycle = String(profAny.pro_billing_cycle);
         }
         if (userProf?.username) dbUsername = userProf.username;
       } catch {}
@@ -514,6 +659,13 @@ function RuangSosmedStudioInner() {
           avatarUrl: dbAvatarUrl || undefined,
         },
         isPro,
+        subMeta: {
+          startedAt: dbProStartedAt,
+          expiresAt: dbProExpiresAt,
+          packageName: dbProPackageName,
+          packageId: dbProPackageId,
+          billingCycle: dbProBillingCycle,
+        },
       };
     };
 
@@ -521,10 +673,13 @@ function RuangSosmedStudioInner() {
       .getSession()
       .then(async ({ data: { session } }) => {
         if (session?.user) {
-          const { user: authedUser, isPro } = await resolveUserWithDbRole(
-            session.user
-          );
+          const {
+            user: authedUser,
+            isPro,
+            subMeta,
+          } = await resolveUserWithDbRole(session.user);
           setCurrentUser(authedUser);
+          setActiveSubMeta(subMeta);
           setLearnerProStatus(isPro, authedUser);
           try {
             window.localStorage.setItem(
@@ -541,6 +696,7 @@ function RuangSosmedStudioInner() {
           } catch {}
         } else {
           setCurrentUser(null);
+          setActiveSubMeta(null);
           setLearnerProStatus(false);
           setRoleMode("learner");
           try {
@@ -557,10 +713,13 @@ function RuangSosmedStudioInner() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
-        const { user: authedUser, isPro } = await resolveUserWithDbRole(
-          session.user
-        );
+        const {
+          user: authedUser,
+          isPro,
+          subMeta,
+        } = await resolveUserWithDbRole(session.user);
         setCurrentUser(authedUser);
+        setActiveSubMeta(subMeta);
         setLearnerProStatus(isPro, authedUser);
         if (authedUser.role !== "admin") {
           setRoleMode("learner");
@@ -573,6 +732,7 @@ function RuangSosmedStudioInner() {
         } catch {}
       } else if (event === "SIGNED_OUT") {
         setCurrentUser(null);
+        setActiveSubMeta(null);
         setLearnerProStatus(false);
         setRoleMode("learner");
         try {
@@ -665,7 +825,7 @@ function RuangSosmedStudioInner() {
     };
   }, []);
 
-  // Event-driven cross-browser role sync: Supabase Realtime + visibility check (60s cooldown, zero polling)
+  // Event-driven cross-browser role & PRO subscription sync: Supabase Realtime + visibility/focus check (5s cooldown)
   useEffect(() => {
     if (!currentUser?.email) return;
 
@@ -673,50 +833,136 @@ function RuangSosmedStudioInner() {
     let lastCheckedAt = Date.now();
     let roleChannel: ReturnType<typeof supabase.channel> | null = null;
 
-    const applyDbRole = (rawRole?: string | null) => {
-      if (!rawRole || cancelled) return;
-      const dbRole = String(rawRole).toLowerCase();
-      const nextRole: "admin" | "learner" =
-        dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
+    const applyDbProfileSnapshot = (raw?: Record<string, unknown> | null) => {
+      if (!raw || cancelled) return;
 
-      if (currentUser.role !== nextRole) {
-        const updated: AuthenticatedUser = {
-          ...currentUser,
-          role: nextRole,
-        };
-        setCurrentUser(updated);
-        setRoleMode(nextRole);
-        try {
-          window.localStorage.setItem(
-            "ruang_sosmed_session_user_v1",
-            JSON.stringify(updated)
+      let activeUser: AuthenticatedUser = currentUser;
+      const rawRole = raw.role ? String(raw.role) : null;
+      if (rawRole) {
+        const dbRole = rawRole.toLowerCase();
+        const nextRole: "admin" | "learner" =
+          dbRole === "admin" || dbRole === "mentor" ? "admin" : "learner";
+
+        if (currentUser.role !== nextRole) {
+          const updated: AuthenticatedUser = {
+            ...currentUser,
+            role: nextRole,
+          };
+          activeUser = updated;
+          setCurrentUser(updated);
+          setRoleMode(nextRole);
+          try {
+            window.localStorage.setItem(
+              "ruang_sosmed_session_user_v1",
+              JSON.stringify(updated)
+            );
+            window.localStorage.setItem("ruang_sosmed_role_mode_v1", nextRole);
+          } catch {}
+          window.dispatchEvent(new Event("ruang_sosmed_role_mode_changed"));
+          triggerToast(
+            nextRole === "admin"
+              ? "🎉 Hak akses Admin Studio telah disinkronkan dari database!"
+              : "ℹ️ Status akun disinkronkan ke Siswa Learner dari database."
           );
-          window.localStorage.setItem("ruang_sosmed_role_mode_v1", nextRole);
-        } catch {}
+        }
+      }
+
+      const subTier = raw.subscription_tier
+        ? String(raw.subscription_tier).toLowerCase()
+        : undefined;
+      const startedAt = raw.pro_started_at ? String(raw.pro_started_at) : null;
+      const expiresAt = raw.pro_expires_at ? String(raw.pro_expires_at) : null;
+      const packageName = raw.pro_package_name
+        ? String(raw.pro_package_name)
+        : null;
+      const packageId = raw.pro_package_id ? String(raw.pro_package_id) : null;
+      const billingCycle = raw.pro_billing_cycle
+        ? String(raw.pro_billing_cycle)
+        : null;
+
+      if (
+        subTier !== undefined ||
+        raw.pro_started_at !== undefined ||
+        raw.pro_expires_at !== undefined ||
+        raw.pro_package_name !== undefined ||
+        raw.pro_package_id !== undefined ||
+        raw.pro_billing_cycle !== undefined
+      ) {
+        const isUserAdmin = activeUser.role === "admin";
+        const nextIsPro =
+          isUserAdmin || isProSubscriptionActive(subTier, expiresAt);
+
+        setActiveSubMeta({
+          startedAt,
+          expiresAt,
+          packageName,
+          packageId,
+          billingCycle,
+        });
+        setLearnerProStatus(nextIsPro, activeUser);
         window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
-        window.dispatchEvent(new Event("ruang_sosmed_role_mode_changed"));
-        triggerToast(
-          nextRole === "admin"
-            ? "🎉 Hak akses Admin Studio telah disinkronkan dari database!"
-            : "ℹ️ Status akun disinkronkan ke Siswa Learner dari database."
-        );
+
+        if (!isUserAdmin) {
+          if (!nextIsPro) {
+            clearWelcomeProSeenForUser(activeUser);
+          } else {
+            triggerWelcomeProIfUnseen({
+              user: activeUser,
+              packageId,
+              packageName,
+              billingCycle,
+              startedAt,
+              expiresAt,
+            });
+          }
+        }
       }
     };
 
-    const checkOwnRoleOnce = async () => {
+    const checkOwnProfileOnce = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
-      if (Date.now() - lastCheckedAt < 60_000) return;
+      if (Date.now() - lastCheckedAt < 5_000) return;
       lastCheckedAt = Date.now();
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const uid = sessionData?.session?.user?.id;
         if (!uid || cancelled) return;
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", uid)
-          .maybeSingle();
-        applyDbRole(prof?.role);
+
+        let profData: Record<string, unknown> | null = null;
+        if (pageProfilesHasSubDateCols) {
+          const fullRes = await supabase
+            .from("profiles")
+            .select(
+              "role, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, pro_package_id, pro_billing_cycle"
+            )
+            .eq("id", uid)
+            .maybeSingle();
+          if (!fullRes.error) {
+            profData = (fullRes.data as Record<string, unknown> | null) ?? null;
+          } else if (isMissingSubDateColumnError(fullRes.error)) {
+            const midRes = await supabase
+              .from("profiles")
+              .select(
+                "role, subscription_tier, pro_started_at, pro_expires_at, pro_package_name"
+              )
+              .eq("id", uid)
+              .maybeSingle();
+            if (!midRes.error) {
+              profData =
+                (midRes.data as Record<string, unknown> | null) ?? null;
+            }
+          }
+        }
+        if (!profData) {
+          const fallbackRes = await supabase
+            .from("profiles")
+            .select("role, subscription_tier")
+            .eq("id", uid)
+            .maybeSingle();
+          profData =
+            (fallbackRes.data as Record<string, unknown> | null) ?? null;
+        }
+        applyDbProfileSnapshot(profData);
       } catch {}
     };
 
@@ -736,73 +982,109 @@ function RuangSosmedStudioInner() {
               filter: `id=eq.${uid}`,
             },
             (payload) => {
-              const next = (payload.new as { role?: string } | undefined)?.role;
-              applyDbRole(next);
+              applyDbProfileSnapshot(
+                (payload.new as Record<string, unknown> | undefined) ?? null
+              );
             }
           )
           .subscribe();
       })
       .catch(() => {});
 
-    document.addEventListener("visibilitychange", checkOwnRoleOnce);
+    window.addEventListener("focus", checkOwnProfileOnce);
+    document.addEventListener("visibilitychange", checkOwnProfileOnce);
 
     return () => {
       cancelled = true;
-      document.removeEventListener("visibilitychange", checkOwnRoleOnce);
+      window.removeEventListener("focus", checkOwnProfileOnce);
+      document.removeEventListener("visibilitychange", checkOwnProfileOnce);
       if (roleChannel) {
         void supabase.removeChannel(roleChannel);
       }
     };
-  }, [currentUser]);
+  }, [
+    currentUser,
+    clearWelcomeProSeenForUser,
+    triggerWelcomeProIfUnseen,
+    setLearnerProStatus,
+  ]);
+
+  // Listen to immediate PRO activation event emitted by RuangSosmedStore sync
+  useEffect(() => {
+    if (typeof window === "undefined" || !currentUser || isCurrentUserAdmin) {
+      return;
+    }
+    const handleProActivatedEvent = (e: Event) => {
+      const detail = (
+        e as CustomEvent<{
+          learnerName?: string;
+          learnerEmail?: string;
+          planName?: string | null;
+          packageId?: string | null;
+          billingCycle?: string | null;
+          startedAt?: string | null;
+          expiresAt?: string | null;
+        }>
+      ).detail;
+      if (!detail) return;
+      const myEmail = (currentUser.email || "").trim().toLowerCase();
+      const eventEmail = String(detail.learnerEmail || "").trim().toLowerCase();
+      if (eventEmail && myEmail && eventEmail !== myEmail) return;
+
+      const meta: ActiveSubMeta = {
+        startedAt: detail.startedAt ?? null,
+        expiresAt: detail.expiresAt ?? null,
+        packageName: detail.planName ?? null,
+        packageId: detail.packageId ?? null,
+        billingCycle: detail.billingCycle ?? null,
+      };
+      setActiveSubMeta(meta);
+      triggerWelcomeProIfUnseen({
+        user: currentUser,
+        packageId: meta.packageId,
+        packageName: meta.packageName,
+        billingCycle: meta.billingCycle,
+        startedAt: meta.startedAt,
+        expiresAt: meta.expiresAt,
+      });
+    };
+
+    window.addEventListener("ruang_sosmed_pro_activated", handleProActivatedEvent);
+    return () => {
+      window.removeEventListener(
+        "ruang_sosmed_pro_activated",
+        handleProActivatedEvent
+      );
+    };
+  }, [currentUser, isCurrentUserAdmin, triggerWelcomeProIfUnseen]);
 
   // Automatic celebratory Welcome PRO modal when a learner's account activates PRO / paid Basic
   useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      !authReady ||
-      !currentUser ||
-      roleMode !== "learner"
-    ) {
+    if (typeof window === "undefined" || !authReady || !currentUser) {
       return;
     }
-    if (isCurrentUserAdmin && adminPreviewTierOverride !== "auto") {
+    if (isCurrentUserAdmin) {
       return;
     }
     if (!learnerIsPro || learnerAccess.tierKind === "free") {
+      clearWelcomeProSeenForUser(currentUser);
+      return;
+    }
+    if (roleMode !== "learner") {
       return;
     }
 
-    const userKey = (
-      currentUser.email ||
-      currentUser.username ||
-      currentUser.name ||
-      "guest"
-    )
-      .trim()
-      .toLowerCase();
-    const resolvedPlanName =
-      learnerAccess.activePackage?.name ||
-      learnerPackageName ||
-      (learnerAccess.tierKind === "basic"
-        ? "Basic"
-        : "Ruang Sosmed Learning PRO");
-    const tierSig = `${learnerAccess.tierKind}:${
-      learnerPackageId || resolvedPlanName
-    }:${learnerAccess.billingCycle || "active"}`;
-    const storageKey = `rs_welcome_pro_seen_v1::${userKey}`;
-
-    try {
-      const seenSig = window.localStorage.getItem(storageKey);
-      if (seenSig === tierSig) return;
-      window.localStorage.setItem(storageKey, tierSig);
-    } catch {}
-
-    setWelcomeProModalData({
-      learnerName: currentUser.name || currentUser.username || "Learner",
-      planName: resolvedPlanName,
+    triggerWelcomeProIfUnseen({
+      user: currentUser,
       tierKind: learnerAccess.tierKind === "basic" ? "basic" : "pro",
-      billingCycle: learnerAccess.billingCycle,
-      isPreview: false,
+      packageId: activeSubMeta?.packageId ?? learnerPackageId,
+      packageName:
+        activeSubMeta?.packageName ||
+        learnerAccess.activePackage?.name ||
+        learnerPackageName,
+      billingCycle: activeSubMeta?.billingCycle ?? learnerAccess.billingCycle,
+      startedAt: activeSubMeta?.startedAt ?? null,
+      expiresAt: activeSubMeta?.expiresAt ?? null,
     });
   }, [
     authReady,
@@ -814,8 +1096,11 @@ function RuangSosmedStudioInner() {
     learnerAccess.billingCycle,
     learnerPackageId,
     learnerPackageName,
+    activeSubMeta,
     isCurrentUserAdmin,
     adminPreviewTierOverride,
+    clearWelcomeProSeenForUser,
+    triggerWelcomeProIfUnseen,
   ]);
 
   // Browser Console test hook for previewing the Welcome PRO modal without altering DB
@@ -873,7 +1158,7 @@ function RuangSosmedStudioInner() {
     };
   }, [currentUser]);
 
-  // Listen to cross-tab / live broadcast notifications
+  // Listen to cross-tab / live broadcast notifications & same-browser PRO subscription updates
   useEffect(() => {
     if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
     try {
@@ -883,6 +1168,49 @@ function RuangSosmedStudioInner() {
           triggerToast(
             `🔔 Undangan Baru: Anda diundang sebagai ${event.data.role} pada cohort "${event.data.cohort}"!`
           );
+        } else if (
+          event.data?.type === "SUBSCRIPTION_UPDATED" &&
+          currentUser
+        ) {
+          const myEmail = (currentUser.email || "").trim().toLowerCase();
+          const myName = (currentUser.name || "").trim().toLowerCase();
+          const targetEmail = String(event.data.email || "")
+            .trim()
+            .toLowerCase();
+          const targetName = String(event.data.name || "")
+            .trim()
+            .toLowerCase();
+          const matched =
+            (myEmail && targetEmail && myEmail === targetEmail) ||
+            (!targetEmail && myName && targetName && myName === targetName);
+          if (!matched) return;
+
+          const isNextPro = event.data.tier === "PRO";
+          const nextMeta: ActiveSubMeta = {
+            startedAt: event.data.startedAt ?? null,
+            expiresAt: event.data.expiresAt ?? null,
+            packageName: event.data.packageName ?? null,
+            packageId: event.data.packageId ?? null,
+            billingCycle: event.data.billingCycle ?? null,
+          };
+          setActiveSubMeta(nextMeta);
+          setLearnerProStatus(isNextPro, currentUser);
+          window.dispatchEvent(new Event("ruang_sosmed_profile_updated"));
+
+          if (!isCurrentUserAdmin) {
+            if (isNextPro) {
+              triggerWelcomeProIfUnseen({
+                user: currentUser,
+                packageId: nextMeta.packageId,
+                packageName: nextMeta.packageName,
+                billingCycle: nextMeta.billingCycle,
+                startedAt: nextMeta.startedAt,
+                expiresAt: nextMeta.expiresAt,
+              });
+            } else {
+              clearWelcomeProSeenForUser(currentUser);
+            }
+          }
         }
       };
       return () => {
@@ -891,7 +1219,13 @@ function RuangSosmedStudioInner() {
     } catch {
       // Ignore
     }
-  }, [currentUser]);
+  }, [
+    currentUser,
+    isCurrentUserAdmin,
+    setLearnerProStatus,
+    clearWelcomeProSeenForUser,
+    triggerWelcomeProIfUnseen,
+  ]);
 
   // Auto-dismiss toast notifications after 4.5 seconds
   useEffect(() => {
