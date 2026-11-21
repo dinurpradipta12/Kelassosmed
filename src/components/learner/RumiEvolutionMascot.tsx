@@ -47,6 +47,8 @@ export function RumiMascotIllustration({
   const cyanGradId = `rumiCyan-${variant}-${stage}-${uid}`;
   const capeGradId = `rumiCape-${variant}-${stage}-${uid}`;
   const wingGradId = `rumiWing-${variant}-${stage}-${uid}`;
+  const learnerVisorGradId = `rumiLearnerVisor-${stage}-${uid}`;
+  const learnerDarkTrimGradId = `rumiLearnerTrim-${stage}-${uid}`;
   const adminCeramicGradId = `rumiAdminCeramic-${uid}`;
   const adminFaceScreenGradId = `rumiAdminFaceScreen-${uid}`;
   const adminIceGlowGradId = `rumiAdminIceGlow-${uid}`;
@@ -60,31 +62,57 @@ export function RumiMascotIllustration({
       className={`${sizeClass} shrink-0 select-none overflow-visible ${
         isAdminSuperior
           ? "drop-shadow-[0_8px_16px_rgba(30,58,138,0.14)]"
-          : "drop-shadow-[0_6px_14px_rgba(79,57,246,0.2)]"
+          : "drop-shadow-[0_8px_16px_rgba(79,57,246,0.18)]"
       } ${paused ? "rs-rumi-paused" : ""}`}
       aria-hidden="true"
     >
       <defs>
-        <linearGradient id={bodyGradId} x1="0%" y1="0%" x2="100%" y2="100%">
+        <radialGradient id={bodyGradId} cx="34%" cy="26%" r="74%">
           {stage === 5 ? (
             <>
-              <stop offset="0%" stopColor="#6366F1" />
-              <stop offset="50%" stopColor="#312E81" />
+              <stop offset="0%" stopColor="#A5B4FC" />
+              <stop offset="44%" stopColor="#4F39F6" />
+              <stop offset="82%" stopColor="#312E81" />
               <stop offset="100%" stopColor="#1E1B4B" />
             </>
           ) : stage === 4 ? (
             <>
-              <stop offset="0%" stopColor="#7C3AED" />
-              <stop offset="55%" stopColor="#4F39F6" />
+              <stop offset="0%" stopColor="#DDD6FE" />
+              <stop offset="46%" stopColor="#7C3AED" />
+              <stop offset="84%" stopColor="#4F39F6" />
+              <stop offset="100%" stopColor="#2E1065" />
+            </>
+          ) : stage === 3 ? (
+            <>
+              <stop offset="0%" stopColor="#C4B5FD" />
+              <stop offset="46%" stopColor="#6366F1" />
+              <stop offset="84%" stopColor="#4F39F6" />
               <stop offset="100%" stopColor="#312E81" />
+            </>
+          ) : stage === 2 ? (
+            <>
+              <stop offset="0%" stopColor="#C7D2FE" />
+              <stop offset="44%" stopColor="#818CF8" />
+              <stop offset="84%" stopColor="#4F39F6" />
+              <stop offset="100%" stopColor="#3730A3" />
             </>
           ) : (
             <>
-              <stop offset="0%" stopColor="#A5B4FC" />
-              <stop offset="52%" stopColor="#6366F1" />
-              <stop offset="100%" stopColor="#4F39F6" />
+              <stop offset="0%" stopColor="#E0E7FF" />
+              <stop offset="42%" stopColor="#A5B4FC" />
+              <stop offset="82%" stopColor="#6366F1" />
+              <stop offset="100%" stopColor="#4338CA" />
             </>
           )}
+        </radialGradient>
+        <linearGradient id={learnerVisorGradId} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#2E1065" />
+          <stop offset="56%" stopColor="#1E1B4B" />
+          <stop offset="100%" stopColor="#0F172A" />
+        </linearGradient>
+        <linearGradient id={learnerDarkTrimGradId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4338CA" />
+          <stop offset="100%" stopColor="#1E1B4B" />
         </linearGradient>
         <linearGradient id={goldGradId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#FEF08A" />
@@ -142,674 +170,956 @@ export function RumiMascotIllustration({
         className="rs-rumi-shadow"
         cx="74"
         cy="134"
-        rx={isAdminSuperior ? 24 : stage >= 4 ? 30 : 24}
+        rx={isAdminSuperior ? 24 : stage >= 4 ? 26 : 22}
         ry="4.8"
         fill={isAdminSuperior ? "#64748B" : stage === 5 ? "#D97706" : "#4F39F6"}
-        fillOpacity={isAdminSuperior ? "0.18" : stage === 5 ? "0.26" : "0.2"}
+        fillOpacity={isAdminSuperior ? "0.18" : "0.2"}
       />
 
       {/* Ambient Sparkles */}
-      <g className="rs-sparkle-bob" style={{ transformOrigin: "22px 32px" }}>
+      <g className="rs-sparkle-bob" style={{ transformOrigin: "24px 31.5px" }}>
         <path
-          d={
-            isAdminSuperior
-              ? "M24 25 L25.6 29.8 L30.5 31.5 L25.6 33.2 L24 38 L22.4 33.2 L17.5 31.5 L22.4 29.8 Z"
-              : "M22 22 L24.5 29.5 L32 32 L24.5 34.5 L22 42 L19.5 34.5 L12 32 L19.5 29.5 Z"
-          }
-          fill={isAdminSuperior ? "#FBBF24" : stage === 5 ? "#FBBF24" : "#F59E0B"}
-          fillOpacity={isAdminSuperior ? "0.85" : "1"}
+          d="M24 25 L25.6 29.8 L30.5 31.5 L25.6 33.2 L24 38 L22.4 33.2 L17.5 31.5 L22.4 29.8 Z"
+          fill={isAdminSuperior || stage === 5 ? "#FBBF24" : "#F59E0B"}
+          fillOpacity="0.85"
         />
       </g>
       <g
         className="rs-sparkle-bob-delayed"
-        style={{ transformOrigin: "126px 30px" }}
+        style={{ transformOrigin: "123px 30px" }}
       >
         <path
-          d={
+          d="M123 25 L124.3 28.7 L128 30 L124.3 31.3 L123 35 L121.7 31.3 L118 30 L121.7 28.7 Z"
+          fill={
             isAdminSuperior
-              ? "M123 25 L124.3 28.7 L128 30 L124.3 31.3 L123 35 L121.7 31.3 L118 30 L121.7 28.7 Z"
-              : "M126 22 L128 28 L134 30 L128 32 L126 38 L124 32 L118 30 L124 28 Z"
+              ? "#38BDF8"
+              : stage === 5
+              ? "#FDE047"
+              : stage === 4
+              ? "#C084FC"
+              : stage >= 2
+              ? "#38BDF8"
+              : "#EC4899"
           }
-          fill={isAdminSuperior ? "#38BDF8" : stage >= 4 ? "#22D3EE" : "#EC4899"}
-          fillOpacity={isAdminSuperior ? "0.85" : "1"}
+          fillOpacity="0.85"
         />
       </g>
-      {!isAdminSuperior && (
-        <>
-          <circle
-            className="rs-dot-float-a"
-            cx="124"
-            cy="108"
-            r="4"
-            fill="#10B981"
-            fillOpacity="0.82"
-          />
-          <circle
-            className="rs-dot-float-b"
-            cx="22"
-            cy="104"
-            r="3.5"
-            fill="#0EA5E9"
-            fillOpacity="0.82"
-          />
-        </>
-      )}
 
-      {/* STAGE 1: BABY RUMI */}
+      {/* STAGE 1: BABY RUMI (Glossy Periwinkle Ceramic Pod + Sprout + Glass Visor) */}
       {!isAdminSuperior && stage === 1 && (
         <g className="rs-rumi-character">
-          {/* Small Cute Sprout */}
+          {/* Cute Mint Leaf & Glowing Gold Seed Sprout */}
           <g className="rs-rumi-antenna">
             <path
-              d="M74 58 L74 46"
+              d="M74 58 L74 44"
               stroke="#4F39F6"
               strokeWidth="3.5"
               strokeLinecap="round"
             />
+            <path d="M74 51 Q65 45 63 51 Q68 54 74 51 Z" fill="#34D399" />
             <circle
               className="rs-rumi-orb-glow"
               cx="74"
-              cy="41"
-              r="9"
+              cy="40"
+              r="8.2"
               fill="#FBBF24"
+              fillOpacity="0.35"
             />
-            <circle cx="74" cy="41" r="5.5" fill={`url(#${goldGradId})`} />
-            <circle cx="72.5" cy="39.5" r="1.8" fill="#FFFFFF" />
+            <circle cx="74" cy="40" r="5.2" fill={`url(#${goldGradId})`} stroke="#FFFFFF" strokeWidth="1.2" />
+            <circle cx="72.5" cy="38.5" r="1.6" fill="#FFFFFF" />
           </g>
 
-          {/* Soft Baby Headband */}
+          {/* Soft Dark-Indigo Baby Headband */}
           <path
-            d="M44 79 C44 55, 104 55, 104 79"
+            d="M43 79 C43 44, 105 44, 105 79"
             fill="none"
-            stroke="#1E293B"
-            strokeWidth="5.5"
+            stroke={`url(#${learnerDarkTrimGradId})`}
+            strokeWidth="5"
             strokeLinecap="round"
           />
 
-          {/* Plump Baby Round Body */}
+          {/* Plump 3D Ceramic Baby Pod Body */}
           <rect
-            x="45"
-            y="58"
-            width="58"
-            height="56"
-            rx="28"
+            x="44"
+            y="57"
+            width="60"
+            height="58"
+            rx="29"
             fill={`url(#${bodyGradId})`}
+            stroke="#C7D2FE"
+            strokeWidth="1.1"
           />
           <ellipse
-            cx="64"
-            cy="69"
-            rx="11"
+            cx="62"
+            cy="67"
+            rx="12"
             ry="4.5"
             fill="#FFFFFF"
-            fillOpacity="0.24"
-            transform="rotate(-14 64 69)"
+            fillOpacity="0.58"
+            transform="rotate(-14 62 67)"
           />
 
-          {/* Tiny Earmuffs */}
+          {/* Compact Glossy Violet-Indigo Glass Visor */}
+          <rect
+            x="52"
+            y="70"
+            width="44"
+            height="31"
+            rx="15.5"
+            fill={`url(#${learnerVisorGradId})`}
+            stroke="#A5B4FC"
+            strokeOpacity="0.6"
+            strokeWidth="1.2"
+          />
+          <path
+            d="M59 74 Q74 70.5 89 74"
+            fill="none"
+            stroke="#FFFFFF"
+            strokeOpacity="0.2"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+
+          {/* Rosy Blush Cheeks */}
+          <ellipse cx="59.5" cy="91.5" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
+          <ellipse cx="88.5" cy="91.5" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
+
+          {/* Oversized Cute Luminous Kawaii Eyes */}
+          <g className="rs-rumi-eyes">
+            <circle cx="63.5" cy="83.5" r="5.8" fill="#A5B4FC" fillOpacity="0.25" />
+            <circle cx="84.5" cy="83.5" r="5.8" fill="#A5B4FC" fillOpacity="0.25" />
+            <ellipse cx="63.5" cy="83.5" rx="4.2" ry="4.9" fill="#EEF2FF" />
+            <ellipse cx="84.5" cy="83.5" rx="4.2" ry="4.9" fill="#EEF2FF" />
+            <circle cx="65" cy="81.6" r="1.7" fill="#FFFFFF" />
+            <circle cx="86" cy="81.6" r="1.7" fill="#FFFFFF" />
+            <circle cx="62" cy="85.5" r="0.85" fill="#FFFFFF" fillOpacity="0.9" />
+            <circle cx="83" cy="85.5" r="0.85" fill="#FFFFFF" fillOpacity="0.9" />
+          </g>
+          <path
+            d="M68 92.5 Q74 97.5 80 92.5"
+            fill="none"
+            stroke="#E0E7FF"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+          />
+
+          {/* Cozy Champagne-Gold Earmuffs */}
           <rect
             x="36"
-            y="74"
+            y="73"
             width="11"
             height="20"
             rx="5.5"
             fill={`url(#${goldGradId})`}
             stroke="#FFFFFF"
-            strokeWidth="2"
+            strokeWidth="1.6"
           />
           <rect
             x="101"
-            y="74"
+            y="73"
             width="11"
             height="20"
             rx="5.5"
             fill={`url(#${goldGradId})`}
             stroke="#FFFFFF"
-            strokeWidth="2"
+            strokeWidth="1.6"
           />
 
-          {/* Baby Cheeks & Blinking Eyes */}
-          <ellipse cx="57" cy="92" rx="5.8" ry="3.4" fill="#FDA4AF" fillOpacity="0.88" />
-          <ellipse cx="91" cy="92" rx="5.8" ry="3.4" fill="#FDA4AF" fillOpacity="0.88" />
-          <g className="rs-rumi-eyes">
-            <circle cx="62" cy="83" r="4.8" fill="#121215" />
-            <circle cx="86" cy="83" r="4.8" fill="#121215" />
-            <circle cx="63.5" cy="81.3" r="1.8" fill="#FFFFFF" />
-            <circle cx="87.5" cy="81.3" r="1.8" fill="#FFFFFF" />
-          </g>
-          <path
-            d="M68 92 Q74 98 80 92"
-            fill="none"
-            stroke="#FFFFFF"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-
-          {/* Tiny Waving Hand */}
+          {/* Tiny Glossy Waving Hand */}
           <g className="rs-rumi-arm">
             <path
-              d="M101 94 Q114 88 112 77"
+              d="M101 94 Q114 88 113 76"
               fill="none"
               stroke="#6366F1"
               strokeWidth="6.5"
               strokeLinecap="round"
             />
-            <circle cx="112" cy="76" r="4.3" fill="#FDE68A" />
+            <circle
+              cx="113"
+              cy="75"
+              r="4.4"
+              fill="#E0E7FF"
+              stroke="#A5B4FC"
+              strokeWidth="1.1"
+            />
           </g>
         </g>
       )}
 
-      {/* STAGE 2: JUNIOR RUMI */}
+      {/* STAGE 2: JUNIOR RUMI (Sky-Indigo Glossy Pod + Translucent Forehead Goggles + Cyan Visor) */}
       {!isAdminSuperior && stage === 2 && (
         <g className="rs-rumi-character">
           {/* Dual Leaf + Glowing Star Sprout */}
           <g className="rs-rumi-antenna">
             <path
-              d="M74 49 L74 34"
+              d="M74 50 L74 35"
               stroke="#4F39F6"
-              strokeWidth="3.5"
+              strokeWidth="3.2"
               strokeLinecap="round"
             />
-            <path d="M74 42 Q64 36 62 43 Q68 46 74 42 Z" fill="#10B981" />
+            <path d="M74 43 Q64 37 62 43.5 Q68 46.5 74 43 Z" fill="#34D399" />
+            <path d="M74 41 Q84 35 86 41.5 Q80 44.5 74 41 Z" fill="#10B981" />
             <circle
               className="rs-rumi-orb-glow"
               cx="74"
-              cy="30"
-              r="9.5"
-              fill="#22D3EE"
+              cy="31"
+              r="8.8"
+              fill="#38BDF8"
+              fillOpacity="0.3"
             />
-            <circle cx="74" cy="30" r="5.8" fill={`url(#${goldGradId})`} />
+            <circle cx="74" cy="31" r="5.3" fill={`url(#${goldGradId})`} stroke="#FFFFFF" strokeWidth="1.2" />
           </g>
 
-          {/* Sleek Cyan-Trim Headphones */}
+          {/* Little Floating Ceramic Feet */}
+          <ellipse cx="61" cy="121" rx="7.5" ry="4.5" fill="#3730A3" />
+          <ellipse cx="61" cy="120" rx="5" ry="2" fill="#A5B4FC" fillOpacity="0.55" />
+          <ellipse cx="87" cy="121" rx="7.5" ry="4.5" fill="#3730A3" />
+          <ellipse cx="87" cy="120" rx="5" ry="2" fill="#A5B4FC" fillOpacity="0.55" />
+
+          {/* Sleek Dark Headband */}
           <path
-            d="M39 74 C39 45, 109 45, 109 74"
+            d="M39 74 C39 36, 109 36, 109 74"
             fill="none"
-            stroke="#0F172A"
-            strokeWidth="6.5"
+            stroke={`url(#${learnerDarkTrimGradId})`}
+            strokeWidth="5.5"
             strokeLinecap="round"
           />
 
-          {/* Slightly Taller Energetic Body + Little Sneakers/Feet */}
-          <ellipse cx="61" cy="116" rx="8" ry="5" fill="#312E81" />
-          <ellipse cx="87" cy="116" rx="8" ry="5" fill="#312E81" />
+          {/* Energetic Glossy 3D Ceramic Body */}
           <rect
-            x="41"
+            x="42"
             y="49"
-            width="66"
-            height="66"
+            width="64"
+            height="68"
             rx="31"
             fill={`url(#${bodyGradId})`}
+            stroke="#A5B4FC"
+            strokeWidth="1.2"
+          />
+          <ellipse
+            cx="60"
+            cy="55.5"
+            rx="11"
+            ry="3.6"
+            fill="#FFFFFF"
+            fillOpacity="0.52"
+            transform="rotate(-12 60 55.5)"
           />
 
-          {/* Junior Creator Star-Lens Goggles on Forehead */}
+          {/* Sculpted Aqua Star-Lens Goggles on Forehead */}
           <rect
-            x="48"
-            y="54"
-            width="23"
-            height="13"
-            rx="6.5"
+            x="49"
+            y="55"
+            width="22"
+            height="11.5"
+            rx="5.75"
             fill={`url(#${cyanGradId})`}
             stroke="#FFFFFF"
-            strokeWidth="2"
+            strokeWidth="1.6"
           />
           <rect
             x="77"
-            y="54"
-            width="23"
-            height="13"
-            rx="6.5"
+            y="55"
+            width="22"
+            height="11.5"
+            rx="5.75"
             fill={`url(#${cyanGradId})`}
             stroke="#FFFFFF"
-            strokeWidth="2"
+            strokeWidth="1.6"
           />
-          <line x1="71" y1="60" x2="77" y2="60" stroke="#FFFFFF" strokeWidth="2.5" />
+          <line x1="71" y1="60.5" x2="77" y2="60.5" stroke="#FFFFFF" strokeWidth="2.2" />
+          <path d="M53 58.5 Q60 56.5 66 58.5" fill="none" stroke="#FFFFFF" strokeOpacity="0.55" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M81 58.5 Q87 56.5 94 58.5" fill="none" stroke="#FFFFFF" strokeOpacity="0.55" strokeWidth="1.4" strokeLinecap="round" />
 
-          {/* Glowing Cyan Headphones */}
+          {/* Glossy Sapphire-Indigo Face Screen */}
           <rect
-            x="31"
-            y="67"
-            width="13"
-            height="25"
-            rx="6.5"
-            fill={`url(#${cyanGradId})`}
-            stroke="#FFFFFF"
-            strokeWidth="2"
-          />
-          <rect
-            x="104"
-            y="67"
-            width="13"
-            height="25"
-            rx="6.5"
-            fill={`url(#${cyanGradId})`}
-            stroke="#FFFFFF"
-            strokeWidth="2"
+            x="50"
+            y="71"
+            width="48"
+            height="31"
+            rx="15.5"
+            fill={`url(#${learnerVisorGradId})`}
+            stroke="#7DD3FC"
+            strokeOpacity="0.6"
+            strokeWidth="1.2"
           />
 
-          {/* Blinking Eyes & Confident Smile */}
-          <ellipse cx="55" cy="90" rx="5.5" ry="3.2" fill="#FDA4AF" fillOpacity="0.85" />
-          <ellipse cx="93" cy="90" rx="5.5" ry="3.2" fill="#FDA4AF" fillOpacity="0.85" />
+          {/* Rosy Blush + Luminous Sky-Cyan Kawaii Eyes */}
+          <ellipse cx="59" cy="92.5" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
+          <ellipse cx="89" cy="92.5" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
           <g className="rs-rumi-eyes">
-            <circle cx="62" cy="81" r="4.8" fill="#121215" />
-            <circle cx="86" cy="81" r="4.8" fill="#121215" />
-            <circle cx="63.6" cy="79.2" r="1.9" fill="#FFFFFF" />
-            <circle cx="87.6" cy="79.2" r="1.9" fill="#FFFFFF" />
+            <circle cx="63" cy="84.5" r="5.8" fill="#38BDF8" fillOpacity="0.25" />
+            <circle cx="85" cy="84.5" r="5.8" fill="#38BDF8" fillOpacity="0.25" />
+            <ellipse cx="63" cy="84.5" rx="4.2" ry="4.9" fill="#E0F2FE" />
+            <ellipse cx="85" cy="84.5" rx="4.2" ry="4.9" fill="#E0F2FE" />
+            <circle cx="64.5" cy="82.6" r="1.7" fill="#FFFFFF" />
+            <circle cx="86.5" cy="82.6" r="1.7" fill="#FFFFFF" />
+            <circle cx="61.5" cy="86.5" r="0.85" fill="#FFFFFF" fillOpacity="0.9" />
+            <circle cx="83.5" cy="86.5" r="0.85" fill="#FFFFFF" fillOpacity="0.9" />
           </g>
           <path
-            d="M66 91 Q74 99 82 91"
+            d="M67 93.5 Q74 98.8 81 93.5"
             fill="none"
-            stroke="#FFFFFF"
-            strokeWidth="3.2"
+            stroke="#7DD3FC"
+            strokeWidth="2.8"
             strokeLinecap="round"
           />
+
+          {/* Glowing Aqua Studio Headphones */}
+          <rect
+            x="32"
+            y="67"
+            width="11"
+            height="23"
+            rx="5.5"
+            fill={`url(#${cyanGradId})`}
+            stroke="#FFFFFF"
+            strokeWidth="1.6"
+          />
+          <rect x="36.2" y="74.5" width="2.5" height="8" rx="1.25" fill="#FEF08A" />
+          <rect
+            x="105"
+            y="67"
+            width="11"
+            height="23"
+            rx="5.5"
+            fill={`url(#${cyanGradId})`}
+            stroke="#FFFFFF"
+            strokeWidth="1.6"
+          />
+          <rect x="109.3" y="74.5" width="2.5" height="8" rx="1.25" fill="#FEF08A" />
 
           {/* Energetic Wave */}
           <g className="rs-rumi-arm">
             <path
-              d="M105 90 Q120 82 119 68"
+              d="M104 90 Q118 82 117 69"
               fill="none"
               stroke="#6366F1"
-              strokeWidth="7"
+              strokeWidth="6.8"
               strokeLinecap="round"
             />
-            <circle cx="119" cy="67" r="4.6" fill="#FDE68A" />
+            <circle
+              cx="117"
+              cy="68"
+              r="4.6"
+              fill="#C7D2FE"
+              stroke="#FFFFFF"
+              strokeWidth="1.2"
+            />
           </g>
         </g>
       )}
 
-      {/* STAGE 3: TEEN RUMI (Hoodie Creator + Hologram Card) */}
+      {/* STAGE 3: TEEN RUMI (2-Part Chibi Creator Hoodie + Studio Headset & Mini Content Card) */}
       {!isAdminSuperior && stage === 3 && (
         <g className="rs-rumi-character">
-          {/* Hologram Content Card Floating Left */}
+          {/* Sleek Translucent Mini Content Card Floating Left */}
           <g className="rs-rumi-holo">
             <rect
-              x="12"
-              y="66"
-              width="24"
-              height="30"
+              x="13"
+              y="70"
+              width="23"
+              height="27"
               rx="6"
               fill="#FFFFFF"
-              fillOpacity="0.92"
-              stroke="#22D3EE"
-              strokeWidth="2"
+              fillOpacity="0.95"
+              stroke="#38BDF8"
+              strokeWidth="1.5"
             />
-            <rect x="17" y="72" width="14" height="4" rx="2" fill="#4F39F6" />
-            <rect x="17" y="79" width="10" height="3" rx="1.5" fill="#EC4899" />
-            <rect x="17" y="85" width="14" height="3" rx="1.5" fill="#10B981" />
+            <rect x="17.5" y="76" width="14" height="3.5" rx="1.75" fill="#4F39F6" />
+            <rect x="17.5" y="82.5" width="10" height="3" rx="1.5" fill="#EC4899" />
+            <rect x="17.5" y="88" width="14" height="3" rx="1.5" fill="#10B981" />
           </g>
 
-          {/* Creator Jacket Torso */}
-          <path
-            d="M46 92 C42 114, 48 122, 74 122 C100 122, 106 114, 102 92 Z"
-            fill="#312E81"
+          {/* Floating Ceramic Sneakers */}
+          <ellipse cx="61" cy="125" rx="7.5" ry="4.5" fill="#312E81" />
+          <ellipse cx="61" cy="124" rx="5" ry="2" fill="#A5B4FC" fillOpacity="0.6" />
+          <ellipse cx="87" cy="125" rx="7.5" ry="4.5" fill="#312E81" />
+          <ellipse cx="87" cy="124" rx="5" ry="2" fill="#A5B4FC" fillOpacity="0.6" />
+
+          {/* Plump Creator Hoodie Torso */}
+          <rect
+            x="49"
+            y="88"
+            width="50"
+            height="37"
+            rx="19"
+            fill={`url(#${learnerDarkTrimGradId})`}
+            stroke="#6366F1"
+            strokeWidth="1.2"
           />
           <path
-            d="M57 93 L74 106 L91 93"
+            d="M58 91 L74 103 L90 91"
             fill="none"
-            stroke="#22D3EE"
-            strokeWidth="3"
+            stroke="#38BDF8"
+            strokeWidth="2.8"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <circle cx="74" cy="112" r="4" fill={`url(#${goldGradId})`} />
-
-          {/* Studio Headset */}
           <path
-            d="M39 67 C39 36, 109 36, 109 67"
+            d="M74 106 L75.7 110.2 L80 112 L75.7 113.8 L74 118 L72.3 113.8 L68 112 L72.3 110.2 Z"
+            fill={`url(#${goldGradId})`}
+          />
+
+          {/* Resting Left Hoodie Arm */}
+          <path
+            d="M50 97 Q40 103 43 111"
             fill="none"
-            stroke="#0F172A"
-            strokeWidth="6.5"
+            stroke="#312E81"
+            strokeWidth="7"
             strokeLinecap="round"
           />
-          <g className="rs-rumi-antenna">
-            <path d="M74 42 L74 30" stroke="#22D3EE" strokeWidth="3.2" strokeLinecap="round" />
-            <path
-              d="M74 18 L77 25 L84 26 L77 28 L74 35 L71 28 L64 26 L71 25 Z"
-              fill={`url(#${goldGradId})`}
-            />
-          </g>
+          <circle cx="43.5" cy="111.5" r="2.2" fill="#38BDF8" />
 
-          {/* Distinct Teen Head */}
-          <rect
-            x="43"
-            y="41"
-            width="62"
-            height="56"
-            rx="27"
-            fill={`url(#${bodyGradId})`}
-          />
-          <rect
-            x="33"
-            y="59"
-            width="12"
-            height="22"
-            rx="6"
-            fill={`url(#${cyanGradId})`}
-            stroke="#FFFFFF"
-            strokeWidth="2"
-          />
-          <rect
-            x="103"
-            y="59"
-            width="12"
-            height="22"
-            rx="6"
-            fill={`url(#${cyanGradId})`}
-            stroke="#FFFFFF"
-            strokeWidth="2"
-          />
-          {/* Mic Boom */}
-          <path
-            d="M39 78 Q46 88 61 86"
-            fill="none"
-            stroke="#0F172A"
-            strokeWidth="2.8"
-            strokeLinecap="round"
-          />
-          <circle cx="62" cy="86" r="3" fill="#22D3EE" />
-
-          {/* Face */}
-          <g className="rs-rumi-eyes">
-            <circle cx="63" cy="69" r="4.6" fill="#121215" />
-            <circle cx="85" cy="69" r="4.6" fill="#121215" />
-            <circle cx="64.5" cy="67.2" r="1.8" fill="#FFFFFF" />
-            <circle cx="86.5" cy="67.2" r="1.8" fill="#FFFFFF" />
-          </g>
-          <path
-            d="M66 79 Q74 86 83 78"
-            fill="none"
-            stroke="#FFFFFF"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-
-          {/* Right Waving Arm */}
+          {/* Waving Right Hoodie Arm */}
           <g className="rs-rumi-arm">
             <path
-              d="M100 100 Q120 92 121 76"
+              d="M98 96 Q114 89 117 75"
               fill="none"
               stroke="#4F39F6"
               strokeWidth="7"
               strokeLinecap="round"
             />
-            <circle cx="121" cy="74" r="4.8" fill="#FDE68A" />
-          </g>
-        </g>
-      )}
-
-      {/* STAGE 4: PRO RUMI (Royal Cape + Floating Crown) */}
-      {!isAdminSuperior && stage === 4 && (
-        <g className="rs-rumi-character">
-          {/* Flowing Hero Cape Behind Body */}
-          <g className="rs-rumi-cape">
-            <path
-              d="M52 76 L26 121 Q74 128 122 121 L96 76 Z"
-              fill={`url(#${capeGradId})`}
-              fillOpacity="0.9"
+            <circle
+              cx="117"
+              cy="74"
+              r="4.7"
+              fill="#E0E7FF"
+              stroke="#A5B4FC"
+              strokeWidth="1.2"
             />
           </g>
 
-          {/* Hovering Star Orb on Left */}
-          <g className="rs-rumi-holo">
-            <circle cx="24" cy="78" r="10" fill="#FBBF24" fillOpacity="0.22" />
+          {/* Compact Glowing 4-Point Creator Star Antenna */}
+          <g className="rs-rumi-antenna">
+            <path d="M74 39 L74 28" stroke="#38BDF8" strokeWidth="3" strokeLinecap="round" />
             <path
-              d="M24 68 L26.6 75.4 L34 78 L26.6 80.6 L24 88 L21.4 80.6 L14 78 L21.4 75.4 Z"
-              fill={`url(#${goldGradId})`}
-            />
-          </g>
-
-          {/* Floating Golden Crown */}
-          <g className="rs-rumi-crown">
-            <path
-              d="M54 34 L58 21 L67 28 L74 17 L81 28 L90 21 L94 34 Z"
+              d="M74 16 L76.6 22.8 L83.5 25 L76.6 27.2 L74 34 L71.4 27.2 L64.5 25 L71.4 22.8 Z"
               fill={`url(#${goldGradId})`}
               stroke="#FFFFFF"
-              strokeWidth="1.5"
+              strokeWidth="0.9"
               strokeLinejoin="round"
             />
           </g>
 
-          {/* Mature Armored Torso */}
+          {/* Sculpted Studio Headband */}
           <path
-            d="M44 88 C40 116, 50 124, 74 124 C98 124, 108 116, 104 88 Z"
-            fill="#1E1B4B"
-            stroke="#6366F1"
-            strokeWidth="2"
+            d="M39 65 C39 27, 109 27, 109 65"
+            fill="none"
+            stroke={`url(#${learnerDarkTrimGradId})`}
+            strokeWidth="5.5"
+            strokeLinecap="round"
           />
-          {/* Shoulder Pauldrons */}
-          <ellipse cx="45" cy="92" rx="10" ry="6" fill={`url(#${goldGradId})`} />
-          <ellipse cx="103" cy="92" rx="10" ry="6" fill={`url(#${goldGradId})`} />
-          {/* Chest Crest */}
-          <polygon
-            points="74,97 81,105 74,113 67,105"
+
+          {/* Chubby Glossy 3D Head */}
+          <rect
+            x="43"
+            y="38"
+            width="62"
+            height="54"
+            rx="27"
+            fill={`url(#${bodyGradId})`}
+            stroke="#A5B4FC"
+            strokeWidth="1.2"
+          />
+          <ellipse
+            cx="61"
+            cy="46.5"
+            rx="12.5"
+            ry="4.5"
+            fill="#FFFFFF"
+            fillOpacity="0.56"
+            transform="rotate(-14 61 46.5)"
+          />
+
+          {/* Glossy Glass Visor */}
+          <rect
+            x="50"
+            y="49"
+            width="48"
+            height="33"
+            rx="16.5"
+            fill={`url(#${learnerVisorGradId})`}
+            stroke="#7DD3FC"
+            strokeOpacity="0.6"
+            strokeWidth="1.2"
+          />
+          <path
+            d="M58 53.5 Q74 49.5 90 53.5"
+            fill="none"
+            stroke="#FFFFFF"
+            strokeOpacity="0.2"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+
+          {/* Rosy Cheeks & Luminous Mint-Aqua Kawaii Eyes */}
+          <ellipse cx="59" cy="72" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
+          <ellipse cx="89" cy="72" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
+          <g className="rs-rumi-eyes">
+            <circle cx="63" cy="63" r="6" fill="#22D3EE" fillOpacity="0.25" />
+            <circle cx="85" cy="63" r="6" fill="#22D3EE" fillOpacity="0.25" />
+            <ellipse cx="63" cy="63" rx="4.3" ry="5" fill="#ECFEFF" />
+            <ellipse cx="85" cy="63" rx="4.3" ry="5" fill="#ECFEFF" />
+            <circle cx="64.5" cy="61.2" r="1.8" fill="#FFFFFF" />
+            <circle cx="86.5" cy="61.2" r="1.8" fill="#FFFFFF" />
+            <circle cx="61.5" cy="65" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
+            <circle cx="83.5" cy="65" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
+          </g>
+          <path
+            d="M68 73 Q74 78.2 80 73"
+            fill="none"
+            stroke="#67E8F9"
+            strokeWidth="2.7"
+            strokeLinecap="round"
+          />
+
+          {/* Glossy Cyan Studio Headphones + Sleek Creator Mic Boom */}
+          <rect
+            x="34"
+            y="53"
+            width="11"
+            height="22"
+            rx="5.5"
             fill={`url(#${cyanGradId})`}
             stroke="#FFFFFF"
             strokeWidth="1.5"
           />
-
-          {/* Pro Head + Golden Crest Visor */}
           <rect
-            x="44"
-            y="38"
-            width="60"
-            height="54"
-            rx="25"
-            fill={`url(#${bodyGradId})`}
-          />
-          <rect
-            x="35"
-            y="55"
+            x="103"
+            y="53"
             width="11"
-            height="21"
+            height="22"
             rx="5.5"
-            fill={`url(#${goldGradId})`}
+            fill={`url(#${cyanGradId})`}
             stroke="#FFFFFF"
-            strokeWidth="1.8"
+            strokeWidth="1.5"
           />
-          <rect
-            x="102"
-            y="55"
-            width="11"
-            height="21"
-            rx="5.5"
-            fill={`url(#${goldGradId})`}
-            stroke="#FFFFFF"
-            strokeWidth="1.8"
-          />
-
-          <g className="rs-rumi-eyes">
-            <circle cx="63" cy="64" r="4.8" fill="#0F172A" />
-            <circle cx="85" cy="64" r="4.8" fill="#0F172A" />
-            <circle cx="64.5" cy="62" r="2" fill="#22D3EE" />
-            <circle cx="86.5" cy="62" r="2" fill="#22D3EE" />
-          </g>
           <path
-            d="M66 75 Q74 82 82 75"
+            d="M39 73 Q46 84 61 83"
             fill="none"
-            stroke="#FFFFFF"
-            strokeWidth="3"
+            stroke="#1E1B4B"
+            strokeWidth="2.4"
             strokeLinecap="round"
           />
-
-          {/* Right Commanding Wave */}
-          <g className="rs-rumi-arm">
-            <path
-              d="M102 98 Q121 90 123 73"
-              fill="none"
-              stroke="#4F39F6"
-              strokeWidth="7"
-              strokeLinecap="round"
-            />
-            <circle cx="123" cy="72" r="5" fill={`url(#${goldGradId})`} />
-          </g>
+          <circle cx="62" cy="83" r="2.6" fill="#22D3EE" stroke="#FFFFFF" strokeWidth="0.9" />
         </g>
       )}
 
-      {/* STAGE 5: SUPERIOR RUMI (Ascended Golden Wings + Sacred Halo + Diamond Crown) */}
-      {!isAdminSuperior && stage === 5 && (
+      {/* STAGE 4: PRO RUMI (Cosmic Amethyst Chibi + Royal Velvet Cape + Magenta-Gold Crown) */}
+      {!isAdminSuperior && stage === 4 && (
         <g className="rs-rumi-character">
-          {/* Sacred Cosmic Halo Behind Head */}
-          <g className="rs-rumi-halo" style={{ transformOrigin: "74px 63px" }}>
-            <circle
-              cx="74"
-              cy="63"
-              r="42"
-              fill="none"
-              stroke="#FBBF24"
-              strokeWidth="2.5"
-              strokeDasharray="10 6"
-              strokeOpacity="0.85"
+          {/* Compact Royal Velvet Cape */}
+          <path
+            className="rs-rumi-cape"
+            d="M48 86 Q34 108 40 125 Q74 132 108 125 Q114 108 100 86 Z"
+            fill={`url(#${capeGradId})`}
+            fillOpacity="0.92"
+            stroke="#FBBF24"
+            strokeOpacity="0.65"
+            strokeWidth="1.2"
+          />
+
+          {/* Compact Hovering Golden Star Orb Left */}
+          <g className="rs-rumi-holo">
+            <circle cx="24" cy="79" r="8.5" fill="#FBBF24" fillOpacity="0.22" />
+            <path
+              d="M24 70 L26.2 76.8 L33 79 L26.2 81.2 L24 88 L21.8 81.2 L15 79 L21.8 76.8 Z"
+              fill={`url(#${goldGradId})`}
+              stroke="#FFFFFF"
+              strokeWidth="0.9"
             />
-            <circle
-              cx="74"
-              cy="63"
-              r="36"
-              fill="none"
-              stroke="#22D3EE"
-              strokeWidth="1.5"
-              strokeDasharray="4 8"
-              strokeOpacity="0.7"
-            />
-            <circle cx="74" cy="21" r="3" fill="#FEF08A" />
-            <circle cx="116" cy="63" r="3" fill="#22D3EE" />
-            <circle cx="74" cy="105" r="3" fill="#FEF08A" />
-            <circle cx="32" cy="63" r="3" fill="#22D3EE" />
           </g>
 
-          {/* Majestic Left & Right Luminous Energy Wings */}
+          {/* Floating Dark-Violet Feet */}
+          <ellipse cx="61" cy="125" rx="7.5" ry="4.5" fill="#2E1065" />
+          <ellipse cx="61" cy="124" rx="5" ry="2" fill="#C4B5FD" fillOpacity="0.5" />
+          <ellipse cx="87" cy="125" rx="7.5" ry="4.5" fill="#2E1065" />
+          <ellipse cx="87" cy="124" rx="5" ry="2" fill="#C4B5FD" fillOpacity="0.5" />
+
+          {/* Plump Glossy Royal Amethyst Ceramic Torso */}
+          <rect
+            x="49"
+            y="88"
+            width="50"
+            height="37"
+            rx="19"
+            fill={`url(#${learnerDarkTrimGradId})`}
+            stroke="#A78BFA"
+            strokeWidth="1.3"
+          />
+          <path
+            d="M54 92 Q74 100 94 92"
+            fill="none"
+            stroke={`url(#${goldGradId})`}
+            strokeWidth="3.8"
+            strokeLinecap="round"
+          />
+          <polygon
+            points="74,102 80,109 74,116 68,109"
+            fill={`url(#${cyanGradId})`}
+            stroke="#FEF08A"
+            strokeWidth="1.3"
+          />
+
+          {/* Resting Left Arm & Commanding Waving Right Arm */}
+          <path
+            d="M50 97 Q40 103 43 111"
+            fill="none"
+            stroke="#312E81"
+            strokeWidth="7"
+            strokeLinecap="round"
+          />
+          <circle cx="43.5" cy="111.5" r="2.2" fill="#FBBF24" />
+          <g className="rs-rumi-arm">
+            <path
+              d="M98 96 Q114 89 117 75"
+              fill="none"
+              stroke="#6366F1"
+              strokeWidth="7.2"
+              strokeLinecap="round"
+            />
+            <circle
+              cx="117"
+              cy="74"
+              r="4.8"
+              fill={`url(#${goldGradId})`}
+              stroke="#FFFFFF"
+              strokeWidth="1.2"
+            />
+          </g>
+
+          {/* Sculpted Dark Headband + Floating Royal Gold Tiara */}
+          <path
+            d="M39 65 C39 26, 109 26, 109 65"
+            fill="none"
+            stroke={`url(#${learnerDarkTrimGradId})`}
+            strokeWidth="5.5"
+            strokeLinecap="round"
+          />
+          <g className="rs-rumi-crown">
+            <path
+              d="M55 30 L58 18 Q64 23 69 22 L74 13 L79 22 Q84 23 90 18 L93 30 Q74 33 55 30 Z"
+              fill={`url(#${goldGradId})`}
+              stroke="#FFFFFF"
+              strokeWidth="1.4"
+              strokeLinejoin="round"
+            />
+            <circle cx="74" cy="24.5" r="2.7" fill="#F472B6" stroke="#FFFFFF" strokeWidth="0.9" />
+          </g>
+
+          {/* Chubby Glossy 3D Cosmic Amethyst Head */}
+          <rect
+            x="43"
+            y="37"
+            width="62"
+            height="55"
+            rx="27.5"
+            fill={`url(#${bodyGradId})`}
+            stroke="#C4B5FD"
+            strokeWidth="1.2"
+          />
+          <ellipse
+            cx="61"
+            cy="46"
+            rx="13"
+            ry="4.8"
+            fill="#FFFFFF"
+            fillOpacity="0.58"
+            transform="rotate(-14 61 46)"
+          />
+
+          {/* Glossy Sapphire-Violet Glass Visor */}
+          <rect
+            x="50"
+            y="48"
+            width="48"
+            height="34"
+            rx="17"
+            fill={`url(#${learnerVisorGradId})`}
+            stroke="#C4B5FD"
+            strokeOpacity="0.65"
+            strokeWidth="1.3"
+          />
+          <path
+            d="M58 53 Q74 49 90 53"
+            fill="none"
+            stroke="#FFFFFF"
+            strokeOpacity="0.22"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+
+          {/* Rosy Blush + Electric Cyan & Gold-Sparkle Kawaii Eyes */}
+          <ellipse cx="59" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.72" />
+          <ellipse cx="89" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.72" />
+          <g className="rs-rumi-eyes">
+            <circle cx="63" cy="62.5" r="6.2" fill="#38BDF8" fillOpacity="0.25" />
+            <circle cx="85" cy="62.5" r="6.2" fill="#38BDF8" fillOpacity="0.25" />
+            <ellipse cx="63" cy="62.5" rx="4.4" ry="5.1" fill="#E0F2FE" />
+            <ellipse cx="85" cy="62.5" rx="4.4" ry="5.1" fill="#E0F2FE" />
+            <circle cx="64.5" cy="60.6" r="1.8" fill="#FEF08A" />
+            <circle cx="86.5" cy="60.6" r="1.8" fill="#FEF08A" />
+            <circle cx="61.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
+            <circle cx="83.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
+          </g>
+          <path
+            d="M68 72.5 Q74 77.8 80 72.5"
+            fill="none"
+            stroke="#FDE68A"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+          />
+
+          {/* Gold Studio Headphones with Glowing Violet LEDs */}
+          <rect
+            x="34"
+            y="53"
+            width="11"
+            height="23"
+            rx="5.5"
+            fill={`url(#${goldGradId})`}
+            stroke="#FFFFFF"
+            strokeWidth="1.5"
+          />
+          <rect x="38.2" y="61" width="2.6" height="7" rx="1.3" fill="#C084FC" />
+          <rect
+            x="103"
+            y="53"
+            width="11"
+            height="23"
+            rx="5.5"
+            fill={`url(#${goldGradId})`}
+            stroke="#FFFFFF"
+            strokeWidth="1.5"
+          />
+          <rect x="107.2" y="61" width="2.6" height="7" rx="1.3" fill="#C084FC" />
+        </g>
+      )}
+
+      {/* STAGE 5: SUPERIOR LEARNER RUMI (Cosmic Royal-Indigo & Solar-Gold Chibi Angelic Sovereign) */}
+      {!isAdminSuperior && stage === 5 && (
+        <g className="rs-rumi-character">
+          {/* Radiant Sculpted Solar-Gold Angelic Wings */}
           <g className="rs-rumi-wing-l">
             <path
-              d="M46 84 C20 66, 8 76, 12 96 C18 92, 24 94, 18 108 C28 102, 36 104, 46 102 Z"
+              d="M48 87 C26 73, 15 80, 19 95 C15 101, 21 110, 34 106 C39 109, 44 107, 49 103 Z"
               fill={`url(#${wingGradId})`}
               fillOpacity="0.92"
               stroke="#FFFFFF"
-              strokeWidth="1.5"
+              strokeWidth="1.4"
+              strokeLinejoin="round"
             />
             <path
-              d="M45 92 C28 84, 20 92, 24 103"
+              d="M46 94 C33 88, 25 94, 28 102"
               fill="none"
               stroke="#FFFFFF"
-              strokeWidth="1.6"
+              strokeOpacity="0.65"
+              strokeWidth="1.4"
               strokeLinecap="round"
-              strokeOpacity="0.8"
             />
           </g>
           <g className="rs-rumi-wing-r">
             <path
-              d="M102 84 C128 66, 140 76, 136 96 C130 92, 124 94, 130 108 C120 102, 112 104, 102 102 Z"
+              d="M100 87 C122 73, 133 80, 129 95 C133 101, 127 110, 114 106 C109 109, 104 107, 99 103 Z"
               fill={`url(#${wingGradId})`}
               fillOpacity="0.92"
               stroke="#FFFFFF"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M103 92 C120 84, 128 92, 124 103"
-              fill="none"
-              stroke="#FFFFFF"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeOpacity="0.8"
-            />
-          </g>
-
-          {/* Sovereign Diamond-Gold Crown */}
-          <g className="rs-rumi-crown">
-            <path
-              d="M52 33 L56 17 L66 25 L74 11 L82 25 L92 17 L96 33 Z"
-              fill={`url(#${goldGradId})`}
-              stroke="#FFFFFF"
-              strokeWidth="1.6"
+              strokeWidth="1.4"
               strokeLinejoin="round"
             />
-            <polygon
-              points="74,17 78,24 74,30 70,24"
-              fill={`url(#${cyanGradId})`}
+            <path
+              d="M102 94 C115 88, 123 94, 120 102"
+              fill="none"
+              stroke="#FFFFFF"
+              strokeOpacity="0.65"
+              strokeWidth="1.4"
+              strokeLinecap="round"
             />
           </g>
 
-          {/* Ascended Sovereign Armor Torso */}
-          <path
-            d="M44 86 C38 118, 52 127, 74 127 C96 127, 110 118, 104 86 Z"
+          {/* Floating Gold-Trimmed Indigo Feet */}
+          <ellipse cx="61" cy="125" rx="7.5" ry="4.5" fill="#1E1B4B" stroke="#FBBF24" strokeOpacity="0.65" strokeWidth="1" />
+          <ellipse cx="61" cy="124" rx="5" ry="2" fill="#A5B4FC" fillOpacity="0.55" />
+          <ellipse cx="87" cy="125" rx="7.5" ry="4.5" fill="#1E1B4B" stroke="#FBBF24" strokeOpacity="0.65" strokeWidth="1" />
+          <ellipse cx="87" cy="124" rx="5" ry="2" fill="#A5B4FC" fillOpacity="0.55" />
+
+          {/* Plump Glossy Cosmic Royal-Indigo Sovereign Torso */}
+          <rect
+            x="48"
+            y="88"
+            width="52"
+            height="37"
+            rx="20"
             fill={`url(#${bodyGradId})`}
             stroke={`url(#${goldGradId})`}
-            strokeWidth="2.5"
+            strokeWidth="1.6"
           />
-          {/* Golden Shoulder Wings/Trim */}
-          <path d="M40 88 Q49 81 58 92 L46 97 Z" fill={`url(#${goldGradId})`} />
-          <path d="M108 88 Q99 81 90 92 L102 97 Z" fill={`url(#${goldGradId})`} />
-          {/* Radiant Core Gem */}
-          <polygon
-            points="74,95 83,106 74,117 65,106"
-            fill={`url(#${cyanGradId})`}
-            stroke="#FEF08A"
-            strokeWidth="2"
-          />
-
-          {/* Ascended Head */}
-          <rect
-            x="45"
-            y="36"
-            width="58"
-            height="53"
-            rx="24"
-            fill={`url(#${bodyGradId})`}
-            stroke={`url(#${goldGradId})`}
-            strokeWidth="2"
-          />
-          <rect
-            x="35"
-            y="53"
-            width="11"
-            height="22"
-            rx="5.5"
-            fill={`url(#${goldGradId})`}
-            stroke="#FFFFFF"
-            strokeWidth="1.8"
-          />
-          <rect
-            x="102"
-            y="53"
-            width="11"
-            height="22"
-            rx="5.5"
-            fill={`url(#${goldGradId})`}
-            stroke="#FFFFFF"
-            strokeWidth="1.8"
-          />
-
-          {/* Luminous Sovereign Eyes */}
-          <g className="rs-rumi-eyes">
-            <circle cx="63" cy="62" r="5" fill="#0F172A" />
-            <circle cx="85" cy="62" r="5" fill="#0F172A" />
-            <circle cx="64.6" cy="60.2" r="2.2" fill="#FEF08A" />
-            <circle cx="86.6" cy="60.2" r="2.2" fill="#FEF08A" />
-          </g>
+          {/* Radiant Solar-Gold Collar Curve */}
           <path
-            d="M66 73 Q74 80 82 73"
+            d="M54 92 Q74 100 94 92"
             fill="none"
-            stroke="#FEF08A"
-            strokeWidth="3"
+            stroke={`url(#${goldGradId})`}
+            strokeWidth="4"
             strokeLinecap="round"
           />
+          {/* Gold-Framed Sovereign Chest Diamond Crest */}
+          <polygon
+            points="74,101.5 81,109 74,116.5 67,109"
+            fill={`url(#${cyanGradId})`}
+            stroke="#FEF08A"
+            strokeWidth="1.5"
+          />
+          <polygon points="74,105 76.8,109 74,113 71.2,109" fill="#FFFFFF" fillOpacity="0.7" />
 
-          {/* Waving Golden-Gauntlet Hand */}
+          {/* Resting Left Arm & Waving Solar-Gold Gauntlet Arm */}
+          <path
+            d="M49 97 Q39 103 42 111"
+            fill="none"
+            stroke="#312E81"
+            strokeWidth="7"
+            strokeLinecap="round"
+          />
+          <circle cx="42.5" cy="111.5" r="2.2" fill="#FDE047" />
           <g className="rs-rumi-arm">
             <path
-              d="M102 98 Q121 90 124 72"
+              d="M99 96 Q115 89 118 75"
               fill="none"
-              stroke="#6366F1"
-              strokeWidth="7"
+              stroke="#4F39F6"
+              strokeWidth="7.4"
+              strokeLinecap="round"
+            />
+            <path
+              d="M113 83 Q116.5 80.5 118 77"
+              fill="none"
+              stroke={`url(#${goldGradId})`}
+              strokeWidth="2.5"
               strokeLinecap="round"
             />
             <circle
-              cx="124"
-              cy="71"
-              r="5.2"
+              cx="118"
+              cy="74"
+              r="4.9"
+              fill={`url(#${goldGradId})`}
+              stroke="#FFFFFF"
+              strokeWidth="1.3"
+            />
+          </g>
+
+          {/* Sculpted Indigo-Gold Headband */}
+          <path
+            d="M39 65 C39 25, 109 25, 109 65"
+            fill="none"
+            stroke={`url(#${learnerDarkTrimGradId})`}
+            strokeWidth="5.5"
+            strokeLinecap="round"
+          />
+
+          {/* Floating Sovereign 5-Peak Solar-Gold Crown with Amethyst Diamond */}
+          <g className="rs-rumi-crown">
+            <path
+              d="M52 31 L54 18 L63 23.5 L68 14 L74 21.5 L80 14 L85 23.5 L94 18 L96 31 Q74 34 52 31 Z"
               fill={`url(#${goldGradId})`}
               stroke="#FFFFFF"
               strokeWidth="1.4"
+              strokeLinejoin="round"
+            />
+            <polygon
+              points="74,9.5 77.2,15 74,20.5 70.8,15"
+              fill="#E879F9"
+              stroke="#FFFFFF"
+              strokeWidth="0.9"
             />
           </g>
+
+          {/* Chubby Glossy 3D Cosmic Royal-Indigo Sovereign Head */}
+          <rect
+            x="43"
+            y="37"
+            width="62"
+            height="55"
+            rx="27.5"
+            fill={`url(#${bodyGradId})`}
+            stroke={`url(#${goldGradId})`}
+            strokeWidth="1.5"
+          />
+          <ellipse
+            cx="61"
+            cy="46"
+            rx="13"
+            ry="4.8"
+            fill="#FFFFFF"
+            fillOpacity="0.62"
+            transform="rotate(-14 61 46)"
+          />
+
+          {/* Glossy Deep-Indigo Glass Visor */}
+          <rect
+            x="50"
+            y="48"
+            width="48"
+            height="34"
+            rx="17"
+            fill={`url(#${learnerVisorGradId})`}
+            stroke="#FDE68A"
+            strokeOpacity="0.68"
+            strokeWidth="1.4"
+          />
+          <path
+            d="M58 53 Q74 49 90 53"
+            fill="none"
+            stroke="#FFFFFF"
+            strokeOpacity="0.24"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+
+          {/* Soft Coral Blush Cheeks */}
+          <ellipse cx="59" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.76" />
+          <ellipse cx="89" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.76" />
+
+          {/* Luminous Warm Solar-Gold Kawaii Blinking Eyes */}
+          <g className="rs-rumi-eyes">
+            <circle cx="63" cy="62.5" r="6.3" fill="#FBBF24" fillOpacity="0.26" />
+            <circle cx="85" cy="62.5" r="6.3" fill="#FBBF24" fillOpacity="0.26" />
+            <ellipse cx="63" cy="62.5" rx="4.4" ry="5.1" fill="#FEF9C3" />
+            <ellipse cx="85" cy="62.5" rx="4.4" ry="5.1" fill="#FEF9C3" />
+            <circle cx="64.5" cy="60.6" r="1.8" fill="#FFFFFF" />
+            <circle cx="86.5" cy="60.6" r="1.8" fill="#FFFFFF" />
+            <circle cx="61.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.92" />
+            <circle cx="83.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.92" />
+          </g>
+          <path
+            d="M68 72.5 Q74 77.8 80 72.5"
+            fill="none"
+            stroke="#FDE68A"
+            strokeWidth="2.9"
+            strokeLinecap="round"
+          />
+
+          {/* Sculpted Solar-Gold Studio Headphones with Warm Amber LEDs */}
+          <rect
+            x="34"
+            y="53"
+            width="11"
+            height="23"
+            rx="5.5"
+            fill={`url(#${goldGradId})`}
+            stroke="#FFFFFF"
+            strokeWidth="1.5"
+          />
+          <rect x="38.2" y="61" width="2.6" height="7" rx="1.3" fill="#FEF08A" />
+          <rect
+            x="103"
+            y="53"
+            width="11"
+            height="23"
+            rx="5.5"
+            fill={`url(#${goldGradId})`}
+            stroke="#FFFFFF"
+            strokeWidth="1.5"
+          />
+          <rect x="107.2" y="61" width="2.6" height="7" rx="1.3" fill="#FEF08A" />
         </g>
       )}
 

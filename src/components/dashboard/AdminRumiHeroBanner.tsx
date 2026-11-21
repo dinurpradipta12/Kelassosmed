@@ -317,11 +317,11 @@ export function AdminRumiHeroBanner({
                   Superior Learner Rumi
                 </h3>
                 <p className="text-[11px] text-[#4F39F6] font-semibold">
-                  Lv.5 Ascended Angelic (1000+ XP)
+                  Lv.5 Cosmic Indigo &amp; Solar Gold (1000+ XP)
                 </p>
               </div>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Dicapai siswa setelah mengumpulkan 1000+ XP dengan armor Indigo-Emas, sayap emas klasik, dan halo suci 3-puncak.
+                Dicapai siswa setelah 1000+ XP dengan bodi keramik indigo kosmik 3D, mata solar-gold bercahaya, sayap cahaya emas, &amp; mahkota 5-puncak berpermata amethyst.
               </p>
             </div>
           </div>

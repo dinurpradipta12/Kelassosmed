@@ -73,7 +73,7 @@ export const RUMI_LEVEL_TIERS: readonly RumiLevelTier[] = [
     emoji: "🏆",
     badge: "Wujud Superior",
     tagline:
-      "Wujud tertinggi! Superior Rumi bersayap cahaya dengan halo kosmik & mahkota berlian!",
+      "Wujud tertinggi! Superior Rumi keramik kosmik indigo bersayap cahaya emas & mahkota berlian!",
   },
 ] as const;
 
