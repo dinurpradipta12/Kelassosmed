@@ -611,32 +611,6 @@ export function LearnerHomeDashboard({
                   />
                   <span>Paket {activeTierLabel}</span>
                 </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF7ED] border border-[#FED7AA] px-2.5 py-0.5 text-[11px] font-bold text-[#EA580C]">
-                  <Flame size={11} />
-                  <span>Streak {rumiXpState.loginStreak} Hari</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setEvolutionModalOpen(true)}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold cursor-pointer transition-colors ${
-                    activeTierKind === "pro"
-                      ? "bg-[#ECFDF5] border-[#10B981]/30 text-[#059669]"
-                      : activeTierKind === "basic" ||
-                        activeTierKind === "custom"
-                      ? "bg-[#EEF2FF] border-[#4F39F6]/30 text-[#4F39F6]"
-                      : "bg-[#FFFBEB] hover:bg-[#FEF3C7] border-[#FDE68A] text-[#B45309]"
-                  }`}
-                >
-                  <Sparkles size={10} />
-                  <span>
-                    {activeTierKind === "pro"
-                      ? "2× XP PRO Aktif"
-                      : activeTierKind === "basic" ||
-                        activeTierKind === "custom"
-                      ? "1.5× XP Basic Aktif"
-                      : "PRO = 2× XP"}
-                  </span>
-                </button>
               </div>
 
               <div>
