@@ -1009,7 +1009,7 @@ export function UserProfileScreen({
         </aside>
 
         {/* Right Main Form Area */}
-        <main className="flex-1 bg-[#FFFFFF] px-4 sm:px-6 py-6 overflow-y-auto">
+        <main className="flex-1 bg-[#FFFFFF] px-4 sm:px-6 pt-6 pb-20 overflow-y-auto">
           {subView === "manual-setup" ? (
             /* MANUAL SETUP / PROFILE SETTINGS FORM */
             <form
@@ -1735,7 +1735,7 @@ export function UserProfileScreen({
   // (Matches Bottom-Left & Bottom-Right of Reference Image)
   // =========================================================================
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] bg-[#FFFFFF] pb-16">
+    <div className="min-h-[calc(100vh-3.5rem)] bg-[#FFFFFF] pb-24">
       {/* Top Individual Bar (matches Bottom-Left & Bottom-Right screenshots) */}
       <header
         className={`sticky ${

@@ -4778,95 +4778,83 @@ export function LearnerPortalView({
         </div>
       )}
 
-      {/* Bottom-Left Sidebar Quick Profile & Settings Dock (Matching media_1793150495019_65fb3d92.png) */}
-      <aside
-        aria-label="Learner Quick Profile & Settings Rail"
-        className="fixed bottom-4 left-3 z-40 flex flex-col items-center gap-2 rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-2 shadow-[0_4px_16px_rgba(16,15,17,0.08)]"
-      >
-        <ThemeSwitchDockButton />
+      {/* Bottom-Left Sidebar Quick Profile & Settings Dock (Hidden on Profile/Settings to keep page unobstructed) */}
+      {activeNavTab !== "profile" && (
+        <aside
+          aria-label="Learner Quick Profile & Settings Rail"
+          className="fixed bottom-4 left-3 z-40 flex flex-col items-center gap-2 rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-2 shadow-[0_4px_16px_rgba(16,15,17,0.08)]"
+        >
+          <ThemeSwitchDockButton />
 
-        <div className="relative group flex items-center justify-center">
-          <button
-            type="button"
-            onClick={() => handleSelectNavTab("profile", "manual-setup")}
-            aria-label="Pengaturan Profil"
-            aria-current={
-              activeNavTab === "profile" && profileSubView === "manual-setup"
-                ? "page"
-                : undefined
-            }
-            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors cursor-pointer ${
-              activeNavTab === "profile" && profileSubView === "manual-setup"
-                ? "bg-[#4F39F6]/10 text-[#4F39F6] ring-1 ring-[#4F39F6]/30"
-                : "text-[#5E5E5E] hover:bg-[#F8F9FB] hover:text-[#121215]"
-            }`}
-          >
-            <Settings size={17} strokeWidth={2} />
-          </button>
-          <div
-            role="tooltip"
-            className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute left-[44px] z-50 whitespace-nowrap rounded-md bg-[#121215] px-2.5 py-1.5 text-xs font-medium text-white shadow-md"
-          >
-            Pengaturan Profil
-          </div>
-        </div>
-
-        <div className="relative group flex items-center justify-center">
-          <button
-            type="button"
-            onClick={() => handleSelectNavTab("profile", "profile")}
-            aria-label={`Learner Profile: ${activeLearnerDisplayName}`}
-            aria-current={
-              activeNavTab === "profile" && profileSubView === "profile"
-                ? "page"
-                : undefined
-            }
-            className={`relative flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold tracking-tight transition-all cursor-pointer overflow-hidden ${
-              activeNavTab === "profile" && profileSubView === "profile"
-                ? "border-[#D97706] ring-2 ring-[#F59E0B]/50 shadow-xs"
-                : "border-[#F59E0B]/40 hover:ring-2 hover:ring-[#F59E0B]/40"
-            } ${activeLearnerAvatar ? "bg-[#FFFFFF]" : "bg-[#FDE68A] text-[#92400E]"}`}
-          >
-            {activeLearnerAvatar ? (
-              <img
-                src={activeLearnerAvatar}
-                alt={activeLearnerDisplayName}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              activeLearnerInitials
-            )}
-          </button>
-          <div
-            role="tooltip"
-            className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute left-[44px] z-50 whitespace-nowrap rounded-md bg-[#121215] px-2.5 py-1.5 text-xs font-medium text-white shadow-md"
-          >
-            {activeLearnerDisplayName} • Buka Halaman Profil
-          </div>
-        </div>
-
-        {onLogout && (
-          <div className="relative group flex items-center justify-center pt-1.5 border-t border-[#EAECEF] w-full">
+          <div className="relative group flex items-center justify-center">
             <button
               type="button"
-              onClick={onLogout}
-              aria-label="Logout"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-[#EF4444] hover:bg-[#FEF2F2] hover:text-[#DC2626] transition-colors cursor-pointer"
+              onClick={() => handleSelectNavTab("profile", "manual-setup")}
+              aria-label="Pengaturan Profil"
+              aria-current={undefined}
+              className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors cursor-pointer text-[#5E5E5E] hover:bg-[#F8F9FB] hover:text-[#121215]"
             >
-              <LogOut size={16} strokeWidth={2} />
+              <Settings size={17} strokeWidth={2} />
             </button>
             <div
               role="tooltip"
               className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute left-[44px] z-50 whitespace-nowrap rounded-md bg-[#121215] px-2.5 py-1.5 text-xs font-medium text-white shadow-md"
             >
-              Keluar (Logout)
+              Pengaturan Profil
             </div>
           </div>
-        )}
-      </aside>
 
-      {/* Rumi Floating Assistant (Learner Portal — all pages + peek-a-boo idle mode) */}
-      {(() => {
+          <div className="relative group flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => handleSelectNavTab("profile", "profile")}
+              aria-label={`Learner Profile: ${activeLearnerDisplayName}`}
+              aria-current={undefined}
+              className={`relative flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold tracking-tight transition-all cursor-pointer overflow-hidden border-[#F59E0B]/40 hover:ring-2 hover:ring-[#F59E0B]/40 ${
+                activeLearnerAvatar ? "bg-[#FFFFFF]" : "bg-[#FDE68A] text-[#92400E]"
+              }`}
+            >
+              {activeLearnerAvatar ? (
+                <img
+                  src={activeLearnerAvatar}
+                  alt={activeLearnerDisplayName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                activeLearnerInitials
+              )}
+            </button>
+            <div
+              role="tooltip"
+              className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute left-[44px] z-50 whitespace-nowrap rounded-md bg-[#121215] px-2.5 py-1.5 text-xs font-medium text-white shadow-md"
+            >
+              {activeLearnerDisplayName} • Buka Halaman Profil
+            </div>
+          </div>
+
+          {onLogout && (
+            <div className="relative group flex items-center justify-center pt-1.5 border-t border-[#EAECEF] w-full">
+              <button
+                type="button"
+                onClick={onLogout}
+                aria-label="Logout"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-[#EF4444] hover:bg-[#FEF2F2] hover:text-[#DC2626] transition-colors cursor-pointer"
+              >
+                <LogOut size={16} strokeWidth={2} />
+              </button>
+              <div
+                role="tooltip"
+                className="pointer-events-none invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all duration-150 absolute left-[44px] z-50 whitespace-nowrap rounded-md bg-[#121215] px-2.5 py-1.5 text-xs font-medium text-white shadow-md"
+              >
+                Keluar (Logout)
+              </div>
+            </div>
+          )}
+        </aside>
+      )}
+
+      {/* Rumi Floating Assistant (Hidden on Profile/Settings so it never covers profile settings) */}
+      {activeNavTab !== "profile" && (() => {
         const rumiContextId: RumiPageContextId =
           screenState.screen === "course-overview"
             ? "learner:course-overview"
@@ -4884,8 +4872,6 @@ export function LearnerPortalView({
             ? "learner:wiki"
             : activeNavTab === "favorites"
             ? "learner:favorites"
-            : activeNavTab === "profile"
-            ? "learner:profile"
             : "learner:home";
 
         const rumiSubtitle =

@@ -2150,8 +2150,12 @@ function RuangSosmedStudioInner() {
             </div>
           </main>
 
-          {/* Rumi Floating Assistant (Admin Studio — all sections + peek-a-boo idle mode) */}
-          {roleMode === "admin" && isCurrentUserAdmin && !authoringMode && (() => {
+          {/* Rumi Floating Assistant (Admin Studio — hidden on Profile/Settings) */}
+          {roleMode === "admin" &&
+            isCurrentUserAdmin &&
+            !authoringMode &&
+            activeNav !== "profile" &&
+            (() => {
             const adminUserKey =
               (
                 currentUser?.email ||
