@@ -138,7 +138,7 @@ export function AdminRumiHeroBanner({
                     ? "Klik Superior Admin Rumi untuk memutar animasi"
                     : "Klik Superior Admin Rumi untuk menjeda animasi"
                 }
-                className="rs-rumi-trigger inline-flex items-center justify-center bg-transparent border-0 p-0 rounded-full hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0284C7] cursor-pointer"
+                className="rs-rumi-trigger inline-flex items-center justify-center bg-transparent border-0 p-0 rounded-full hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7C3AED] cursor-pointer"
               >
                 <RumiMascotIllustration
                   variant="admin-superior"
@@ -151,9 +151,9 @@ export function AdminRumiHeroBanner({
                 <button
                   type="button"
                   onClick={() => setShowcaseOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#0284C7] to-[#4F39F6] border border-sky-300/60 px-2.5 py-0.5 text-[11px] font-extrabold text-white shadow-2xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-[#DDD6FE] px-2.5 py-0.5 text-[11px] font-extrabold text-[#6D28D9] shadow-2xs cursor-pointer"
                 >
-                  <Crown size={11} className="text-[#FDE047]" />
+                  <Crown size={11} className="text-[#D97706]" />
                   <span>MAX • Superior Admin Rumi</span>
                 </button>
               </div>
@@ -164,9 +164,9 @@ export function AdminRumiHeroBanner({
                 <button
                   type="button"
                   onClick={() => setShowcaseOpen(true)}
-                  className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#0284C7] to-[#4F39F6] hover:from-[#0369A1] hover:to-[#3B28CC] border border-sky-300/60 px-3 py-0.5 text-[11px] font-extrabold text-white shadow-xs transition-all cursor-pointer"
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-[#DDD6FE] px-3 py-0.5 text-[11px] font-extrabold text-[#6D28D9] shadow-2xs transition-all cursor-pointer"
                 >
-                  <Crown size={11} className="text-[#FDE047]" />
+                  <Crown size={11} className="text-[#D97706]" />
                   <span>MAX • Superior Admin Rumi</span>
                 </button>
 
@@ -191,7 +191,7 @@ export function AdminRumiHeroBanner({
               <p className="flex items-start gap-1.5 text-xs font-medium text-[#475569] leading-relaxed">
                 <Sparkles
                   size={13}
-                  className="text-[#0284C7] shrink-0 mt-0.5"
+                  className="text-[#7C3AED] shrink-0 mt-0.5"
                 />
                 <span>{adminQuote}</span>
               </p>
@@ -276,9 +276,9 @@ export function AdminRumiHeroBanner({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Superior Admin Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-[#0284C7] via-[#0EA5E9] to-[#10B981] border border-sky-300/70 p-4 text-center text-white space-y-2.5 shadow-sm">
-              <span className="inline-flex items-center gap-1 rounded-full bg-white/20 border border-white/35 px-2.5 py-0.5 text-[10px] font-extrabold text-[#FEF08A]">
-                <Crown size={10} /> KHUSUS ADMIN • MAX
+            <div className="rounded-2xl bg-gradient-to-br from-[#F5F3FF] via-[#EFF6FF] to-[#ECFDF5] border border-[#DDD6FE] p-4 text-center text-[#121215] space-y-2.5 shadow-xs">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#EDE9FE] border border-[#DDD6FE] px-2.5 py-0.5 text-[10px] font-extrabold text-[#6D28D9]">
+                <Crown size={10} className="text-[#D97706]" /> KHUSUS ADMIN • MAX
               </span>
               <div className="flex justify-center">
                 <RumiMascotIllustration
@@ -288,15 +288,15 @@ export function AdminRumiHeroBanner({
                 />
               </div>
               <div>
-                <h3 className="text-sm font-extrabold text-white">
+                <h3 className="text-sm font-extrabold text-[#121215]">
                   Superior Admin Rumi
                 </h3>
-                <p className="text-[11px] text-emerald-100 font-semibold">
-                  Royal Sapphire &amp; Emerald Sovereign
+                <p className="text-[11px] text-[#6D28D9] font-semibold">
+                  Soft Pearl-Lavender &amp; Champagne
                 </p>
               </div>
-              <p className="text-[11px] text-sky-50 leading-relaxed">
-                Armor Sapphire-Emas cerah, mahkota 5-puncak berpermata Emerald, sayap prisma kristal, jubah Royal Violet-Magenta, HUD biru kristal, &amp; tongkat komando.
+              <p className="text-[11px] text-[#475569] leading-relaxed">
+                Armor Pearl-Lavender lembut, mahkota 5-puncak champagne gold berpermata mint, sayap pastel ringkas, jubah blush-lilac, visor kaca lembut, &amp; tongkat bintang.
               </p>
             </div>
 

@@ -32,7 +32,7 @@ export interface RumiMascotIllustrationProps {
 
 /**
  * 5-Stage Animated Frameless Mascot ("Rumi") growing from Baby Rumi to Superior Rumi,
- * plus the exclusive Obsidian-Emerald "Superior Admin Rumi" Studio Sovereign form.
+ * plus the exclusive Soft Pearl-Lavender & Champagne "Superior Admin Rumi" Studio Sovereign form.
  */
 export function RumiMascotIllustration({
   stage = 1,
@@ -52,13 +52,16 @@ export function RumiMascotIllustration({
   const adminCapeGradId = `rumiAdminCape-${uid}`;
   const adminPrismWingGradId = `rumiAdminPrismWing-${uid}`;
   const adminVisorGradId = `rumiAdminVisor-${uid}`;
+  const adminGoldGradId = `rumiAdminGold-${uid}`;
 
   return (
     <svg
       viewBox="0 0 148 148"
-      className={`${sizeClass} shrink-0 select-none overflow-visible drop-shadow-[0_6px_14px_rgba(79,57,246,0.2)] ${
-        paused ? "rs-rumi-paused" : ""
-      }`}
+      className={`${sizeClass} shrink-0 select-none overflow-visible ${
+        isAdminSuperior
+          ? "drop-shadow-[0_6px_14px_rgba(139,92,246,0.14)]"
+          : "drop-shadow-[0_6px_14px_rgba(79,57,246,0.2)]"
+      } ${paused ? "rs-rumi-paused" : ""}`}
       aria-hidden="true"
     >
       <defs>
@@ -104,29 +107,34 @@ export function RumiMascotIllustration({
           <stop offset="100%" stopColor="#F59E0B" />
         </linearGradient>
         <linearGradient id={adminBodyGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#38BDF8" />
-          <stop offset="52%" stopColor="#0284C7" />
-          <stop offset="100%" stopColor="#0369A1" />
+          <stop offset="0%" stopColor="#EDE9FE" />
+          <stop offset="52%" stopColor="#C4B5FD" />
+          <stop offset="100%" stopColor="#A78BFA" />
         </linearGradient>
         <linearGradient id={adminEmeraldGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#A7F3D0" />
-          <stop offset="50%" stopColor="#10B981" />
-          <stop offset="100%" stopColor="#047857" />
+          <stop offset="0%" stopColor="#ECFDF5" />
+          <stop offset="55%" stopColor="#6EE7B7" />
+          <stop offset="100%" stopColor="#34D399" />
         </linearGradient>
         <linearGradient id={adminCapeGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#7C3AED" />
-          <stop offset="60%" stopColor="#DB2777" />
-          <stop offset="100%" stopColor="#F43F5E" />
+          <stop offset="0%" stopColor="#DDD6FE" />
+          <stop offset="58%" stopColor="#F5D0FE" />
+          <stop offset="100%" stopColor="#FBCFE8" />
         </linearGradient>
         <linearGradient id={adminPrismWingGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FEF08A" />
-          <stop offset="48%" stopColor="#34D399" />
-          <stop offset="100%" stopColor="#059669" />
+          <stop offset="0%" stopColor="#FFFBEB" />
+          <stop offset="48%" stopColor="#FEF3C7" />
+          <stop offset="100%" stopColor="#A7F3D0" />
         </linearGradient>
         <linearGradient id={adminVisorGradId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#E0F2FE" stopOpacity="0.42" />
-          <stop offset="50%" stopColor="#FFFFFF" stopOpacity="0.16" />
-          <stop offset="100%" stopColor="#7DD3FC" stopOpacity="0.42" />
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.48" />
+          <stop offset="50%" stopColor="#EEF2FF" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="#E0E7FF" stopOpacity="0.45" />
+        </linearGradient>
+        <linearGradient id={adminGoldGradId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#FFFBEB" />
+          <stop offset="50%" stopColor="#FDE68A" />
+          <stop offset="100%" stopColor="#FBBF24" />
         </linearGradient>
       </defs>
 
@@ -135,17 +143,22 @@ export function RumiMascotIllustration({
         className="rs-rumi-shadow"
         cx="74"
         cy="134"
-        rx={isAdminSuperior || stage >= 4 ? 30 : 24}
+        rx={isAdminSuperior ? 26 : stage >= 4 ? 30 : 24}
         ry="4.8"
-        fill={isAdminSuperior ? "#0284C7" : stage === 5 ? "#D97706" : "#4F39F6"}
-        fillOpacity={isAdminSuperior ? "0.22" : stage === 5 ? "0.26" : "0.2"}
+        fill={isAdminSuperior ? "#A78BFA" : stage === 5 ? "#D97706" : "#4F39F6"}
+        fillOpacity={isAdminSuperior ? "0.18" : stage === 5 ? "0.26" : "0.2"}
       />
 
       {/* Ambient Sparkles */}
       <g className="rs-sparkle-bob" style={{ transformOrigin: "22px 32px" }}>
         <path
-          d="M22 22 L24.5 29.5 L32 32 L24.5 34.5 L22 42 L19.5 34.5 L12 32 L19.5 29.5 Z"
-          fill={isAdminSuperior || stage === 5 ? "#FBBF24" : "#F59E0B"}
+          d={
+            isAdminSuperior
+              ? "M24 25 L25.6 29.8 L30.5 31.5 L25.6 33.2 L24 38 L22.4 33.2 L17.5 31.5 L22.4 29.8 Z"
+              : "M22 22 L24.5 29.5 L32 32 L24.5 34.5 L22 42 L19.5 34.5 L12 32 L19.5 29.5 Z"
+          }
+          fill={isAdminSuperior ? "#FDE68A" : stage === 5 ? "#FBBF24" : "#F59E0B"}
+          fillOpacity={isAdminSuperior ? "0.9" : "1"}
         />
       </g>
       <g
@@ -153,26 +166,35 @@ export function RumiMascotIllustration({
         style={{ transformOrigin: "126px 30px" }}
       >
         <path
-          d="M126 22 L128 28 L134 30 L128 32 L126 38 L124 32 L118 30 L124 28 Z"
-          fill={isAdminSuperior ? "#10B981" : stage >= 4 ? "#22D3EE" : "#EC4899"}
+          d={
+            isAdminSuperior
+              ? "M123 25 L124.3 28.7 L128 30 L124.3 31.3 L123 35 L121.7 31.3 L118 30 L121.7 28.7 Z"
+              : "M126 22 L128 28 L134 30 L128 32 L126 38 L124 32 L118 30 L124 28 Z"
+          }
+          fill={isAdminSuperior ? "#A7F3D0" : stage >= 4 ? "#22D3EE" : "#EC4899"}
+          fillOpacity={isAdminSuperior ? "0.9" : "1"}
         />
       </g>
-      <circle
-        className="rs-dot-float-a"
-        cx="124"
-        cy="108"
-        r="4"
-        fill={isAdminSuperior ? "#F43F5E" : "#10B981"}
-        fillOpacity="0.82"
-      />
-      <circle
-        className="rs-dot-float-b"
-        cx="22"
-        cy="104"
-        r="3.5"
-        fill={isAdminSuperior ? "#FBBF24" : "#0EA5E9"}
-        fillOpacity="0.82"
-      />
+      {!isAdminSuperior && (
+        <>
+          <circle
+            className="rs-dot-float-a"
+            cx="124"
+            cy="108"
+            r="4"
+            fill="#10B981"
+            fillOpacity="0.82"
+          />
+          <circle
+            className="rs-dot-float-b"
+            cx="22"
+            cy="104"
+            r="3.5"
+            fill="#0EA5E9"
+            fillOpacity="0.82"
+          />
+        </>
+      )}
 
       {/* STAGE 1: BABY RUMI */}
       {!isAdminSuperior && stage === 1 && (
@@ -792,141 +814,79 @@ export function RumiMascotIllustration({
         </g>
       )}
 
-      {/* EXCLUSIVE ADMIN FORM: SUPERIOR ADMIN RUMI (Obsidian-Gold Armor + Hexagonal Mandala + Prismatic Emerald Cyber-Wings + Command Scepter) */}
+      {/* EXCLUSIVE ADMIN FORM: SUPERIOR ADMIN RUMI (Soft Pearl-Lavender & Champagne Sovereign — Clean Uncluttered Form) */}
       {isAdminSuperior && (
         <g className="rs-rumi-character">
-          {/* Hexagonal Starlight Command Mandala Halo */}
-          <g className="rs-rumi-halo" style={{ transformOrigin: "74px 63px" }}>
-            <polygon
-              points="74,17 114,40 114,86 74,109 34,86 34,40"
-              fill="none"
-              stroke="#10B981"
-              strokeWidth="2"
-              strokeOpacity="0.82"
-              strokeLinejoin="round"
-            />
-            <polygon
-              points="74,23 108,43 108,83 74,103 40,83 40,43"
-              fill="none"
-              stroke="#FBBF24"
-              strokeWidth="1.4"
-              strokeDasharray="6 4"
-              strokeOpacity="0.88"
-            />
-            <circle cx="74" cy="17" r="3" fill="#34D399" />
-            <circle cx="114" cy="40" r="2.6" fill="#FEF08A" />
-            <circle cx="114" cy="86" r="3" fill="#34D399" />
-            <circle cx="74" cy="109" r="2.6" fill="#FEF08A" />
-            <circle cx="34" cy="86" r="3" fill="#34D399" />
-            <circle cx="34" cy="40" r="2.6" fill="#FEF08A" />
-          </g>
-
-          {/* Royal Crimson-Violet Command Cape */}
+          {/* Soft Blush-Lilac Compact Cape */}
           <path
             className="rs-rumi-cape"
-            d="M46 84 Q31 106 37 126 Q74 134 111 126 Q117 106 102 84 Z"
+            d="M48 86 Q37 107 43 125 Q74 132 105 125 Q111 107 100 86 Z"
             fill={`url(#${adminCapeGradId})`}
-            stroke="#FBBF24"
-            strokeWidth="1.5"
+            stroke="#FDE68A"
+            strokeWidth="1.2"
           />
 
-          {/* Twin Prismatic Emerald-Gold Cyber Wings */}
+          {/* Soft Rounded Champagne-Mint Pastel Wings (Tucked Close) */}
           <g className="rs-rumi-wing-l">
-            <polygon
-              points="46,85 11,64 18,86 6,96 24,102 15,113 46,101"
+            <path
+              d="M46 86 C33 77, 23 79, 25 90 C21 95, 25 104, 34 103 C38 106, 43 105, 46 100 Z"
               fill={`url(#${adminPrismWingGradId})`}
-              fillOpacity="0.95"
+              fillOpacity="0.88"
               stroke="#FFFFFF"
               strokeWidth="1.4"
               strokeLinejoin="round"
-            />
-            <line
-              x1="44"
-              y1="91"
-              x2="17"
-              y2="78"
-              stroke="#FEF08A"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-            <line
-              x1="44"
-              y1="97"
-              x2="18"
-              y2="98"
-              stroke="#FFFFFF"
-              strokeWidth="1.3"
-              strokeLinecap="round"
             />
           </g>
           <g className="rs-rumi-wing-r">
-            <polygon
-              points="102,85 137,64 130,86 142,96 124,102 133,113 102,101"
+            <path
+              d="M102 86 C115 77, 125 79, 123 90 C127 95, 123 104, 114 103 C110 106, 105 105, 102 100 Z"
               fill={`url(#${adminPrismWingGradId})`}
-              fillOpacity="0.95"
+              fillOpacity="0.88"
               stroke="#FFFFFF"
               strokeWidth="1.4"
               strokeLinejoin="round"
             />
-            <line
-              x1="104"
-              y1="91"
-              x2="131"
-              y2="78"
-              stroke="#FEF08A"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-            <line
-              x1="104"
-              y1="97"
-              x2="130"
-              y2="98"
-              stroke="#FFFFFF"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-            />
           </g>
 
-          {/* 5-Point Imperial Studio Crown with Emerald Sovereign Star */}
+          {/* Soft Champagne 5-Point Crown with Mint Diamond */}
           <g className="rs-rumi-crown">
             <path
-              d="M49 34 L51 18 L61 25 L67 12 L74 22 L81 12 L87 25 L97 18 L99 34 Z"
-              fill={`url(#${goldGradId})`}
+              d="M49 34 L51 19 L61 25.5 L67 13.5 L74 22.5 L81 13.5 L87 25.5 L97 19 L99 34 Z"
+              fill={`url(#${adminGoldGradId})`}
               stroke="#FFFFFF"
               strokeWidth="1.5"
               strokeLinejoin="round"
             />
             <polygon
-              points="74,7 77.5,14 74,20 70.5,14"
+              points="74,8.5 77.2,14.5 74,20 70.8,14.5"
               fill={`url(#${adminEmeraldGradId})`}
               stroke="#FFFFFF"
               strokeWidth="1"
             />
-            <circle cx="58" cy="28" r="2.1" fill="#F43F5E" />
-            <circle cx="90" cy="28" r="2.1" fill="#F43F5E" />
+            <circle cx="58" cy="28" r="2" fill="#FDA4AF" />
+            <circle cx="90" cy="28" r="2" fill="#FDA4AF" />
           </g>
 
-          {/* Obsidian-Platinum Sovereign Armor Torso */}
+          {/* Soft Pearl-Lavender Armor Torso */}
           <path
-            d="M44 86 C38 118, 52 127, 74 127 C96 127, 110 118, 104 86 Z"
+            d="M45 86 C40 116, 53 125, 74 125 C95 125, 108 116, 103 86 Z"
             fill={`url(#${adminBodyGradId})`}
-            stroke={`url(#${goldGradId})`}
-            strokeWidth="2.4"
+            stroke={`url(#${adminGoldGradId})`}
+            strokeWidth="1.8"
           />
-          {/* Imperial Shoulder Epaulettes */}
-          <path d="M39 89 Q49 80 59 92 L46 98 Z" fill={`url(#${goldGradId})`} />
-          <path d="M109 89 Q99 80 89 92 L102 98 Z" fill={`url(#${goldGradId})`} />
-          {/* Emerald Studio Sovereign Core Crest */}
+          {/* Soft Champagne Shoulder Epaulettes */}
+          <path d="M40 89 Q49 81 58 92 L46 98 Z" fill={`url(#${adminGoldGradId})`} />
+          <path d="M108 89 Q99 81 90 92 L102 98 Z" fill={`url(#${adminGoldGradId})`} />
+          {/* Soft Mint-Pearl Crest */}
           <polygon
-            points="74,94 84,106 74,118 64,106"
+            points="74,95 83,106 74,117 65,106"
             fill={`url(#${adminEmeraldGradId})`}
-            stroke="#FEF08A"
-            strokeWidth="1.9"
+            stroke="#FFFBEB"
+            strokeWidth="1.7"
           />
-          <polygon points="74,99 78,106 74,113 70,106" fill="#ECFDF5" fillOpacity="0.7" />
+          <polygon points="74,100 77.5,106 74,112 70.5,106" fill="#FFFFFF" fillOpacity="0.65" />
 
-          {/* Obsidian Armored Head + Imperial Gold Rim */}
+          {/* Soft Pearl-Lavender Head + Champagne Rim */}
           <rect
             x="45"
             y="36"
@@ -934,10 +894,10 @@ export function RumiMascotIllustration({
             height="53"
             rx="24"
             fill={`url(#${adminBodyGradId})`}
-            stroke={`url(#${goldGradId})`}
-            strokeWidth="2.2"
+            stroke={`url(#${adminGoldGradId})`}
+            strokeWidth="1.8"
           />
-          {/* Glowing Ice-Cyan Executive HUD Visor */}
+          {/* Frosted Pearl Glass Visor */}
           <rect
             x="51"
             y="53"
@@ -945,42 +905,42 @@ export function RumiMascotIllustration({
             height="19"
             rx="9.5"
             fill={`url(#${adminVisorGradId})`}
-            stroke="#BAE6FD"
+            stroke="#E0E7FF"
             strokeWidth="1.4"
           />
 
-          {/* Imperial Gold Ear-Comms with Emerald Telemetry LEDs */}
+          {/* Soft Champagne Ear-Comms with Pastel Mint LEDs */}
           <rect
             x="35"
             y="52"
             width="11"
             height="23"
             rx="5.5"
-            fill={`url(#${goldGradId})`}
+            fill={`url(#${adminGoldGradId})`}
             stroke="#FFFFFF"
             strokeWidth="1.6"
           />
-          <circle cx="40.5" cy="63.5" r="2.2" fill="#10B981" />
+          <circle cx="40.5" cy="63.5" r="2.2" fill="#6EE7B7" />
           <rect
             x="102"
             y="52"
             width="11"
             height="23"
             rx="5.5"
-            fill={`url(#${goldGradId})`}
+            fill={`url(#${adminGoldGradId})`}
             stroke="#FFFFFF"
             strokeWidth="1.6"
           />
-          <circle cx="107.5" cy="63.5" r="2.2" fill="#10B981" />
+          <circle cx="107.5" cy="63.5" r="2.2" fill="#6EE7B7" />
 
-          {/* Soft Pink Cheeks + Cheerful Luminous Studio Eyes & Smile */}
-          <ellipse cx="56" cy="71" rx="4.5" ry="2.6" fill="#FDA4AF" fillOpacity="0.88" />
-          <ellipse cx="92" cy="71" rx="4.5" ry="2.6" fill="#FDA4AF" fillOpacity="0.88" />
+          {/* Soft Peach-Pink Cheeks + Deep Indigo Eyes & White Smile */}
+          <ellipse cx="56" cy="71" rx="4.5" ry="2.6" fill="#FBCFE8" fillOpacity="0.92" />
+          <ellipse cx="92" cy="71" rx="4.5" ry="2.6" fill="#FBCFE8" fillOpacity="0.92" />
           <g className="rs-rumi-eyes">
-            <circle cx="63" cy="62.5" r="4.8" fill="#1E1B4B" />
-            <circle cx="85" cy="62.5" r="4.8" fill="#1E1B4B" />
-            <circle cx="64.5" cy="60.6" r="2" fill="#FFFFFF" />
-            <circle cx="86.5" cy="60.6" r="2" fill="#FFFFFF" />
+            <circle cx="63" cy="62.5" r="4.6" fill="#312E81" />
+            <circle cx="85" cy="62.5" r="4.6" fill="#312E81" />
+            <circle cx="64.5" cy="60.6" r="1.9" fill="#FFFFFF" />
+            <circle cx="86.5" cy="60.6" r="1.9" fill="#FFFFFF" />
           </g>
           <path
             d="M66 75 Q74 82 82 75"
@@ -990,63 +950,63 @@ export function RumiMascotIllustration({
             strokeLinecap="round"
           />
 
-          {/* Floating Pearl-White Holographic Studio Analytics Card (Left) */}
+          {/* Compact Soft Holographic Analytics Card (Left) */}
           <g className="rs-rumi-holo">
             <rect
-              x="14"
+              x="16"
               y="72"
-              width="25"
-              height="18"
+              width="24"
+              height="17"
               rx="4"
               fill="#FFFFFF"
               fillOpacity="0.96"
-              stroke="#0EA5E9"
-              strokeWidth="1.5"
+              stroke="#C4B5FD"
+              strokeWidth="1.4"
             />
-            <rect x="18" y="82" width="3.5" height="5" rx="1" fill="#10B981" />
-            <rect x="23" y="79" width="3.5" height="8" rx="1" fill="#F59E0B" />
-            <rect x="28" y="76" width="3.5" height="11" rx="1" fill="#4F39F6" />
+            <rect x="20" y="81" width="3.2" height="5" rx="1" fill="#6EE7B7" />
+            <rect x="25" y="78.5" width="3.2" height="7.5" rx="1" fill="#FCD34D" />
+            <rect x="30" y="76" width="3.2" height="10" rx="1" fill="#A78BFA" />
           </g>
 
-          {/* Commanding Right Arm with Glowing Emerald Command Scepter Orb */}
+          {/* Soft Lavender Arm with Delicate Champagne-Mint Star Wand */}
           <g className="rs-rumi-arm">
             <path
-              d="M102 98 Q120 90 124 72"
+              d="M101 97 Q117 90 120 74"
               fill="none"
-              stroke="#0284C7"
-              strokeWidth="7"
+              stroke="#A78BFA"
+              strokeWidth="6.5"
               strokeLinecap="round"
             />
             <line
-              x1="124"
-              y1="72"
-              x2="127"
-              y2="52"
-              stroke={`url(#${goldGradId})`}
-              strokeWidth="2.8"
+              x1="120"
+              y1="74"
+              x2="122.5"
+              y2="55"
+              stroke={`url(#${adminGoldGradId})`}
+              strokeWidth="2.4"
               strokeLinecap="round"
             />
             <circle
               className="rs-rumi-orb-glow"
-              cx="127"
-              cy="47"
-              r="7.2"
-              fill="#34D399"
+              cx="122.5"
+              cy="50"
+              r="6.2"
+              fill="#A7F3D0"
               fillOpacity="0.38"
             />
             <circle
-              cx="127"
-              cy="47"
-              r="4.8"
+              cx="122.5"
+              cy="50"
+              r="4.3"
               fill={`url(#${adminEmeraldGradId})`}
-              stroke="#FEF08A"
-              strokeWidth="1.5"
+              stroke="#FFFBEB"
+              strokeWidth="1.4"
             />
             <circle
-              cx="124"
-              cy="71"
-              r="4.8"
-              fill={`url(#${goldGradId})`}
+              cx="120"
+              cy="73"
+              r="4.4"
+              fill={`url(#${adminGoldGradId})`}
               stroke="#FFFFFF"
               strokeWidth="1.3"
             />
