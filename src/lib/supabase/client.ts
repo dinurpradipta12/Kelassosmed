@@ -19,6 +19,44 @@ const SUPABASE_ANON_KEY =
   process.env.VITE_SUPABASE_ANON_KEY ||
   DEFAULT_SUPABASE_ANON_KEY;
 
+export const DEFAULT_SITE_URL = "https://ruangsosmedid.com";
+
+function isLocalHostUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0";
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Resolves the canonical public redirect URL for Supabase auth emails
+ * (signup confirmation & password recovery), avoiding localhost redirects
+ * unless explicitly requested when no public origin exists.
+ */
+export function getAuthRedirectUrl(path = ""): string {
+  const envSiteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").trim();
+  const browserOrigin =
+    typeof window !== "undefined" ? (window.location.origin || "").trim() : "";
+
+  let base = DEFAULT_SITE_URL;
+  if (/^https?:\/\//i.test(envSiteUrl) && !isLocalHostUrl(envSiteUrl)) {
+    base = envSiteUrl;
+  } else if (
+    /^https?:\/\//i.test(browserOrigin) &&
+    !isLocalHostUrl(browserOrigin)
+  ) {
+    base = browserOrigin;
+  }
+
+  const normalizedBase = base.replace(/\/+$/, "");
+  if (!path || path === "/") {
+    return normalizedBase;
+  }
+  return `${normalizedBase}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
 /**
  * Indicates whether live Supabase credentials are configured in the environment.
  * Supports both Next.js (`NEXT_PUBLIC_SUPABASE_*`) and rs-learning-26 (`VITE_SUPABASE_*`).
@@ -111,6 +149,7 @@ export async function signUpWithRole(payload: {
     email: payload.email,
     password: payload.password,
     options: {
+      emailRedirectTo: getAuthRedirectUrl(),
       data: {
         full_name: payload.fullName,
         role: payload.role,

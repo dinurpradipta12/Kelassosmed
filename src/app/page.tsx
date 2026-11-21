@@ -542,6 +542,66 @@ function RuangSosmedStudioInner() {
       }
     } catch {}
 
+    const rawHash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const hashParams = new URLSearchParams(rawHash);
+    const searchParams = new URLSearchParams(window.location.search);
+
+    const authError =
+      hashParams.get("error") || searchParams.get("error") || "";
+    const authErrorCode =
+      hashParams.get("error_code") || searchParams.get("error_code") || "";
+    const authErrorDesc =
+      hashParams.get("error_description") ||
+      searchParams.get("error_description") ||
+      "";
+    const callbackType =
+      hashParams.get("type") || searchParams.get("type") || "";
+
+    if (authError || authErrorCode) {
+      window.history.replaceState(null, "", window.location.pathname);
+      const isExpiredOrInvalid =
+        authErrorCode === "otp_expired" ||
+        authError === "access_denied" ||
+        authErrorDesc.toLowerCase().includes("expired") ||
+        authErrorDesc.toLowerCase().includes("invalid");
+      setToastMessage(
+        isExpiredOrInvalid
+          ? "Link verifikasi email sudah kedaluwarsa atau sudah digunakan. Silakan masuk atau kirim ulang email verifikasi."
+          : authErrorDesc ||
+              "Verifikasi email gagal. Silakan coba masuk atau daftar ulang."
+      );
+      setAuthModalTab("login");
+      setAuthModalOpen(true);
+    }
+
+    let hasPendingAuthCallback =
+      !authError &&
+      !authErrorCode &&
+      (hashParams.has("access_token") ||
+        searchParams.has("code") ||
+        callbackType === "signup" ||
+        callbackType === "email");
+    const isSignupConfirm =
+      callbackType === "signup" || callbackType === "email";
+
+    const finalizeAuthCallback = () => {
+      if (!hasPendingAuthCallback) return;
+      hasPendingAuthCallback = false;
+      if (isSignupConfirm) {
+        setToastMessage(
+          "Email berhasil dikonfirmasi! Selamat datang di Ruang Sosmed 2.0."
+        );
+      }
+      if (
+        window.location.hash.includes("access_token") ||
+        window.location.search.includes("code=")
+      ) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    };
+
     const resolveUserWithDbRole = async (
       sessionUser: any
     ): Promise<{
@@ -679,6 +739,7 @@ function RuangSosmedStudioInner() {
           setCurrentUser(authedUser);
           setActiveSubMeta(subMeta);
           setLearnerProStatus(isPro, authedUser);
+          finalizeAuthCallback();
           try {
             window.localStorage.setItem(
               "ruang_sosmed_session_user_v1",
@@ -719,6 +780,7 @@ function RuangSosmedStudioInner() {
         setCurrentUser(authedUser);
         setActiveSubMeta(subMeta);
         setLearnerProStatus(isPro, authedUser);
+        finalizeAuthCallback();
         if (authedUser.role !== "admin") {
           setRoleMode("learner");
         }

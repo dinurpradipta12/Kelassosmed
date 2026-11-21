@@ -53,7 +53,11 @@ import {
   AdminDirectoryInsightsModal,
   type InsightsProRequestRecord,
 } from "@/components/admin/AdminDirectoryInsightsModal";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  supabase,
+  isSupabaseConfigured,
+  getAuthRedirectUrl,
+} from "@/lib/supabase/client";
 import { deletePaymentProofFromStorage } from "@/lib/supabase/proof-cleanup";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
 import {
@@ -904,8 +908,7 @@ export function AdminLearnersDirectory({
       const { error } = await supabase.auth.resetPasswordForEmail(
         inspectedMember.email,
         {
-          redirectTo:
-            typeof window !== "undefined" ? window.location.origin : undefined,
+          redirectTo: getAuthRedirectUrl(),
         }
       );
       if (error) throw error;

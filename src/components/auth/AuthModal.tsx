@@ -10,7 +10,11 @@ import {
   CheckCircle2,
   KeyRound,
 } from "lucide-react";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  supabase,
+  isSupabaseConfigured,
+  getAuthRedirectUrl,
+} from "@/lib/supabase/client";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 
 interface AuthModalProps {
@@ -43,6 +47,7 @@ export function AuthModal({
       setActiveTab(initialTab);
       setErrorMessage(null);
       setSuccessMessage(null);
+      setPendingConfirmEmail(null);
     }
   }, [open, initialTab]);
 
@@ -68,6 +73,10 @@ export function AuthModal({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(
+    null
+  );
+  const [resendingConfirm, setResendingConfirm] = useState(false);
 
   if (!open) return null;
 
@@ -75,6 +84,7 @@ export function AuthModal({
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setPendingConfirmEmail(null);
     setLoading(true);
 
     const cleanId = identifier.trim().toLowerCase();
@@ -181,6 +191,7 @@ export function AuthModal({
           "Email, username, atau kata sandi tidak sesuai. Hubungi Admin jika Anda lupa password."
         );
       } else if (msg.includes("Email not confirmed")) {
+        setPendingConfirmEmail(emailToUse);
         setErrorMessage(
           "Email belum dikonfirmasi. Silakan periksa inbox email Anda untuk memverifikasi."
         );
@@ -196,6 +207,7 @@ export function AuthModal({
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setPendingConfirmEmail(null);
 
     if (maintenanceConfig?.enabled) {
       setErrorMessage(
@@ -242,6 +254,7 @@ export function AuthModal({
         email: emailToUse,
         password: password,
         options: {
+          emailRedirectTo: getAuthRedirectUrl(),
           data: {
             full_name: fullName.trim() || emailToUse.split("@")[0],
             job_title: "Social Media Specialist",
@@ -295,6 +308,7 @@ export function AuthModal({
       }
 
       if (data.user && !data.session) {
+        setPendingConfirmEmail(emailToUse);
         setSuccessMessage(
           `Tautan verifikasi telah dikirim ke ${emailToUse}. Silakan periksa inbox/spam Anda untuk mengonfirmasi akun.`
         );
@@ -314,6 +328,46 @@ export function AuthModal({
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!pendingConfirmEmail || !isSupabaseConfigured || resendingConfirm) {
+      return;
+    }
+    setResendingConfirm(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: pendingConfirmEmail,
+        options: {
+          emailRedirectTo: getAuthRedirectUrl(),
+        },
+      });
+      if (error) throw error;
+      setErrorMessage(null);
+      setSuccessMessage(
+        `Email verifikasi baru telah dikirim ke ${pendingConfirmEmail}. Pastikan Anda membuka link dari email terbaru.`
+      );
+      onShowToast(`Email verifikasi dikirim ulang ke ${pendingConfirmEmail}`);
+    } catch (err: any) {
+      const msg = String(err?.message || "");
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes("rate limit") ||
+        lower.includes("too many") ||
+        lower.includes("seconds")
+      ) {
+        setErrorMessage(
+          "Terlalu sering mengirim ulang email verifikasi. Mohon tunggu 60 detik sebelum mencoba lagi."
+        );
+      } else {
+        setErrorMessage(
+          msg || "Gagal mengirim ulang email verifikasi. Silakan coba lagi nanti."
+        );
+      }
+    } finally {
+      setResendingConfirm(false);
     }
   };
 
@@ -365,14 +419,42 @@ export function AuthModal({
         {errorMessage && (
           <div className="mx-5 mt-3 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/20 p-3 flex items-start gap-2.5 text-xs text-[#EF4444]">
             <AlertCircle size={15} className="shrink-0 mt-0.5" />
-            <span>{errorMessage}</span>
+            <div className="flex-1 space-y-2">
+              <p className="leading-relaxed">{errorMessage}</p>
+              {pendingConfirmEmail && (
+                <button
+                  type="button"
+                  onClick={handleResendConfirmation}
+                  disabled={resendingConfirm}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#EF4444]/30 bg-white/70 dark:bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-[#DC2626] dark:text-[#FCA5A5] hover:bg-[#EF4444]/10 transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  {resendingConfirm
+                    ? "Mengirim ulang..."
+                    : "Kirim ulang email verifikasi"}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
         {successMessage && (
           <div className="mx-5 mt-3 rounded-lg bg-[#10B981]/10 border border-[#10B981]/20 p-3 flex items-start gap-2.5 text-xs text-[#059669]">
             <CheckCircle2 size={15} className="shrink-0 mt-0.5" />
-            <span>{successMessage}</span>
+            <div className="flex-1 space-y-2">
+              <p className="leading-relaxed">{successMessage}</p>
+              {pendingConfirmEmail && (
+                <button
+                  type="button"
+                  onClick={handleResendConfirmation}
+                  disabled={resendingConfirm}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#10B981]/30 bg-white/70 dark:bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-[#047857] dark:text-[#6EE7B7] hover:bg-[#10B981]/10 transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  {resendingConfirm
+                    ? "Mengirim ulang..."
+                    : "Kirim ulang email verifikasi"}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -437,6 +519,7 @@ export function AuthModal({
                     setActiveTab("register");
                     setErrorMessage(null);
                     setSuccessMessage(null);
+                    setPendingConfirmEmail(null);
                   }}
                   className="font-bold text-[#4F39F6] hover:underline cursor-pointer ml-1"
                 >
@@ -549,6 +632,7 @@ export function AuthModal({
                     setActiveTab("login");
                     setErrorMessage(null);
                     setSuccessMessage(null);
+                    setPendingConfirmEmail(null);
                   }}
                   className="font-bold text-[#4F39F6] hover:underline cursor-pointer ml-1"
                 >
