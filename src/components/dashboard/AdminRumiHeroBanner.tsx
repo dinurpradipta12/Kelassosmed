@@ -138,7 +138,7 @@ export function AdminRumiHeroBanner({
                     ? "Klik Superior Admin Rumi untuk memutar animasi"
                     : "Klik Superior Admin Rumi untuk menjeda animasi"
                 }
-                className="rs-rumi-trigger inline-flex items-center justify-center bg-transparent border-0 p-0 rounded-full hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7C3AED] cursor-pointer"
+                className="rs-rumi-trigger inline-flex items-center justify-center bg-transparent border-0 p-0 rounded-full hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#38BDF8] cursor-pointer"
               >
                 <RumiMascotIllustration
                   variant="admin-superior"
@@ -151,7 +151,7 @@ export function AdminRumiHeroBanner({
                 <button
                   type="button"
                   onClick={() => setShowcaseOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-[#DDD6FE] px-2.5 py-0.5 text-[11px] font-extrabold text-[#6D28D9] shadow-2xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#EEF2FF] hover:bg-[#E0E7FF] border border-[#C7D2FE] px-2.5 py-0.5 text-[11px] font-extrabold text-[#1E3A8A] shadow-2xs cursor-pointer"
                 >
                   <Crown size={11} className="text-[#D97706]" />
                   <span>MAX • Superior Admin Rumi</span>
@@ -164,7 +164,7 @@ export function AdminRumiHeroBanner({
                 <button
                   type="button"
                   onClick={() => setShowcaseOpen(true)}
-                  className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-[#DDD6FE] px-3 py-0.5 text-[11px] font-extrabold text-[#6D28D9] shadow-2xs transition-all cursor-pointer"
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[#EEF2FF] hover:bg-[#E0E7FF] border border-[#C7D2FE] px-3 py-0.5 text-[11px] font-extrabold text-[#1E3A8A] shadow-2xs transition-all cursor-pointer"
                 >
                   <Crown size={11} className="text-[#D97706]" />
                   <span>MAX • Superior Admin Rumi</span>
@@ -191,7 +191,7 @@ export function AdminRumiHeroBanner({
               <p className="flex items-start gap-1.5 text-xs font-medium text-[#475569] leading-relaxed">
                 <Sparkles
                   size={13}
-                  className="text-[#7C3AED] shrink-0 mt-0.5"
+                  className="text-[#0284C7] shrink-0 mt-0.5"
                 />
                 <span>{adminQuote}</span>
               </p>
@@ -276,8 +276,8 @@ export function AdminRumiHeroBanner({
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Superior Admin Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-[#F5F3FF] via-[#EFF6FF] to-[#ECFDF5] border border-[#DDD6FE] p-4 text-center text-[#121215] space-y-2.5 shadow-xs">
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#EDE9FE] border border-[#DDD6FE] px-2.5 py-0.5 text-[10px] font-extrabold text-[#6D28D9]">
+            <div className="rounded-2xl bg-gradient-to-br from-[#F8FAFC] via-[#EFF6FF] to-[#EEF2FF] border border-[#CBD5E1] p-4 text-center text-[#121215] space-y-2.5 shadow-xs">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#E0F2FE] border border-[#BAE6FD] px-2.5 py-0.5 text-[10px] font-extrabold text-[#0369A1]">
                 <Crown size={10} className="text-[#D97706]" /> KHUSUS ADMIN • MAX
               </span>
               <div className="flex justify-center">
@@ -291,12 +291,12 @@ export function AdminRumiHeroBanner({
                 <h3 className="text-sm font-extrabold text-[#121215]">
                   Superior Admin Rumi
                 </h3>
-                <p className="text-[11px] text-[#6D28D9] font-semibold">
-                  Soft Pearl-Lavender &amp; Champagne
+                <p className="text-[11px] text-[#0284C7] font-semibold">
+                  Ceramic Pearl &amp; Glacial Sapphire
                 </p>
               </div>
               <p className="text-[11px] text-[#475569] leading-relaxed">
-                Armor Pearl-Lavender lembut, mahkota 5-puncak champagne gold berpermata mint, sayap pastel ringkas, jubah blush-lilac, visor kaca lembut, &amp; tongkat bintang.
+                Bodi keramik pearl-putih glossy 3D, visor kaca sapphire dengan mata ice-cyan bercahaya, headphone titanium-champagne, sayap kristal mini, &amp; mahkota emas elegan.
               </p>
             </div>
 
