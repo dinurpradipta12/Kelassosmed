@@ -71,6 +71,7 @@ import {
   type SecondaryNavLinkId,
 } from "@/components/navigation/AdminLeftRail";
 import { QuickCreateStrip } from "@/components/dashboard/QuickCreateStrip";
+import { AdminRumiHeroBanner } from "@/components/dashboard/AdminRumiHeroBanner";
 import { LeftColumnWidgets } from "@/components/dashboard/LeftColumnWidgets";
 import { RightColumnWidgets } from "@/components/dashboard/RightColumnWidgets";
 import {
@@ -2010,33 +2011,15 @@ function RuangSosmedStudioInner() {
             ) : (
               /* Screen: Admin Dashboard (Home) */
               <div className="w-full px-4 sm:px-5 pt-5 pb-12">
-                {/* Greeting Header */}
-                <header className="mb-6">
-                  <div>
-                    <h1 className="text-[24px] leading-tight font-bold tracking-tight text-[#121215]">
-                      {(() => {
-                        const hour = new Date().getHours();
-                        const timeGreeting =
-                          hour < 12
-                            ? "Good morning"
-                            : hour < 18
-                            ? "Good afternoon"
-                            : "Good evening";
-                        const displayName =
-                          currentUser?.name
-                            ? currentUser.name.split(" ")[0]
-                            : currentUser?.username || "Admin";
-                        return `${timeGreeting}, ${displayName} 👋`;
-                      })()}
-                    </h1>
-                    <p className="text-sm text-[#5E5E5E] mt-1">
-                      Welcome back to Ruang Sosmed 2.0 Studio •{" "}
-                      <span className="font-semibold text-[#4F39F6]">
-                        {currentUser?.name || "Admin"} Workspace
-                      </span>
-                    </p>
-                  </div>
-                </header>
+                {/* Superior Admin Rumi Greeting Banner (Exclusive MAX Sovereign Form) */}
+                <AdminRumiHeroBanner
+                  currentUser={currentUser}
+                  quizzesCount={quizzes.length}
+                  onNavigateNav={handleSelectNav}
+                  onOpenGrading={() =>
+                    setAuthoringMode({ kind: "grading-center" })
+                  }
+                />
 
                 {/* Quick Create Strip (Horizontal row of 6 clickable creation pills) */}
                 <QuickCreateStrip
