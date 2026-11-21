@@ -275,6 +275,25 @@ export function AuthModal({
           .then(() => {});
       }
 
+      if (data.user) {
+        const regHeaders: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (data.session?.access_token) {
+          regHeaders.Authorization = `Bearer ${data.session.access_token}`;
+        }
+        void fetch("/api/telegram/notify", {
+          method: "POST",
+          headers: regHeaders,
+          body: JSON.stringify({
+            eventType: "user_registered",
+            userName: displayName,
+            userEmail: emailToUse,
+            folderCode: cleanFolderCode || undefined,
+          }),
+        }).catch(() => {});
+      }
+
       if (data.user && !data.session) {
         setSuccessMessage(
           `Tautan verifikasi telah dikirim ke ${emailToUse}. Silakan periksa inbox/spam Anda untuk mengonfirmasi akun.`

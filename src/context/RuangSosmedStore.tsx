@@ -8863,6 +8863,26 @@ export function RuangSosmedProvider({
         detail: payload.title,
         tierKind: learnerTierKindRef.current,
       });
+
+      if (typeof window !== "undefined" && isSupabaseConfigured) {
+        void supabase.auth.getSession().then(({ data: sData }) => {
+          const token = sData?.session?.access_token;
+          if (!token) return;
+          void fetch("/api/telegram/notify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              eventType: "quiz_submitted",
+              quizTitle: payload.title,
+              submissionType: payload.submissionType,
+              scorePct: payload.autoScorePct,
+            }),
+          }).catch(() => {});
+        });
+      }
     },
     []
   );
@@ -9237,6 +9257,25 @@ export function RuangSosmedProvider({
       }));
 
       void pushReportedIssueToSupabase(newIssue);
+
+      if (typeof window !== "undefined" && isSupabaseConfigured) {
+        void supabase.auth.getSession().then(({ data: sData }) => {
+          const token = sData?.session?.access_token;
+          if (!token) return;
+          void fetch("/api/telegram/notify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              eventType: "content_issue",
+              chapterTitle,
+              issueDescription,
+            }),
+          }).catch(() => {});
+        });
+      }
     },
     []
   );
@@ -9787,7 +9826,7 @@ export function RuangSosmedProvider({
           params.requestType ||
           (cycle === "single_item" ? "item_unlock" : "subscription");
 
-        const { error: v2Err } = await supabase.rpc(
+        const { data: v2Data, error: v2Err } = await supabase.rpc(
           "submit_pro_upgrade_request",
           {
             p_user_name: (params.buyerName || "").trim() || "Learner",
@@ -9806,6 +9845,8 @@ export function RuangSosmedProvider({
           }
         );
 
+        let createdReqId: string | undefined =
+          (v2Data as { id?: string } | null)?.id;
         let finalError = v2Err;
         if (finalError) {
           const msg = String(finalError.message || "").toLowerCase();
@@ -9832,6 +9873,8 @@ export function RuangSosmedProvider({
               p_buyer_contact: (params.buyerContact || "").trim(),
               p_proof_url: params.proofUrl || null,
             });
+            createdReqId =
+              (legacyRes.data as { id?: string } | null)?.id || createdReqId;
             finalError = legacyRes.error;
           }
         }
@@ -9841,6 +9884,21 @@ export function RuangSosmedProvider({
             ok: false,
             error: finalError.message || "Gagal mengirim konfirmasi pembayaran.",
           };
+        }
+
+        const accessToken = sessionData.session.access_token;
+        if (accessToken) {
+          void fetch("/api/telegram/notify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              eventType: "payment_request",
+              requestId: createdReqId,
+            }),
+          }).catch(() => {});
         }
 
         if (isTrialBillingCycle(cycle)) {

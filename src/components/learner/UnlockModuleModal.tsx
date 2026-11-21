@@ -445,6 +445,34 @@ export function UnlockModuleModal({
                   Verifikasi Admin
                 </span>
               </div>
+
+              {proofPreview && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-white border border-[#EAECEF] p-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={proofPreview}
+                      alt="Preview bukti pembayaran"
+                      className="h-10 w-10 rounded-md object-cover border border-[#EAECEF] shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-[#121215] truncate">
+                        Bukti siap dikirim
+                      </p>
+                      <p className="text-[10px] text-[#64748B]">
+                        Otomatis dihapus dari server setelah diverifikasi.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setProofPreview("")}
+                    className="shrink-0 rounded-md px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                  >
+                    Hapus
+                  </button>
+                </div>
+              )}
             </div>
 
             {errorMsg && (

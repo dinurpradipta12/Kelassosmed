@@ -34,7 +34,9 @@ import {
   Layers,
   Tag,
   Lock,
+  Bot,
 } from "lucide-react";
+import { AdminTelegramSettingsPanel } from "@/components/admin/AdminTelegramSettingsPanel";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
@@ -204,6 +206,7 @@ type SettingsSectionId =
   | "pro-modal-banner"
   | "pro-qris"
   | "learner-pages"
+  | "telegram-bot"
   | "under-construction"
   | "brand-certificate"
   | "database-sync";
@@ -692,6 +695,15 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
           icon: LayoutGrid,
         },
         {
+          id: "telegram-bot",
+          label: "Bot Telegram & Notifikasi",
+          subtitle:
+            "Hubungkan bot Telegram 2-arah untuk cek bukti transfer, approve PRO langsung di chat, & info akun baru.",
+          detail: "2-Arah Bot",
+          iconBg: "bg-sky-500 text-white",
+          icon: Bot,
+        },
+        {
           id: "under-construction",
           label: "Web Under Construction (404)",
           subtitle:
@@ -862,13 +874,15 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer shrink-0"
-            >
-              <Save size={13} />
-              <span>Simpan Perubahan</span>
-            </button>
+            {activeSection !== "telegram-bot" && (
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer shrink-0"
+              >
+                <Save size={13} />
+                <span>Simpan Perubahan</span>
+              </button>
+            )}
           </div>
 
           {/* SECTION 1: KELOLA PAKET & BENEFIT */}
@@ -2603,6 +2617,11 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* SECTION 7: BOT TELEGRAM & NOTIFIKASI */}
+          {activeSection === "telegram-bot" && (
+            <AdminTelegramSettingsPanel onShowToast={onShowToast} />
           )}
         </section>
       </form>

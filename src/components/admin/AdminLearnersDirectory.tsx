@@ -34,6 +34,8 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  Image as ImageIcon,
+  Trash2,
 } from "lucide-react";
 import {
   useRuangSosmedStore,
@@ -52,6 +54,7 @@ import {
   type InsightsProRequestRecord,
 } from "@/components/admin/AdminDirectoryInsightsModal";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { deletePaymentProofFromStorage } from "@/lib/supabase/proof-cleanup";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
 import {
   addDaysToIsoDate,
@@ -236,6 +239,9 @@ export function AdminLearnersDirectory({
     InsightsProRequestRecord[]
   >([]);
   const [insightsModalOpen, setInsightsModalOpen] = useState(false);
+  const [previewProofReq, setPreviewProofReq] =
+    useState<InsightsProRequestRecord | null>(null);
+  const [processingReqId, setProcessingReqId] = useState<string | null>(null);
 
   const courseSectionsRef = useRef(courseSections);
   courseSectionsRef.current = courseSections;
@@ -1496,6 +1502,236 @@ export function AdminLearnersDirectory({
     );
   };
 
+  const cleanupProofAndNotifyTelegram = async (params: {
+    requestId: string;
+    action: "approve" | "reject";
+    proofUrl?: string | null;
+    dueLabel?: string;
+  }) => {
+    if (params.proofUrl) {
+      await deletePaymentProofFromStorage(supabase, params.proofUrl);
+      await supabase
+        .from("pro_upgrade_requests")
+        .update({
+          proof_url: null,
+          proof_deleted_at: new Date().toISOString(),
+        })
+        .eq("id", params.requestId);
+    }
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (accessToken) {
+        await fetch("/api/telegram/notify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            eventType: "payment_resolved_web",
+            requestId: params.requestId,
+            action: params.action,
+            proofUrl: params.proofUrl,
+            dueLabel: params.dueLabel,
+          }),
+        });
+      }
+    } catch {}
+  };
+
+  const handleApprovePendingRequest = async (req: InsightsProRequestRecord) => {
+    if (processingReqId) return;
+    setProcessingReqId(req.id);
+    try {
+      const isItemUnlock = req.request_type === "item_unlock";
+      const is3dTrialReq = req.billing_cycle === "3d_trial";
+      const is7dTrialReq = req.billing_cycle === "7d_trial";
+      const isTrialReq = is3dTrialReq || is7dTrialReq;
+      const reqDurationDays =
+        Number(req.duration_days) ||
+        (is3dTrialReq ? 3 : is7dTrialReq ? 7 : 30);
+
+      if (isItemUnlock && req.target_item_key) {
+        const { error: grantErr } = await supabase.rpc(
+          "admin_grant_unlocked_item",
+          {
+            p_target_email: req.user_email,
+            p_item_key: req.target_item_key,
+            p_course_title: req.target_item_title || req.package_name,
+            p_chapter_id: null,
+            p_request_id: req.id,
+          }
+        );
+        if (grantErr) {
+          const msg = String(grantErr.message || "").toLowerCase();
+          if (
+            grantErr.code === "PGRST202" ||
+            msg.includes("admin_grant_unlocked_item")
+          ) {
+            await supabase
+              .from("pro_upgrade_requests")
+              .update({ status: "approved" })
+              .eq("id", req.id);
+            await cleanupProofAndNotifyTelegram({
+              requestId: req.id,
+              action: "approve",
+              proofUrl: req.proof_url,
+            });
+            setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
+            setPreviewProofReq((prev) => (prev?.id === req.id ? null : prev));
+            onShowToast(
+              `⚠️ Jalankan SQL 017 agar unlock "${req.target_item_title || req.package_name}" untuk ${req.user_name} tercatat ke database.`
+            );
+            return;
+          }
+          onShowToast(`Gagal membuka akses materi: ${grantErr.message}`);
+          return;
+        }
+
+        await cleanupProofAndNotifyTelegram({
+          requestId: req.id,
+          action: "approve",
+          proofUrl: req.proof_url,
+        });
+        setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
+        setPreviewProofReq((prev) => (prev?.id === req.id ? null : prev));
+        void loadSupabaseDirectory();
+        onShowToast(
+          req.proof_url
+            ? `✅ Materi "${req.target_item_title || req.package_name}" dibuka untuk ${req.user_name} & bukti bayar otomatis dihapus dari server.`
+            : `✅ Materi "${req.target_item_title || req.package_name}" resmi dibuka untuk ${req.user_name}.`
+        );
+        return;
+      }
+
+      const todayIso = getTodayIsoDate();
+      const cycle = is3dTrialReq
+        ? "3d_trial"
+        : is7dTrialReq
+        ? "7d_trial"
+        : "30d";
+      const dueIso = addDaysToIsoDate(todayIso, reqDurationDays);
+      const dueLabel = formatIndoDate(dueIso);
+
+      let { error } = await supabase.rpc("admin_set_learner_pro", {
+        p_target_email: req.user_email,
+        p_target_name: req.user_name,
+        p_is_pro: true,
+        p_package_name: req.package_name,
+        p_request_id: req.id,
+        p_started_at: todayIso,
+        p_due_at: dueIso,
+        p_duration_days: reqDurationDays,
+        p_package_id: req.package_id || null,
+        p_billing_cycle: cycle,
+      });
+
+      if (error) {
+        const msg = String(error.message || "").toLowerCase();
+        if (
+          error.code === "PGRST202" ||
+          msg.includes("p_package_id") ||
+          msg.includes("p_billing_cycle") ||
+          msg.includes("could not find the function")
+        ) {
+          const legacyRes = await supabase.rpc("admin_set_learner_pro", {
+            p_target_email: req.user_email,
+            p_target_name: req.user_name,
+            p_is_pro: true,
+            p_package_name: req.package_name,
+            p_request_id: req.id,
+          });
+          error = legacyRes.error;
+        }
+      }
+
+      if (error) {
+        onShowToast(`Gagal mengaktifkan paket: ${error.message}`);
+        return;
+      }
+
+      await cleanupProofAndNotifyTelegram({
+        requestId: req.id,
+        action: "approve",
+        proofUrl: req.proof_url,
+        dueLabel,
+      });
+
+      applyLocalSubscriptionUpdate(
+        {
+          name: req.user_name,
+          email: req.user_email,
+          hasUsedTrial: isTrialReq,
+        },
+        "PRO",
+        todayIso,
+        dueIso,
+        req.package_name || "Pro",
+        req.package_id || null,
+        cycle,
+        isTrialReq
+      );
+      setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
+      setPreviewProofReq((prev) => (prev?.id === req.id ? null : prev));
+      void loadSupabaseDirectory();
+      onShowToast(
+        req.proof_url
+          ? `✅ Pembayaran diverifikasi! ${req.user_name} aktif ${req.package_name} s/d ${dueLabel} & bukti bayar dihapus dari server.`
+          : `✅ Pembayaran diverifikasi! ${req.user_name} resmi aktif ${req.package_name} s/d ${dueLabel}.`
+      );
+    } finally {
+      setProcessingReqId(null);
+    }
+  };
+
+  const handleRejectPendingRequest = async (req: InsightsProRequestRecord) => {
+    if (processingReqId) return;
+    setProcessingReqId(req.id);
+    try {
+      const isItemUnlock = req.request_type === "item_unlock";
+      if (isItemUnlock) {
+        const { error: rejErr } = await supabase
+          .from("pro_upgrade_requests")
+          .update({ status: "rejected" })
+          .eq("id", req.id);
+        if (rejErr) {
+          onShowToast(`Gagal menolak permintaan: ${rejErr.message}`);
+          return;
+        }
+      } else {
+        const { error } = await supabase.rpc("admin_set_learner_pro", {
+          p_target_email: req.user_email,
+          p_target_name: req.user_name,
+          p_is_pro: false,
+          p_package_name: req.package_name,
+          p_request_id: req.id,
+        });
+        if (error) {
+          onShowToast(`Gagal menolak permintaan: ${error.message}`);
+          return;
+        }
+      }
+
+      await cleanupProofAndNotifyTelegram({
+        requestId: req.id,
+        action: "reject",
+        proofUrl: req.proof_url,
+      });
+
+      setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
+      setPreviewProofReq((prev) => (prev?.id === req.id ? null : prev));
+      onShowToast(
+        req.proof_url
+          ? `Permintaan ${req.user_name} ditolak & file bukti bayar otomatis dihapus dari server.`
+          : `Permintaan ${req.package_name} untuk ${req.user_name} ditolak.`
+      );
+    } finally {
+      setProcessingReqId(null);
+    }
+  };
+
   const openRenewModal = (member: DirectoryMember) => {
     const todayIso = getTodayIsoDate();
     const info = getMemberSubInfo(member);
@@ -2135,145 +2371,27 @@ export function AdminLearnersDirectory({
                       ({req.price_label}) • Metode: {req.payment_method}
                       {req.buyer_contact ? ` • WA: ${req.buyer_contact}` : ""}
                     </p>
-                    {req.proof_url && /^https?:\/\//i.test(req.proof_url) && (
-                      <a
-                        href={req.proof_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block text-[11px] font-semibold text-[#4F39F6] hover:underline"
+                    {req.proof_url && req.proof_url.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewProofReq(req)}
+                        className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-[#EEF2FF] hover:bg-[#E0E7FF] border border-[#C7D2FE] px-2.5 py-1 text-[11px] font-bold text-[#4F39F6] transition-colors cursor-pointer"
                       >
-                        Lihat Bukti Pembayaran ↗
-                      </a>
+                        <ImageIcon size={12} />
+                        <span>Lihat Bukti Pembayaran</span>
+                      </button>
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (isItemUnlock && req.target_item_key) {
-                          const { error: grantErr } = await supabase.rpc(
-                            "admin_grant_unlocked_item",
-                            {
-                              p_target_email: req.user_email,
-                              p_item_key: req.target_item_key,
-                              p_course_title:
-                                req.target_item_title || req.package_name,
-                              p_chapter_id: null,
-                              p_request_id: req.id,
-                            }
-                          );
-                          if (grantErr) {
-                            const msg = String(
-                              grantErr.message || ""
-                            ).toLowerCase();
-                            if (
-                              grantErr.code === "PGRST202" ||
-                              msg.includes("admin_grant_unlocked_item")
-                            ) {
-                              await supabase
-                                .from("pro_upgrade_requests")
-                                .update({ status: "approved" })
-                                .eq("id", req.id);
-                              setPendingProRequests((prev) =>
-                                prev.filter((r) => r.id !== req.id)
-                              );
-                              onShowToast(
-                                `⚠️ Jalankan SQL 017 agar unlock "${req.target_item_title || req.package_name}" untuk ${req.user_name} tercatat ke database.`
-                              );
-                              return;
-                            }
-                            onShowToast(
-                              `Gagal membuka akses materi: ${grantErr.message}`
-                            );
-                            return;
-                          }
-                          setPendingProRequests((prev) =>
-                            prev.filter((r) => r.id !== req.id)
-                          );
-                          void loadSupabaseDirectory();
-                          onShowToast(
-                            `✅ Materi "${req.target_item_title || req.package_name}" resmi dibuka untuk ${req.user_name}.`
-                          );
-                          return;
-                        }
-
-                        const todayIso = getTodayIsoDate();
-                        const cycle = is3dTrialReq
-                          ? "3d_trial"
-                          : is7dTrialReq
-                          ? "7d_trial"
-                          : "30d";
-                        const dueIso = addDaysToIsoDate(
-                          todayIso,
-                          reqDurationDays
-                        );
-                        let { error } = await supabase.rpc(
-                          "admin_set_learner_pro",
-                          {
-                            p_target_email: req.user_email,
-                            p_target_name: req.user_name,
-                            p_is_pro: true,
-                            p_package_name: req.package_name,
-                            p_request_id: req.id,
-                            p_started_at: todayIso,
-                            p_due_at: dueIso,
-                            p_duration_days: reqDurationDays,
-                            p_package_id: req.package_id || null,
-                            p_billing_cycle: cycle,
-                          }
-                        );
-                        if (error) {
-                          const msg = String(error.message || "").toLowerCase();
-                          if (
-                            error.code === "PGRST202" ||
-                            msg.includes("p_package_id") ||
-                            msg.includes("p_billing_cycle") ||
-                            msg.includes("could not find the function")
-                          ) {
-                            const legacyRes = await supabase.rpc(
-                              "admin_set_learner_pro",
-                              {
-                                p_target_email: req.user_email,
-                                p_target_name: req.user_name,
-                                p_is_pro: true,
-                                p_package_name: req.package_name,
-                                p_request_id: req.id,
-                              }
-                            );
-                            error = legacyRes.error;
-                          }
-                        }
-                        if (error) {
-                          onShowToast(
-                            `Gagal mengaktifkan paket: ${error.message}`
-                          );
-                          return;
-                        }
-                        applyLocalSubscriptionUpdate(
-                          {
-                            name: req.user_name,
-                            email: req.user_email,
-                            hasUsedTrial: isTrialReq,
-                          },
-                          "PRO",
-                          todayIso,
-                          dueIso,
-                          req.package_name || "Pro",
-                          req.package_id || null,
-                          cycle,
-                          isTrialReq
-                        );
-                        setPendingProRequests((prev) =>
-                          prev.filter((r) => r.id !== req.id)
-                        );
-                        void loadSupabaseDirectory();
-                        onShowToast(
-                          `✅ Pembayaran diverifikasi! ${req.user_name} resmi aktif ${req.package_name} s/d ${formatIndoDate(dueIso)}.`
-                        );
-                      }}
-                      className="rounded-lg bg-[#10B981] hover:bg-[#059669] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
+                      disabled={processingReqId === req.id}
+                      onClick={() => void handleApprovePendingRequest(req)}
+                      className="rounded-lg bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
                     >
-                      {isItemUnlock
+                      {processingReqId === req.id
+                        ? "Memproses..."
+                        : isItemUnlock
                         ? "Setujui & Buka Materi"
                         : is3dTrialReq
                         ? "Aktifkan Trial 3 Hari"
@@ -2283,51 +2401,9 @@ export function AdminLearnersDirectory({
                     </button>
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (isItemUnlock) {
-                          const { error: rejErr } = await supabase
-                            .from("pro_upgrade_requests")
-                            .update({ status: "rejected" })
-                            .eq("id", req.id);
-                          if (rejErr) {
-                            onShowToast(
-                              `Gagal menolak permintaan: ${rejErr.message}`
-                            );
-                            return;
-                          }
-                          setPendingProRequests((prev) =>
-                            prev.filter((r) => r.id !== req.id)
-                          );
-                          onShowToast(
-                            `Permintaan buka materi "${req.target_item_title || req.package_name}" untuk ${req.user_name} ditolak.`
-                          );
-                          return;
-                        }
-
-                        const { error } = await supabase.rpc(
-                          "admin_set_learner_pro",
-                          {
-                            p_target_email: req.user_email,
-                            p_target_name: req.user_name,
-                            p_is_pro: false,
-                            p_package_name: req.package_name,
-                            p_request_id: req.id,
-                          }
-                        );
-                        if (error) {
-                          onShowToast(
-                            `Gagal menolak permintaan: ${error.message}`
-                          );
-                          return;
-                        }
-                        setPendingProRequests((prev) =>
-                          prev.filter((r) => r.id !== req.id)
-                        );
-                        onShowToast(
-                          `Permintaan paket ${req.package_name} untuk ${req.user_name} ditolak.`
-                        );
-                      }}
-                      className="rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] px-3 py-1.5 text-[11px] font-bold text-[#DC2626] border border-[#FECACA] cursor-pointer"
+                      disabled={processingReqId === req.id}
+                      onClick={() => void handleRejectPendingRequest(req)}
+                      className="rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] disabled:opacity-50 px-3 py-1.5 text-[11px] font-bold text-[#DC2626] border border-[#FECACA] cursor-pointer"
                     >
                       Tolak
                     </button>
@@ -4540,6 +4616,112 @@ export function AdminLearnersDirectory({
             </form>
           );
         })()}
+      </ModalDialog>
+
+      {/* Modal 4b: Lightbox Preview Bukti Pembayaran (Otomatis Terhapus Saat Disetujui / Ditolak) */}
+      <ModalDialog
+        open={Boolean(previewProofReq)}
+        onClose={() => setPreviewProofReq(null)}
+        titleId="proof-preview-modal-title"
+        title={`Bukti Pembayaran — ${previewProofReq?.user_name || "Learner"}`}
+        subtitle={
+          previewProofReq
+            ? `${previewProofReq.package_name} • ${previewProofReq.price_label} • ${previewProofReq.payment_method}`
+            : undefined
+        }
+        maxWidthClass="max-w-lg"
+      >
+        {previewProofReq && (
+          <div className="space-y-4">
+            <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3 text-xs space-y-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold text-[#121215]">
+                  {previewProofReq.user_name}
+                </span>
+                <span className="font-semibold text-[#4F39F6]">
+                  {previewProofReq.price_label}
+                </span>
+              </div>
+              <p className="text-[11px] text-[#5E5E5E]">
+                {previewProofReq.user_email}
+                {previewProofReq.buyer_contact
+                  ? ` • WA: ${previewProofReq.buyer_contact}`
+                  : ""}
+              </p>
+              <p className="text-[11px] text-[#5E5E5E]">
+                Paket/Materi:{" "}
+                <strong className="text-[#121215]">
+                  {previewProofReq.request_type === "item_unlock"
+                    ? previewProofReq.target_item_title ||
+                      previewProofReq.package_name
+                    : previewProofReq.package_name}
+                </strong>
+                {previewProofReq.billing_cycle === "3d_trial"
+                  ? " (Trial 3 Hari)"
+                  : previewProofReq.billing_cycle === "7d_trial"
+                  ? " (Trial 7 Hari)"
+                  : previewProofReq.request_type === "item_unlock"
+                  ? " (Buka Materi Satuan)"
+                  : ` (${previewProofReq.duration_days || 30} Hari)`}
+              </p>
+            </div>
+
+            {previewProofReq.proof_url ? (
+              <div className="overflow-hidden rounded-xl border border-[#EAECEF] bg-[#F8FAFC] p-2 flex flex-col items-center justify-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewProofReq.proof_url}
+                  alt={`Bukti pembayaran ${previewProofReq.user_name}`}
+                  className="max-h-[58vh] w-auto max-w-full rounded-lg object-contain"
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-[#64748B] text-center py-6">
+                Bukti pembayaran tidak tersedia.
+              </p>
+            )}
+
+            <div className="flex items-start gap-2 rounded-xl bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-[11px] text-[#92400E]">
+              <Trash2 size={14} className="shrink-0 mt-0.5 text-[#D97706]" />
+              <span>
+                Untuk menjaga kapasitas server tetap ringan, gambar bukti transfer ini akan{" "}
+                <strong>otomatis dihapus permanen dari server &amp; database</strong>{" "}
+                begitu Anda menekan tombol konfirmasi atau tolak.
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[#EAECEF]">
+              <button
+                type="button"
+                onClick={() => setPreviewProofReq(null)}
+                className="rounded-lg px-3.5 py-2 text-xs font-semibold text-[#5E5E5E] hover:text-[#121215] cursor-pointer"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                disabled={processingReqId === previewProofReq.id}
+                onClick={() => void handleRejectPendingRequest(previewProofReq)}
+                className="rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] disabled:opacity-50 px-3.5 py-2 text-xs font-bold text-[#DC2626] border border-[#FECACA] cursor-pointer"
+              >
+                Tolak &amp; Hapus Bukti
+              </button>
+              <button
+                type="button"
+                disabled={processingReqId === previewProofReq.id}
+                onClick={() => void handleApprovePendingRequest(previewProofReq)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 px-4 py-2 text-xs font-bold text-white shadow-xs cursor-pointer"
+              >
+                <CheckCircle2 size={13} />
+                <span>
+                  {processingReqId === previewProofReq.id
+                    ? "Memproses..."
+                    : "Konfirmasi & Hapus Bukti"}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
       </ModalDialog>
 
       {/* Modal 5: Near-Fullscreen Executive Insights Dashboard */}
