@@ -74,6 +74,7 @@ import {
   WikiArticleReader,
   estimateWikiReadTime,
 } from "@/components/wiki/WikiArticleReader";
+import { LearnerHomeDashboard } from "@/components/learner/LearnerHomeDashboard";
 
 interface LearnerPortalViewProps {
   currentUser?: AuthenticatedUser | null;
@@ -324,6 +325,11 @@ export function LearnerPortalView({
     learnerHasUsedTrial,
     learnerProConfig,
     learnerPagesConfig,
+    leaderboard,
+    rewardsCatalog,
+    claimedRewards,
+    rsLessonNotes,
+    rsLessonReviews,
     markLearnerChapterComplete,
     toggleLearnerItemFavorite,
     getCourseCurriculum,
@@ -1432,6 +1438,37 @@ export function LearnerPortalView({
     });
   };
 
+  const handleContinueCourseDirectly = (item: LearnerAssignedItem) => {
+    const decision = getCardAccessDecision(item);
+    if (!decision.unlocked || item.type === "Quiz" || item.type === "Wiki") {
+      handleOpenAssignedCard(item);
+      return;
+    }
+    const targetSecs =
+      getCourseCurriculum(item.title) ||
+      courseCurriculums?.[item.title.trim().toLowerCase()] ||
+      courseSections;
+    const flatChs = (targetSecs || [])
+      .filter((s) => !s.hidden)
+      .flatMap((s) => (s.chapters || []).filter((c) => !c.hidden));
+    const targetCh =
+      flatChs.find(
+        (c) =>
+          !c.completed &&
+          !c.locked &&
+          isChapterPlayable(item.title, flatChs, c)
+      ) ||
+      flatChs.find(
+        (c) => !c.locked && isChapterPlayable(item.title, flatChs, c)
+      ) ||
+      flatChs[0];
+    setScreenState({
+      screen: "classroom",
+      courseTitle: item.title,
+      chapterId: targetCh?.id || flatChs[0]?.id || "ch-101",
+    });
+  };
+
   const handleMarkChapterComplete = (chapterId: string, points: number) => {
     const newlyCompleted = markLearnerChapterComplete(chapterId, points);
     if (newlyCompleted) {
@@ -2123,185 +2160,115 @@ export function LearnerPortalView({
             key={`learner-tab-${activeNavTab}`}
             className="flex-1 min-w-0 w-full space-y-6 transition-all duration-380 ease-in-out page-transition-enter"
           >
-          {/* Compact Home Overview: Greeting + Continue/Welcome + Quick Stats */}
+          {/* Playful LMS Home Dashboard */}
           {activeNavTab === "home" && (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#121215]">
-                    {timeGreeting}, {learnerFirstName} 👋
-                  </h1>
-                  <p className="text-xs text-[#5E5E5E] mt-0.5">
-                    {assignedItems.length > 0
-                      ? `Siap melanjutkan belajar hari ini? Anda memiliki ${assignedItems.length} materi aktif di Ruang Sosmed 2.0.`
-                      : "Selamat datang di Portal Belajar Ruang Sosmed 2.0."}
-                  </p>
-                </div>
-                {learnerIsPro && (
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
-                      learnerAccess.isUnlimitedPro
-                        ? "bg-[#ECFDF5] border-[#10B981]/30 text-[#059669]"
-                        : "bg-[#EEF2FF] border-[#4F39F6]/30 text-[#4F39F6]"
+              {featureBannerState !== "dismissed" &&
+                assignedItems.length > 0 &&
+                courseSections.length > 0 && (
+                  <div
+                    className={`rounded-xl bg-[#ECFDF5] border border-[#10B981]/30 px-4 py-2 flex flex-wrap items-center justify-between gap-2 transition-all duration-400 overflow-hidden ${
+                      featureBannerState === "exiting"
+                        ? "opacity-0 -translate-y-2 max-h-0 py-0 my-0 pointer-events-none"
+                        : "opacity-100 translate-y-0 max-h-20"
                     }`}
                   >
-                    <Zap size={11} fill="currentColor" />
-                    {activeTierLabel}
-                  </span>
-                )}
-              </div>
-
-              {assignedItems.length === 0 ? (
-              <section
-                aria-label="Welcome Learner Banner"
-                className="relative overflow-hidden rounded-2xl bg-[#FFFFFF] p-5 sm:p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]"
-              >
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                  <div className="space-y-1.5 max-w-xl">
-                    <span className="inline-flex items-center gap-1 rounded-md bg-[#4F39F6]/10 px-2 py-0.5 text-[11px] font-bold text-[#4F39F6]">
-                      Ruang Sosmed 2.0
-                    </span>
-                    <h2 className="text-base sm:text-lg font-bold tracking-tight text-[#121215]">
-                      Mulai Belajar dengan Kode Akses
-                    </h2>
-                    <p className="text-xs text-[#5E5E5E] leading-relaxed">
-                      Belum ada kelas yang di-assign ke akun Anda. Masukkan <strong>Kode Akses Materi / Folder</strong> dari mentor untuk langsung membuka kelas Anda secara otomatis.
-                    </p>
-                  </div>
-
-                  <form
-                    onSubmit={handleRedeemCodeSubmit}
-                    className="w-full lg:w-auto lg:min-w-[320px] rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3.5 space-y-2"
-                  >
-                    <label className="flex items-center gap-1.5 text-xs font-bold text-[#121215]">
-                      <KeyRound size={13} className="text-[#4F39F6]" />
-                      <span>Masuk dengan Kode Materi / Folder</span>
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={folderCodeInput}
-                        onChange={(e) =>
-                          setFolderCodeInput(e.target.value.toUpperCase())
-                        }
-                        placeholder="Mis. MBSM-B01 atau MBI-2026"
-                        className="flex-1 min-w-0 rounded-lg bg-white px-3 py-2 text-xs font-bold uppercase tracking-wider text-[#121215] placeholder:normal-case placeholder:font-normal placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!folderCodeInput.trim()}
-                        className="shrink-0 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] disabled:opacity-50 px-3.5 py-2 text-xs font-bold text-white cursor-pointer transition-colors"
-                      >
-                        Masuk
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </section>
-            ) : (
-              <section
-                aria-label="Ringkasan Belajar"
-                className="grid grid-cols-1 lg:grid-cols-12 gap-4"
-              >
-                {/* Left 8 Cols: Active Track Continue Card */}
-                <div className="lg:col-span-8 rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ContentBadge type={assignedItems[0].type} size="sm" />
-                      {assignedItems[0].folderName && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-semibold text-[#4F39F6]">
-                          <Folder size={10} />
-                          <span>{assignedItems[0].folderName}</span>
-                        </span>
-                      )}
-                      <span className="text-[11px] font-semibold text-[#64748B]">
-                        • {doneChapters}/{flatChapters.length} bab selesai ({activeCoursePct}%)
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="rounded bg-[#10B981] px-2 py-0.5 text-[10px] font-extrabold text-white">
+                        {ACTIVE_FEATURE_UPDATE.badge}
+                      </span>
+                      <span className="font-bold text-[#065F46]">
+                        {ACTIVE_FEATURE_UPDATE.message}
                       </span>
                     </div>
-                    <h2 className="text-base sm:text-lg font-bold tracking-tight text-[#121215] truncate">
-                      {assignedItems[0].title}
-                    </h2>
-                    <div className="h-2 max-w-md rounded-full bg-[#F1F5F9] overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[#4F39F6] transition-all"
-                        style={{ width: `${activeCoursePct}%` }}
-                      />
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const primaryCourse =
+                            assignedItems.find((a) => a.type === "Course") ||
+                            assignedItems[0];
+                          if (primaryCourse) {
+                            handleContinueCourseDirectly(primaryCourse);
+                          }
+                        }}
+                        className="text-xs font-bold text-[#059669] hover:underline cursor-pointer"
+                      >
+                        {ACTIVE_FEATURE_UPDATE.actionLabel}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={dismissFeatureBanner}
+                        title="Tutup banner pembaruan"
+                        aria-label="Tutup banner pembaruan"
+                        className="text-[#059669]/70 hover:text-[#065F46] p-1 rounded-md hover:bg-[#D1FAE5] transition-colors cursor-pointer"
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
                   </div>
+                )}
 
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAssignedCard(assignedItems[0])}
-                    className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2.5 text-xs font-bold text-white shadow-xs transition-all cursor-pointer"
-                  >
-                    <span>Lanjut Belajar</span>
-                    <ArrowRight size={14} />
-                  </button>
-                </div>
-
-                {/* Right 4 Cols: Compact Stats + Sertifikat / Hadiah Actions */}
-                <div className="lg:col-span-4 rounded-2xl bg-[#FFFFFF] p-4 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex flex-col justify-between gap-3">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg bg-[#F8F9FB] px-2 py-1.5 border border-[#EAECEF]">
-                      <p className="text-[10px] font-medium text-[#64748B]">Materi</p>
-                      <p className="text-sm font-extrabold text-[#121215] tabular-nums">
-                        {assignedItems.length}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-[#F8F9FB] px-2 py-1.5 border border-[#EAECEF]">
-                      <p className="text-[10px] font-medium text-[#64748B]">Selesai</p>
-                      <p className="text-sm font-extrabold text-[#10B981] tabular-nums">
-                        {doneChapters} bab
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-[#FFFBEB] px-2 py-1.5 border border-[#FDE68A]">
-                      <p className="text-[10px] font-medium text-[#92400E]">Poin</p>
-                      <p className="text-sm font-extrabold text-[#B45309] tabular-nums">
-                        {totalPoints.toLocaleString()} ★
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCertModalOpen(true)}
-                      className={`flex-1 inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-colors cursor-pointer ${
-                        canCertificate
-                          ? "bg-[#10B981] hover:bg-[#059669] text-white"
-                          : "bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4F39F6] border border-[#4F39F6]/25"
-                      }`}
-                    >
-                      {canCertificate ? (
-                        <Award size={12} className="text-white" />
-                      ) : (
-                        <Lock size={11} className="text-[#4F39F6]" />
-                      )}
-                      <span>Sertifikat</span>
-                      {!canCertificate && (
-                        <span className="inline-flex items-center rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-1 py-0.2 text-[9px] font-bold text-[#B45309]">
-                          PRO
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setRewardsModalOpen(true)}
-                      className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#B45309] border border-[#F59E0B]/30 px-2.5 py-1.5 text-[11px] font-bold transition-colors cursor-pointer"
-                    >
-                      <Gift size={12} className="text-[#F59E0B]" />
-                      <span>Tukar Hadiah</span>
-                    </button>
-                  </div>
-                </div>
-              </section>
-            )}
+              <LearnerHomeDashboard
+                learnerFirstName={learnerFirstName}
+                learnerDisplayName={activeLearnerDisplayName}
+                timeGreeting={timeGreeting}
+                activeTierLabel={activeTierLabel}
+                learnerIsPro={learnerIsPro}
+                isUnlimitedPro={learnerAccess.isUnlimitedPro}
+                canCertificate={canCertificate}
+                certificateUnlocked={certificateUnlocked}
+                totalPoints={totalPoints}
+                assignedItems={assignedItems}
+                learnerFolders={learnerFolders}
+                publishedWikiCount={publishedWikiArticles.length}
+                showWikiPage={showWikiPage}
+                leaderboard={leaderboard}
+                rewardsCatalog={rewardsCatalog}
+                claimedRewardsCount={(claimedRewards || []).length}
+                notesCount={
+                  Object.values(rsLessonNotes || {}).filter(
+                    (v) => typeof v === "string" && v.trim().length > 0
+                  ).length
+                }
+                reviewsCount={(rsLessonReviews || []).length}
+                getCourseChapters={(courseTitle) => {
+                  const raw =
+                    getCourseCurriculum(courseTitle) ||
+                    courseCurriculums?.[courseTitle.trim().toLowerCase()] ||
+                    [];
+                  return (raw || [])
+                    .filter((s) => !s.hidden)
+                    .flatMap((s) => (s.chapters || []).filter((c) => !c.hidden));
+                }}
+                getCardAccessDecision={getCardAccessDecision}
+                isProItem={isProItem}
+                searchQuery={searchQuery}
+                onClearSearch={() => setSearchQuery("")}
+                folderCodeInput={folderCodeInput}
+                onFolderCodeInputChange={setFolderCodeInput}
+                onRedeemCodeSubmit={handleRedeemCodeSubmit}
+                onOpenRedeemModal={() => setJoinCodeModalOpen(true)}
+                onOpenCourse={handleOpenAssignedCard}
+                onContinueCourseDirectly={handleContinueCourseDirectly}
+                onOpenFolderInCatalog={(folderName) => {
+                  setActiveNavTab("catalog");
+                  setSelectedProjectFilter("All");
+                  setSelectedFolderFilter("All");
+                  setActiveLearnerFolder(folderName);
+                }}
+                onNavigateTab={(tab) => handleSelectNavTab(tab)}
+                onOpenCertificateModal={() => setCertModalOpen(true)}
+                onOpenRewardsModal={() => setRewardsModalOpen(true)}
+                onOpenUpgradeModal={onOpenUpgradeModal}
+              />
             </div>
           )}
 
           {/* WIKI TAB VIEW (Notion-Style Published Articles + Resource Cards Directory) */}
-          {activeNavTab === "wiki" && showWikiPage ? (
+          {activeNavTab === "home" ? null : activeNavTab === "wiki" && showWikiPage ? (
             !canWiki ? (
               <section
                 aria-label="Wiki Directory Locked"
@@ -2684,82 +2651,6 @@ export function LearnerPortalView({
           ) : (
             /* ASSIGNED TO YOU / MY LEARNING / CATALOG / FAVORITES GRID */
             <section aria-label="Assigned to You Grid" className="space-y-5">
-              {/* Feature notification banner (optional dismissible banner on Home) */}
-              {activeNavTab === "home" &&
-                featureBannerState !== "dismissed" &&
-                assignedItems.length > 0 &&
-                courseSections.length > 0 && (
-                  <div
-                    className={`rounded-xl bg-[#ECFDF5] border border-[#10B981]/30 px-4 py-2 flex flex-wrap items-center justify-between gap-2 transition-all duration-400 overflow-hidden ${
-                      featureBannerState === "exiting"
-                        ? "opacity-0 -translate-y-2 max-h-0 py-0 my-0 pointer-events-none"
-                        : "opacity-100 translate-y-0 max-h-20"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="rounded bg-[#10B981] px-2 py-0.5 text-[10px] font-extrabold text-white">
-                        {ACTIVE_FEATURE_UPDATE.badge}
-                      </span>
-                      <span className="font-bold text-[#065F46]">
-                        {ACTIVE_FEATURE_UPDATE.message}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const primaryCourse =
-                            assignedItems.find((a) => a.type === "Course") ||
-                            assignedItems[0];
-                          const courseTitle =
-                            primaryCourse?.title ||
-                            "Fundamental Social Media Specialist";
-                          const targetSecs =
-                            getCourseCurriculum(courseTitle) || courseSections;
-                          const flatChs = (targetSecs || [])
-                            .filter((s) => !s.hidden)
-                            .flatMap((s) =>
-                              (s.chapters || []).filter((c) => !c.hidden)
-                            );
-                          const targetCh =
-                            flatChs.find(
-                              (c) =>
-                                !c.completed &&
-                                !c.locked &&
-                                isChapterPlayable(courseTitle, flatChs, c)
-                            ) ||
-                            flatChs.find(
-                              (c) =>
-                                !c.locked &&
-                                isChapterPlayable(courseTitle, flatChs, c)
-                            ) ||
-                            flatChs[0];
-                          setScreenState({
-                            screen: "classroom",
-                            courseTitle,
-                            chapterId:
-                              targetCh?.id || flatChs[0]?.id || "ch-101",
-                          });
-                        }}
-                        className="text-xs font-bold text-[#059669] hover:underline cursor-pointer"
-                      >
-                        {ACTIVE_FEATURE_UPDATE.actionLabel}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={dismissFeatureBanner}
-                        title="Tutup banner pembaruan"
-                        aria-label="Tutup banner pembaruan"
-                        className="text-[#059669]/70 hover:text-[#065F46] p-1 rounded-md hover:bg-[#D1FAE5] transition-colors cursor-pointer"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
               {/* Dedicated My Learning View: Balanced 2-Column Layout (Left: Overview + Horizontal Folders + Visual Courses | Right: Profile + 2x2 Achievements + Integrated PRO Card) */}
               {activeNavTab === "my-learning" && (() => {
                 const totalClasses = assignedItems.length;
@@ -3610,9 +3501,9 @@ export function LearnerPortalView({
                 );
               })()}
 
-              {activeNavTab !== "my-learning" && (() => {
+              {(activeNavTab === "catalog" || activeNavTab === "favorites") && (() => {
                 const isProjectFilterScope =
-                  (activeNavTab === "home" || activeNavTab === "catalog") &&
+                  activeNavTab === "catalog" &&
                   selectedProjectFilter !== "All";
 
                 const visibleFolders = isProjectFilterScope
@@ -3672,6 +3563,8 @@ export function LearnerPortalView({
                     activeNavTab === "favorites" ||
                     selectedFolderFilter !== "All"
                   ? displayedItems
+                  : learnerFolders.length > 0
+                  ? []
                   : standaloneItems;
 
                 const baseVisibleCourseCards =
@@ -3766,13 +3659,15 @@ export function LearnerPortalView({
                         : "Folder & Materi Belajar"}
                     </h2>
                     <p className="text-xs text-[#5E5E5E]">
-                      Klik folder untuk membuka seri kelasnya atau klik langsung kartu materi di bawah.
+                      {activeNavTab === "favorites"
+                        ? "Daftar materi dan wiki yang Anda tandai sebagai favorit."
+                        : "Klik folder series untuk membuka seluruh materi belajar di dalamnya."}
                     </p>
                   </div>
                 )}
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {(activeNavTab === "home" || activeNavTab === "catalog") &&
+                  {activeNavTab === "catalog" &&
                     !activeFolderObj &&
                     availableProjects.length > 0 && (
                       <label className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-[#EAECEF] px-2.5 py-1.5 text-xs font-semibold text-[#475569] shadow-2xs">
@@ -4016,14 +3911,6 @@ export function LearnerPortalView({
                 <>
                 {visibleCourseCards.length > 0 && (
                 <div className="space-y-3">
-                  {!activeFolderObj &&
-                    !searchQuery.trim() &&
-                    learnerFolders.length > 0 &&
-                    visibleCourseCards.length > 0 && (
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-                        Materi Mandiri ({visibleCourseCards.length})
-                      </h3>
-                    )}
                   {activeFolderObj && learnerCourseViewMode === "list" ? (
                     <div className="space-y-2.5">
                       {visibleCourseCards.map((item) => {

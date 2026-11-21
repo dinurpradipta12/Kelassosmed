@@ -784,3 +784,203 @@ html[data-theme-active="true"] .shadow-\[0_4px_16px_rgba\(16\,15\,17\,0\.08\)\] 
   inset: auto 0 0;
   border-block-end: 3px solid var(--tab-accent, #4F39F6);
 }
+
+/* ============================================================================
+   PLAYFUL LEARNER HOME DASHBOARD (Container Queries, Progress Ring/Bar, Motion)
+   ============================================================================ */
+@property --value {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+.rs-dashboard-container {
+  container-type: inline-size;
+}
+
+.rs-dash-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.rs-dash-charts-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.rs-dash-bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@container (min-width: 720px) {
+  .rs-dash-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 760px) {
+  .rs-dash-charts-grid {
+    grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.18fr);
+  }
+  .rs-dash-bottom-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  }
+}
+
+.rs-hero-pastel {
+  background: linear-gradient(135deg, #EEF2FF 0%, #FDF2F8 52%, #FFFBEB 100%);
+  border: 1px solid #E2E8F0;
+}
+
+html[data-theme-mode="dark"] .rs-hero-pastel {
+  background: linear-gradient(
+    135deg,
+    rgba(79, 57, 246, 0.22) 0%,
+    rgba(236, 72, 153, 0.14) 52%,
+    rgba(245, 158, 11, 0.14) 100%
+  ) !important;
+  border-color: rgba(129, 140, 248, 0.28) !important;
+}
+
+/* Accessible Native <progress> Circular Progress Ring per modern-web-guidance (progress-ring) */
+.rs-progress-ring-wrapper {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: fit-content;
+}
+
+progress.rs-progress-ring::-webkit-progress-bar {
+  display: none;
+  background: none;
+}
+
+progress.rs-progress-ring::-webkit-progress-value {
+  display: none;
+  background: none;
+}
+
+progress.rs-progress-ring::-moz-progress-bar {
+  display: none;
+  background: none;
+}
+
+progress.rs-progress-ring {
+  appearance: none;
+  --size: 148px;
+  --thickness: 15px;
+  --track-color: #EEF2F7;
+  --fill-color: #4F39F6;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--fill-color) calc(var(--value, 0) * 1%),
+    var(--track-color) 0
+  );
+  background-clip: border-area;
+  border: var(--thickness) solid transparent;
+  background-origin: border-box;
+  transition: --value 0s ease-in-out;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  progress.rs-progress-ring {
+    transition-duration: 0.55s;
+  }
+}
+
+@supports not (background-clip: border-area) {
+  progress.rs-progress-ring {
+    mask-image: radial-gradient(
+      transparent calc(50% - var(--thickness)),
+      black calc(50% - var(--thickness) + 0.5px)
+    );
+    border: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  progress.rs-progress-ring {
+    forced-color-adjust: none;
+    --fill-color: CanvasText;
+    --track-color: Canvas;
+  }
+}
+
+progress.rs-progress-ring[value="100"] {
+  --fill-color: #10B981;
+}
+
+.rs-progress-ring-content {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Accessible Native <progress> Horizontal Pill Bar per modern-web-guidance (progress) */
+progress.rs-progress-bar {
+  appearance: none;
+  border: 0 solid;
+  overflow: clip;
+  width: 100%;
+  height: var(--bar-height, 8px);
+  border-radius: 9999px;
+  background: var(--progress-bar-track, #EEF2F7);
+}
+
+progress.rs-progress-bar::-webkit-progress-bar {
+  background: transparent;
+}
+
+progress.rs-progress-bar::-webkit-progress-value {
+  background: var(--progress-bar-fill, #4F39F6);
+  border-radius: 9999px;
+  transition: inline-size 0.35s ease;
+}
+
+progress.rs-progress-bar::-moz-progress-bar {
+  background: var(--progress-bar-fill, #4F39F6);
+  border-radius: 9999px;
+  transition: inline-size 0.35s ease;
+}
+
+html[data-theme-mode="dark"] progress.rs-progress-ring {
+  --track-color: #1F2937;
+}
+
+html[data-theme-mode="dark"] progress.rs-progress-bar {
+  --progress-bar-track: #1F2937;
+}
+
+@keyframes rs-float-gentle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes rs-sparkle-pop {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.12) rotate(8deg);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rs-mascot-float {
+    animation: rs-float-gentle 3.8s ease-in-out infinite;
+  }
+  .rs-sparkle-bob {
+    animation: rs-sparkle-pop 2.8s ease-in-out infinite;
+  }
+}
