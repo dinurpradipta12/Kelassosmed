@@ -701,7 +701,7 @@ export function RumiFloatingAssistant({
         >
           <div className="flex items-start justify-between gap-2">
             <p className="text-[11px] font-medium text-[#121215] leading-snug">
-              {peekGreeting ? "Peek-a-boo! 👋 Butuh bantuan di sini?" : bubbleMessage}
+              {peekGreeting ? "Yuhu! 👋 Butuh bantuan di sini?" : bubbleMessage}
             </p>
             <button
               type="button"

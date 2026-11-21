@@ -1401,7 +1401,7 @@ export function UserProfileScreen({
                       <span>Pengaturan Rumi Assistant</span>
                     </h2>
                     <p className="text-[11px] text-[#5E5E5E] mt-0.5">
-                      Atur posisi bersembunyi, seberapa dalam Rumi ngintip, waktu idle, notifikasi lewat Rumi, serta suara robot Peek-a-Boo.
+                      Atur posisi bersembunyi, seberapa dalam Rumi ngintip, waktu idle, notifikasi lewat Rumi, serta suara robot kecil &quot;Yuhu!&quot;.
                     </p>
                   </div>
 
@@ -1813,25 +1813,25 @@ export function UserProfileScreen({
                       </div>
                     </div>
 
-                    {/* Robotic Peek-a-Boo Voice Effect Toggle & Test */}
+                    {/* Cute Chibi-Robot "Yuhu!" Voice Effect Toggle & Test */}
                     <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-[#121215]">
-                          Suara Robot &quot;Peek-a-Boo!&quot; Saat Muncul
+                          Suara Robot Kecil &quot;Yuhu!&quot; Saat Muncul
                         </p>
                         <p className="text-[10px] text-[#5E5E5E] leading-relaxed mt-0.5">
-                          Bunyi robot lucu saat kursor diarahkan ke Rumi yang sedang bersembunyi.
+                          Bunyi robot mungil yang ceria saat kursor diarahkan ke Rumi yang sedang bersembunyi.
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
                           onClick={() => playRumiPeekABooSound()}
-                          title="Dengarkan suara robot Peek-a-Boo Rumi"
+                          title='Dengarkan suara robot kecil "Yuhu!" Rumi'
                           className="inline-flex items-center gap-1 rounded-full border border-[#EAECEF] bg-[#F8F9FB] hover:border-[#4F39F6] px-2.5 py-1 text-[11px] font-semibold text-[#4F39F6] transition-colors cursor-pointer"
                         >
                           <Volume2 size={11} />
-                          <span>Tes Peek-a-Boo</span>
+                          <span>Tes &quot;Yuhu!&quot;</span>
                         </button>
                         <button
                           type="button"
@@ -1841,8 +1841,8 @@ export function UserProfileScreen({
                                 peekSoundEnabled: !rumiPrefs.peekSoundEnabled,
                               },
                               !rumiPrefs.peekSoundEnabled
-                                ? "Suara robot Peek-a-Boo diaktifkan!"
-                                : "Suara robot Peek-a-Boo dinonaktifkan."
+                                ? 'Suara robot kecil "Yuhu!" diaktifkan!'
+                                : 'Suara robot kecil "Yuhu!" dinonaktifkan.'
                             )
                           }
                           className={`rounded-full px-3 py-1 text-[11px] font-bold transition-colors cursor-pointer ${

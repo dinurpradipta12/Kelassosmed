@@ -291,62 +291,9 @@ export function playRumiNotificationSound(
   });
 }
 
-function playRoboticFormantFallback(ctx: AudioContext): void {
-  const now = ctx.currentTime;
-  const syllables = [
-    // "PEEK" (/i/)
-    { offset: 0, dur: 0.13, fStart: 540, fEnd: 820, f1: 320, f2: 2250 },
-    // "A" (/ə/)
-    { offset: 0.15, dur: 0.09, fStart: 510, fEnd: 480, f1: 540, f2: 1380 },
-    // "BOO!" (/u/)
-    { offset: 0.26, dur: 0.26, fStart: 620, fEnd: 980, f1: 360, f2: 920 },
-  ];
-
-  syllables.forEach((s) => {
-    const start = now + s.offset;
-    const carrier = ctx.createOscillator();
-    carrier.type = "sawtooth";
-    carrier.frequency.setValueAtTime(s.fStart, start);
-    carrier.frequency.exponentialRampToValueAtTime(s.fEnd, start + s.dur * 0.72);
-
-    // Subtle robotic vocoder flutter
-    const lfo = ctx.createOscillator();
-    const lfoGain = ctx.createGain();
-    lfo.frequency.setValueAtTime(42, start);
-    lfoGain.gain.setValueAtTime(18, start);
-    lfo.connect(lfoGain);
-    lfoGain.connect(carrier.frequency);
-
-    const f1Filter = ctx.createBiquadFilter();
-    f1Filter.type = "bandpass";
-    f1Filter.frequency.setValueAtTime(s.f1, start);
-    f1Filter.Q.setValueAtTime(6, start);
-
-    const f2Filter = ctx.createBiquadFilter();
-    f2Filter.type = "bandpass";
-    f2Filter.frequency.setValueAtTime(s.f2, start);
-    f2Filter.Q.setValueAtTime(7, start);
-
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(0.0001, start);
-    amp.gain.exponentialRampToValueAtTime(0.11, start + 0.02);
-    amp.gain.exponentialRampToValueAtTime(0.0001, start + s.dur);
-
-    carrier.connect(f1Filter);
-    carrier.connect(f2Filter);
-    f1Filter.connect(amp);
-    f2Filter.connect(amp);
-    amp.connect(ctx.destination);
-
-    lfo.start(start);
-    carrier.start(start);
-    lfo.stop(start + s.dur + 0.02);
-    carrier.stop(start + s.dur + 0.02);
-  });
-}
-
 /**
- * Cute robotic "Peek-a-boo!" voice + servo blip when Rumi pops out from hiding on hover.
+ * Cute tiny companion-robot "Yuhu!" chirp using warm sine + triangle glides
+ * through a soft lowpass filter when Rumi pops out from hiding on hover.
  */
 export function playRumiPeekABooSound(): void {
   if (typeof window === "undefined") return;
@@ -354,61 +301,121 @@ export function playRumiPeekABooSound(): void {
   if (nowMs - lastPeekSoundAt < 700) return;
   lastPeekSoundAt = nowMs;
 
-  const canSpeak =
-    typeof window.speechSynthesis !== "undefined" &&
-    typeof SpeechSynthesisUtterance !== "undefined";
-
-  // Crisp mechanical robot servo chirp
   runWithRumiAudio((ctx) => {
     const now = ctx.currentTime;
-    [680, 1080].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const t = now + i * 0.055;
-      osc.type = "square";
-      osc.frequency.setValueAtTime(freq, t);
-      osc.frequency.exponentialRampToValueAtTime(freq * 1.25, t + 0.045);
 
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.038, t + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.075);
+    // Warm lowpass master bus (2600 Hz) so all tones sound round, playful, and cute
+    const warmFilter = ctx.createBiquadFilter();
+    warmFilter.type = "lowpass";
+    warmFilter.frequency.setValueAtTime(2600, now);
+    warmFilter.Q.setValueAtTime(0.7, now);
+    warmFilter.connect(ctx.destination);
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.085);
-    });
+    // Syllable 1: "Yu~" (0.00s - 0.125s) — soft glide 540Hz -> 740Hz -> 932Hz (Bb5)
+    const syl1Start = now;
+    const syl1End = now + 0.125;
+    const s1Main = ctx.createOscillator();
+    const s1Harmonic = ctx.createOscillator();
+    const s1Gain = ctx.createGain();
+    const s1HarmGain = ctx.createGain();
 
-    if (!canSpeak) {
-      playRoboticFormantFallback(ctx);
-    }
-  });
+    s1Main.type = "triangle";
+    s1Main.frequency.setValueAtTime(540, syl1Start);
+    s1Main.frequency.exponentialRampToValueAtTime(740, syl1Start + 0.045);
+    s1Main.frequency.exponentialRampToValueAtTime(932, syl1End - 0.01);
 
-  if (canSpeak) {
+    s1Harmonic.type = "sine";
+    s1Harmonic.frequency.setValueAtTime(1080, syl1Start);
+    s1Harmonic.frequency.exponentialRampToValueAtTime(1480, syl1Start + 0.045);
+    s1Harmonic.frequency.exponentialRampToValueAtTime(1864, syl1End - 0.01);
+    s1HarmGain.gain.setValueAtTime(0.28, syl1Start);
+
+    s1Gain.gain.setValueAtTime(0.0001, syl1Start);
+    s1Gain.gain.exponentialRampToValueAtTime(0.095, syl1Start + 0.024);
+    s1Gain.gain.exponentialRampToValueAtTime(0.07, syl1Start + 0.085);
+    s1Gain.gain.exponentialRampToValueAtTime(0.0001, syl1End);
+
+    s1Main.connect(s1Gain);
+    s1Harmonic.connect(s1HarmGain);
+    s1HarmGain.connect(s1Gain);
+    s1Gain.connect(warmFilter);
+
+    s1Main.start(syl1Start);
+    s1Harmonic.start(syl1Start);
+    s1Main.stop(syl1End + 0.015);
+    s1Harmonic.stop(syl1End + 0.015);
+
+    // Micro airy "H-" breath puff (0.125s - 0.15s) right before "Hu~!"
     try {
-      const synth = window.speechSynthesis;
-      if (synth.speaking || synth.pending) {
-        synth.cancel();
+      const breathDur = 0.032;
+      const sampleCount = Math.max(1, Math.floor(ctx.sampleRate * breathDur));
+      const noiseBuf = ctx.createBuffer(1, sampleCount, ctx.sampleRate);
+      const channel = noiseBuf.getChannelData(0);
+      for (let i = 0; i < sampleCount; i++) {
+        channel[i] = (Math.random() * 2 - 1) * 0.35;
       }
-      const utter = new SpeechSynthesisUtterance("Peek a boo!");
-      utter.lang = "en-US";
-      utter.pitch = 1.95; // High, playful cute robot pitch
-      utter.rate = 1.32;
-      utter.volume = 0.78;
-      const voices = synth.getVoices?.() ?? [];
-      const robotFriendlyVoice =
-        voices.find((v) => /zarvox|trinoids|albert|fred/i.test(v.name)) ||
-        voices.find((v) => v.lang.toLowerCase().startsWith("en-us")) ||
-        voices.find((v) => v.lang.toLowerCase().startsWith("en"));
-      if (robotFriendlyVoice) {
-        utter.voice = robotFriendlyVoice;
-      }
-      utter.onerror = () => {
-        runWithRumiAudio((ctx) => playRoboticFormantFallback(ctx));
-      };
-      synth.speak(utter);
-    } catch {
-      runWithRumiAudio((ctx) => playRoboticFormantFallback(ctx));
-    }
-  }
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = noiseBuf;
+      const breathFilter = ctx.createBiquadFilter();
+      breathFilter.type = "bandpass";
+      breathFilter.frequency.setValueAtTime(1750, syl1End);
+      breathFilter.Q.setValueAtTime(1.4, syl1End);
+      const breathGain = ctx.createGain();
+      breathGain.gain.setValueAtTime(0.0001, syl1End);
+      breathGain.gain.exponentialRampToValueAtTime(0.018, syl1End + 0.012);
+      breathGain.gain.exponentialRampToValueAtTime(0.0001, syl1End + breathDur);
+
+      noiseSrc.connect(breathFilter);
+      breathFilter.connect(breathGain);
+      breathGain.connect(warmFilter);
+      noiseSrc.start(syl1End);
+      noiseSrc.stop(syl1End + breathDur + 0.01);
+    } catch {}
+
+    // Syllable 2: "Hu~!" (0.15s - 0.38s) — cheerful jump 880Hz (A5) -> 1318.5Hz (E6) -> 1174.66Hz (D6)
+    const syl2Start = now + 0.15;
+    const syl2End = now + 0.38;
+    const s2Main = ctx.createOscillator();
+    const s2Sparkle = ctx.createOscillator();
+    const s2VibLfo = ctx.createOscillator();
+    const s2VibDepth = ctx.createGain();
+    const s2Gain = ctx.createGain();
+    const s2SparkleGain = ctx.createGain();
+
+    s2Main.type = "sine";
+    s2Main.frequency.setValueAtTime(880, syl2Start);
+    s2Main.frequency.exponentialRampToValueAtTime(1318.5, syl2Start + 0.085);
+    s2Main.frequency.exponentialRampToValueAtTime(1174.66, syl2End - 0.02);
+
+    // Cute gentle 7 Hz vibrato (±14 Hz)
+    s2VibLfo.type = "sine";
+    s2VibLfo.frequency.setValueAtTime(7, syl2Start);
+    s2VibDepth.gain.setValueAtTime(14, syl2Start);
+    s2VibLfo.connect(s2VibDepth);
+    s2VibDepth.connect(s2Main.frequency);
+
+    s2Gain.gain.setValueAtTime(0.0001, syl2Start);
+    s2Gain.gain.exponentialRampToValueAtTime(0.105, syl2Start + 0.028);
+    s2Gain.gain.exponentialRampToValueAtTime(0.075, syl2Start + 0.14);
+    s2Gain.gain.exponentialRampToValueAtTime(0.0001, syl2End);
+
+    // Subtle sparkle bell overtone (2349 Hz)
+    s2Sparkle.type = "sine";
+    s2Sparkle.frequency.setValueAtTime(2349.32, syl2Start + 0.02);
+    s2SparkleGain.gain.setValueAtTime(0.0001, syl2Start + 0.02);
+    s2SparkleGain.gain.exponentialRampToValueAtTime(0.02, syl2Start + 0.055);
+    s2SparkleGain.gain.exponentialRampToValueAtTime(0.0001, syl2End - 0.02);
+
+    s2Main.connect(s2Gain);
+    s2Gain.connect(warmFilter);
+    s2Sparkle.connect(s2SparkleGain);
+    s2SparkleGain.connect(ctx.destination);
+
+    s2VibLfo.start(syl2Start);
+    s2Main.start(syl2Start);
+    s2Sparkle.start(syl2Start + 0.02);
+    s2VibLfo.stop(syl2End + 0.015);
+    s2Main.stop(syl2End + 0.015);
+    s2Sparkle.stop(syl2End);
+  });
 }
