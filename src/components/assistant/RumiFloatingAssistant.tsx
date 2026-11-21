@@ -3,14 +3,28 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
-  ChevronRight,
+  BookOpen,
+  Compass,
+  Crown,
   EyeOff,
+  FolderOpen,
+  Gift,
+  Heart,
   HelpCircle,
+  Home,
+  Inbox,
+  LayoutGrid,
+  LineChart,
   MessageCircle,
+  Plus,
+  Search,
   Settings,
   Sparkles,
+  Users,
   VolumeX,
   X,
+  Zap,
+  type LucideIcon,
 } from "lucide-react";
 import {
   RumiMascotIllustration,
@@ -38,11 +52,88 @@ import {
 } from "@/lib/rumi-assistant-prefs";
 import type { RumiEvolutionStage, RumiXpProfileState } from "@/lib/rumi-xp";
 
+export type RumiDeckIconName =
+  | "home"
+  | "learning"
+  | "catalog"
+  | "favorites"
+  | "rewards"
+  | "pro"
+  | "content"
+  | "users"
+  | "inbox"
+  | "analytics"
+  | "settings"
+  | "plus"
+  | "search"
+  | "sparkles";
+
+export type RumiDeckAccent =
+  | "indigo"
+  | "sky"
+  | "emerald"
+  | "rose"
+  | "amber"
+  | "violet";
+
 export interface RumiQuickAction {
   id: string;
   label: string;
+  sublabel?: string;
+  shortcutKey?: string;
+  icon?: RumiDeckIconName;
+  badgeText?: string | number;
+  isActive?: boolean;
+  accent?: RumiDeckAccent;
   onClick: () => void;
 }
+
+const DECK_ICON_MAP: Record<RumiDeckIconName, LucideIcon> = {
+  home: Home,
+  learning: BookOpen,
+  catalog: Compass,
+  favorites: Heart,
+  rewards: Gift,
+  pro: Crown,
+  content: FolderOpen,
+  users: Users,
+  inbox: Inbox,
+  analytics: LineChart,
+  settings: Settings,
+  plus: Plus,
+  search: Search,
+  sparkles: Sparkles,
+};
+
+const DECK_ACCENT_STYLES: Record<
+  RumiDeckAccent,
+  { iconBox: string; activeRing: string }
+> = {
+  indigo: {
+    iconBox: "bg-[#4F39F6]/25 text-[#A5B4FC] border-[#6366F1]/40",
+    activeRing: "ring-2 ring-[#6366F1] bg-[#252340]",
+  },
+  sky: {
+    iconBox: "bg-[#0EA5E9]/20 text-[#7DD3FC] border-[#38BDF8]/35",
+    activeRing: "ring-2 ring-[#38BDF8] bg-[#1D2A38]",
+  },
+  emerald: {
+    iconBox: "bg-[#10B981]/20 text-[#6EE7B7] border-[#34D399]/35",
+    activeRing: "ring-2 ring-[#34D399] bg-[#1B2F2A]",
+  },
+  rose: {
+    iconBox: "bg-[#F43F5E]/20 text-[#FDA4AF] border-[#FB7185]/35",
+    activeRing: "ring-2 ring-[#FB7185] bg-[#331F28]",
+  },
+  amber: {
+    iconBox: "bg-[#F59E0B]/20 text-[#FCD34D] border-[#FBBF24]/35",
+    activeRing: "ring-2 ring-[#FBBF24] bg-[#332B1D]",
+  },
+  violet: {
+    iconBox: "bg-[#8B5CF6]/25 text-[#DDD6FE] border-[#A78BFA]/40",
+    activeRing: "ring-2 ring-[#A78BFA] bg-[#29223B]",
+  },
+};
 
 interface RumiFloatingAssistantProps {
   roleMode: "learner" | "admin";
@@ -100,6 +191,9 @@ export function RumiFloatingAssistant({
     useState<RumiDeliveredNotificationPayload | null>(null);
   const [forceRevealForNotif, setForceRevealForNotif] = useState(false);
   const [selectedFaqIndex, setSelectedFaqIndex] = useState<number | null>(null);
+  const [activeModalTab, setActiveModalTab] = useState<"deck" | "qa" | "info">(
+    "deck"
+  );
   const [scrolledPastHero, setScrolledPastHero] = useState(false);
 
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,6 +241,39 @@ export function RumiFloatingAssistant({
       setIsOpen(false);
     }
   }, [isVisibleOnPage, isOpen]);
+
+  // Tactile Stream Deck keyboard shortcuts (press 1..6 while Rumi Deck modal is open)
+  useEffect(() => {
+    if (!isOpen || quickActions.length === 0) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === "Escape") {
+        setIsOpen(false);
+        return;
+      }
+      const keyLower = e.key.toLowerCase();
+      const matched = quickActions.find(
+        (act) => act.shortcutKey?.toLowerCase() === keyLower
+      );
+      if (matched) {
+        e.preventDefault();
+        setIsOpen(false);
+        matched.onClick();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, quickActions]);
 
   const guide = getRumiPageGuide(pageContextId, pageSubtitle);
   const liveMood = computeRumiLiveMood({
@@ -391,10 +518,15 @@ export function RumiFloatingAssistant({
     if (isHiding) {
       setIsHiding(false);
       triggerHop();
+      setActiveModalTab("deck");
       setIsOpen(true);
       return;
     }
-    setIsOpen((prev) => !prev);
+    setIsOpen((prev) => {
+      const next = !prev;
+      if (next) setActiveModalTab("deck");
+      return next;
+    });
   };
 
   const handleManualTuckHide = (e?: React.MouseEvent) => {
@@ -478,34 +610,34 @@ export function RumiFloatingAssistant({
           : "opacity-0 pointer-events-none"
       }`}
     >
-      {/* Contextual Assistant Popover */}
+      {/* Contextual Assistant Popover (Tabbed Stream Deck + Tanya + Info) */}
       {isOpen && (
         <section
           aria-label="Asisten Rumi"
-          className={`rs-rumi-popover-in ${layout.popover} w-[min(360px,calc(100vw-2rem))] rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] shadow-[0_20px_50px_rgba(16,15,17,0.16)] overflow-hidden`}
+          className={`rs-rumi-popover-in ${layout.popover} w-[min(372px,calc(100vw-2rem))] rounded-2xl border border-[#EAECEF] bg-[#FFFFFF] shadow-[0_20px_50px_rgba(16,15,17,0.18)] overflow-hidden`}
         >
-          {/* Header */}
-          <div className="flex items-start justify-between gap-2.5 border-b border-[#EAECEF] bg-[#F8F9FB] px-4 py-3">
-            <div className="flex items-center gap-2.5 min-w-0">
+          {/* Compact Header */}
+          <div className="flex items-center justify-between gap-2.5 border-b border-[#EAECEF] bg-[#F8F9FB] px-3.5 py-2.5">
+            <div className="flex items-center gap-2 min-w-0">
               <div className="shrink-0">
                 <RumiMascotIllustration
                   stage={effectiveStage}
                   variant={mascotVariant}
                   mood={displayMood}
-                  sizeClass="w-16 h-16"
+                  sizeClass="w-12 h-12"
                 />
               </div>
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex items-center gap-1.5">
                   <span className="text-xs font-extrabold text-[#121215]">
                     {roleMode === "admin" ? "Superior Rumi" : "Rumi Assistant"}
                   </span>
-                  <span className="rounded-full bg-[#EEF2FF] border border-[#4F39F6]/20 px-2 py-0.5 text-[10px] font-bold text-[#4F39F6]">
+                  <span className="rounded-full bg-[#EEF2FF] border border-[#4F39F6]/20 px-1.5 py-0.5 text-[9px] font-bold text-[#4F39F6]">
                     {liveMood.statusLabel}
                   </span>
                 </div>
-                <p className="text-[11px] font-semibold text-[#5E5E5E] truncate mt-0.5">
-                  {guide.pageTitle} • {guide.badge}
+                <p className="text-[10px] font-semibold text-[#5E5E5E] truncate mt-0.5">
+                  {guide.pageTitle}
                 </p>
               </div>
             </div>
@@ -517,7 +649,7 @@ export function RumiFloatingAssistant({
                 title="Sembunyikan Rumi di sisi layar (Ngintip)"
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-[#5E5E5E] hover:bg-[#EAECEF]/70 hover:text-[#121215] transition-colors cursor-pointer"
               >
-                <EyeOff size={14} />
+                <EyeOff size={13} />
               </button>
               {onOpenProfileRumiSettings && (
                 <button
@@ -526,125 +658,278 @@ export function RumiFloatingAssistant({
                     setIsOpen(false);
                     onOpenProfileRumiSettings();
                   }}
-                  title="Atur Waktu Idle & Ukuran Rumi"
+                  title="Pengaturan Rumi Assistant"
                   className="flex h-7 w-7 items-center justify-center rounded-lg text-[#5E5E5E] hover:bg-[#EAECEF]/70 hover:text-[#4F39F6] transition-colors cursor-pointer"
                 >
-                  <Settings size={14} />
+                  <Settings size={13} />
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                aria-label="Tutup panduan Rumi"
+                aria-label="Tutup panel Rumi"
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-[#5E5E5E] hover:bg-[#EAECEF]/70 hover:text-[#121215] transition-colors cursor-pointer"
               >
-                <X size={14} />
+                <X size={13} />
               </button>
             </div>
           </div>
 
-          {/* Body */}
-          <div className="max-h-[60vh] overflow-y-auto p-4 space-y-4">
-            {/* Page Summary & Features */}
-            <div className="space-y-2.5">
-              <p className="text-xs text-[#121215] leading-relaxed">
-                {guide.summary}
-              </p>
+          {/* Segmented Control Tabs: Deck (Pintasan) | Tanya (FAQ) | Info */}
+          <div className="border-b border-[#EAECEF] bg-[#F8F9FB]/70 px-3 py-2">
+            <div
+              role="tablist"
+              aria-label="Menu Rumi Assistant"
+              className="grid grid-cols-3 gap-1 rounded-xl bg-[#EAECEF]/70 p-1"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeModalTab === "deck"}
+                onClick={() => setActiveModalTab("deck")}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-bold transition-all cursor-pointer ${
+                  activeModalTab === "deck"
+                    ? "bg-[#121215] text-white shadow-xs"
+                    : "text-[#5E5E5E] hover:text-[#121215]"
+                }`}
+              >
+                <Zap
+                  size={12}
+                  className={
+                    activeModalTab === "deck" ? "text-[#FBBF24]" : "text-[#4F39F6]"
+                  }
+                />
+                <span>Deck</span>
+              </button>
 
-              <div className="space-y-1.5">
-                {guide.features.map((feat) => (
-                  <div
-                    key={feat.title}
-                    className="rounded-xl border border-[#EAECEF] bg-[#F8F9FB] px-3 py-2"
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeModalTab === "qa"}
+                onClick={() => setActiveModalTab("qa")}
+                className={`inline-flex items-center justify-center gap-1 rounded-lg py-1.5 text-[11px] font-bold transition-all cursor-pointer ${
+                  activeModalTab === "qa"
+                    ? "bg-[#FFFFFF] text-[#121215] shadow-xs"
+                    : "text-[#5E5E5E] hover:text-[#121215]"
+                }`}
+              >
+                <HelpCircle
+                  size={12}
+                  className={
+                    activeModalTab === "qa" ? "text-[#4F39F6]" : "text-[#5E5E5E]"
+                  }
+                />
+                <span>Tanya</span>
+                {guide.faqs.length > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 py-0 text-[9px] font-extrabold ${
+                      activeModalTab === "qa"
+                        ? "bg-[#EEF2FF] text-[#4F39F6]"
+                        : "bg-[#FFFFFF]/80 text-[#5E5E5E]"
+                    }`}
                   >
-                    <p className="text-[11px] font-bold text-[#121215] flex items-center gap-1.5">
-                      <Sparkles size={11} className="text-[#4F39F6] shrink-0" />
-                      <span>{feat.title}</span>
-                    </p>
-                    <p className="text-[11px] text-[#5E5E5E] mt-0.5 leading-snug">
-                      {feat.description}
-                    </p>
-                  </div>
-                ))}
-              </div>
+                    {guide.faqs.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeModalTab === "info"}
+                onClick={() => setActiveModalTab("info")}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-bold transition-all cursor-pointer ${
+                  activeModalTab === "info"
+                    ? "bg-[#FFFFFF] text-[#121215] shadow-xs"
+                    : "text-[#5E5E5E] hover:text-[#121215]"
+                }`}
+              >
+                <Sparkles
+                  size={12}
+                  className={
+                    activeModalTab === "info" ? "text-[#4F39F6]" : "text-[#5E5E5E]"
+                  }
+                />
+                <span>Info</span>
+              </button>
             </div>
+          </div>
 
-            {/* Instant Contextual Q&A Chips */}
-            {guide.faqs.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#5E5E5E] flex items-center gap-1.5">
-                  <HelpCircle size={12} className="text-[#4F39F6]" />
-                  <span>Tanya Cepat di Halaman Ini</span>
-                </p>
+          {/* Tab Body */}
+          <div className="max-h-[58vh] overflow-y-auto p-3.5">
+            {activeModalTab === "deck" && (
+              <div className="space-y-2.5">
+                {quickActions.length > 0 ? (
+                  <>
+                    <div className="rounded-2xl bg-[#121216] p-2.5 border border-[#23232A] shadow-inner">
+                      <div className="grid grid-cols-3 gap-2">
+                        {quickActions.map((act) => {
+                          const IconComp = act.icon
+                            ? DECK_ICON_MAP[act.icon]
+                            : LayoutGrid;
+                          const accentStyle =
+                            DECK_ACCENT_STYLES[act.accent || "indigo"];
+                          return (
+                            <button
+                              key={act.id}
+                              type="button"
+                              onClick={() => {
+                                setIsOpen(false);
+                                act.onClick();
+                              }}
+                              className={`group relative flex flex-col items-start justify-between rounded-xl border border-white/10 p-2.5 text-left transition-all duration-150 cursor-pointer active:scale-[0.96] min-h-[78px] ${
+                                act.isActive
+                                  ? accentStyle.activeRing
+                                  : "bg-[#1C1C24] hover:bg-[#262632] hover:border-white/25"
+                              }`}
+                            >
+                              <div className="flex w-full items-start justify-between gap-1">
+                                <span
+                                  className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-transform duration-150 group-hover:scale-105 ${accentStyle.iconBox}`}
+                                >
+                                  <IconComp size={14} />
+                                </span>
 
-                <div className="flex flex-wrap gap-1.5">
-                  {guide.faqs.map((faq, idx) => {
-                    const selected = selectedFaqIndex === idx;
-                    return (
-                      <button
-                        key={faq.question}
-                        type="button"
-                        onClick={() =>
-                          setSelectedFaqIndex(selected ? null : idx)
-                        }
-                        className={`rounded-xl border px-2.5 py-1.5 text-left text-[11px] font-semibold transition-colors cursor-pointer ${
-                          selected
-                            ? "border-[#4F39F6] bg-[#4F39F6] text-white shadow-2xs"
-                            : "border-[#EAECEF] bg-[#FFFFFF] text-[#121215] hover:border-[#4F39F6]/50 hover:bg-[#F8F9FB]"
-                        }`}
-                      >
-                        {faq.question}
-                      </button>
-                    );
-                  })}
-                </div>
+                                <div className="flex items-center gap-1">
+                                  {act.badgeText !== undefined && (
+                                    <span className="rounded-full bg-[#F59E0B] px-1.5 py-0.5 text-[9px] font-extrabold text-[#121215] leading-none">
+                                      {act.badgeText}
+                                    </span>
+                                  )}
+                                  {act.shortcutKey && (
+                                    <kbd className="rounded border border-white/15 bg-black/50 px-1 py-0.5 font-mono text-[9px] font-bold text-white/75 leading-none">
+                                      {act.shortcutKey}
+                                    </kbd>
+                                  )}
+                                </div>
+                              </div>
 
-                {activeFaq && (
-                  <div className="rs-rumi-bubble-in rounded-xl border border-[#4F39F6]/25 bg-[#EEF2FF]/70 p-3 text-xs text-[#121215] space-y-1">
-                    <p className="text-[11px] font-bold text-[#4F39F6] flex items-center gap-1">
-                      <MessageCircle size={11} />
-                      <span>Jawaban Rumi</span>
+                              <div className="mt-2 w-full min-w-0">
+                                <p className="truncate text-[11px] font-bold text-white leading-tight">
+                                  {act.label}
+                                </p>
+                                {act.sublabel && (
+                                  <p className="truncate text-[9px] text-white/55 mt-0.5 leading-none">
+                                    {act.sublabel}
+                                  </p>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 px-0.5 text-[10px] text-[#5E5E5E]">
+                      <span>
+                        Klik tombol atau tekan{" "}
+                        <kbd className="rounded border border-[#EAECEF] bg-[#F8F9FB] px-1 py-0.5 font-mono text-[9px] font-bold text-[#121215]">
+                          1
+                        </kbd>
+                        –
+                        <kbd className="rounded border border-[#EAECEF] bg-[#F8F9FB] px-1 py-0.5 font-mono text-[9px] font-bold text-[#121215]">
+                          {Math.min(quickActions.length, 9)}
+                        </kbd>{" "}
+                        untuk langsung pindah menu
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-[#EAECEF] bg-[#F8F9FB] p-4 text-center space-y-2">
+                    <p className="text-xs font-semibold text-[#121215]">
+                      Belum ada tombol pintasan di halaman ini.
                     </p>
-                    <p className="text-[11px] leading-relaxed text-[#121215]">
-                      {activeFaq.answer}
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveModalTab("qa")}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#4F39F6] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
+                    >
+                      <HelpCircle size={12} />
+                      <span>Lihat Tanya Cepat</span>
+                    </button>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Quick Contextual Actions */}
-            {quickActions.length > 0 && (
-              <div className="space-y-1.5 pt-1 border-t border-[#EAECEF]">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#5E5E5E]">
-                  Pintasan Cepat
+            {activeModalTab === "qa" && (
+              <div className="space-y-2.5">
+                {guide.faqs.length > 0 ? (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      {guide.faqs.map((faq, idx) => {
+                        const selected = selectedFaqIndex === idx;
+                        return (
+                          <button
+                            key={faq.question}
+                            type="button"
+                            onClick={() =>
+                              setSelectedFaqIndex(selected ? null : idx)
+                            }
+                            className={`w-full rounded-xl border px-3 py-2 text-left text-[11px] font-semibold transition-colors cursor-pointer ${
+                              selected
+                                ? "border-[#4F39F6] bg-[#4F39F6] text-white shadow-2xs"
+                                : "border-[#EAECEF] bg-[#F8F9FB] text-[#121215] hover:border-[#4F39F6]/50 hover:bg-[#FFFFFF]"
+                            }`}
+                          >
+                            {faq.question}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {activeFaq && (
+                      <div className="rs-rumi-bubble-in rounded-xl border border-[#4F39F6]/25 bg-[#EEF2FF]/75 p-3 text-xs text-[#121215] space-y-1">
+                        <p className="text-[11px] font-bold text-[#4F39F6] flex items-center gap-1">
+                          <MessageCircle size={11} />
+                          <span>Jawaban Rumi</span>
+                        </p>
+                        <p className="text-[11px] leading-relaxed text-[#121215]">
+                          {activeFaq.answer}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="rounded-xl border border-[#EAECEF] bg-[#F8F9FB] p-3 text-center text-[11px] text-[#5E5E5E]">
+                    Belum ada daftar pertanyaan cepat di halaman ini.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {activeModalTab === "info" && (
+              <div className="space-y-2.5">
+                <p className="rounded-xl border border-[#EAECEF] bg-[#F8F9FB] px-3 py-2.5 text-[11px] text-[#121215] leading-relaxed">
+                  {guide.summary}
                 </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {quickActions.map((act) => (
-                    <button
-                      key={act.id}
-                      type="button"
-                      onClick={() => {
-                        setIsOpen(false);
-                        act.onClick();
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-[#EAECEF] bg-[#FFFFFF] hover:border-[#4F39F6] hover:text-[#4F39F6] px-2.5 py-1.5 text-[11px] font-semibold text-[#121215] transition-colors cursor-pointer"
+
+                <div className="space-y-1.5">
+                  {guide.features.map((feat) => (
+                    <div
+                      key={feat.title}
+                      className="rounded-xl border border-[#EAECEF] bg-[#FFFFFF] px-3 py-2"
                     >
-                      <span>{act.label}</span>
-                      <ChevronRight size={11} />
-                    </button>
+                      <p className="text-[11px] font-bold text-[#121215] flex items-center gap-1.5">
+                        <Sparkles size={11} className="text-[#4F39F6] shrink-0" />
+                        <span>{feat.title}</span>
+                      </p>
+                      <p className="text-[10px] text-[#5E5E5E] mt-0.5 leading-snug">
+                        {feat.description}
+                      </p>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Footer */}
-          <div className="flex items-center justify-between gap-2 border-t border-[#EAECEF] bg-[#F8F9FB] px-4 py-2 text-[10px] text-[#5E5E5E]">
+          {/* Compact Footer */}
+          <div className="flex items-center justify-between gap-2 border-t border-[#EAECEF] bg-[#F8F9FB] px-3.5 py-2 text-[10px] text-[#5E5E5E]">
             <span>
               {prefs.autoHideOnIdle
-                ? `Auto ngintip setelah ${prefs.idleHideSeconds} dtk idle`
-                : "Standby penuh (auto ngintip nonaktif)"}
+                ? `Auto ngintip ${prefs.idleHideSeconds} dtk idle`
+                : "Standby penuh"}
             </span>
             {onOpenProfileRumiSettings && (
               <button
@@ -655,7 +940,7 @@ export function RumiFloatingAssistant({
                 }}
                 className="font-bold text-[#4F39F6] hover:underline cursor-pointer"
               >
-                Atur di Profil
+                Atur Rumi →
               </button>
             )}
           </div>

@@ -86,7 +86,10 @@ import {
   resolveXpUserKey,
   type RumiXpProfileState,
 } from "@/lib/rumi-xp";
-import { RumiFloatingAssistant } from "@/components/assistant/RumiFloatingAssistant";
+import {
+  RumiFloatingAssistant,
+  type RumiQuickAction,
+} from "@/components/assistant/RumiFloatingAssistant";
 import type { RumiPageContextId } from "@/lib/rumi-assistant-guide";
 import { getSubscriptionStatusInfo } from "@/lib/subscription-utils";
 
@@ -4899,37 +4902,78 @@ export function LearnerPortalView({
             .trim()
             .toLowerCase() || "guest";
 
-        const quickActions = [
-          ...(activeNavTab !== "my-learning" ||
-          screenState.screen !== "dashboard"
-            ? [
-                {
-                  id: "go-my-learning",
-                  label: "Buka My Learning",
-                  onClick: () => handleSelectNavTab("my-learning"),
-                },
-              ]
-            : []),
-          ...(activeNavTab !== "catalog"
-            ? [
-                {
-                  id: "go-catalog",
-                  label: "Jelajah Katalog",
-                  onClick: () => handleSelectNavTab("catalog"),
-                },
-              ]
-            : []),
-          ...(onOpenUpgradeModal
-            ? [
-                {
-                  id: "open-upgrade-voucher",
-                  label: learnerIsPro
-                    ? "Perpanjang / Kode PRO"
-                    : "Upgrade / Pakai Kode PRO",
-                  onClick: onOpenUpgradeModal,
-                },
-              ]
-            : []),
+        const quickActions: RumiQuickAction[] = [
+          {
+            id: "deck-home",
+            label: "Beranda",
+            sublabel: "Ringkasan",
+            shortcutKey: "1",
+            icon: "home",
+            accent: "indigo",
+            isActive:
+              screenState.screen === "dashboard" && activeNavTab === "home",
+            onClick: () => handleSelectNavTab("home"),
+          },
+          {
+            id: "deck-my-learning",
+            label: "My Learning",
+            sublabel: "Kelas Saya",
+            shortcutKey: "2",
+            icon: "learning",
+            accent: "sky",
+            isActive:
+              screenState.screen === "dashboard" &&
+              activeNavTab === "my-learning",
+            onClick: () => handleSelectNavTab("my-learning"),
+          },
+          {
+            id: "deck-catalog",
+            label: "Katalog",
+            sublabel: "Cari Kelas",
+            shortcutKey: "3",
+            icon: "catalog",
+            accent: "emerald",
+            isActive:
+              screenState.screen === "dashboard" && activeNavTab === "catalog",
+            onClick: () => handleSelectNavTab("catalog"),
+          },
+          {
+            id: "deck-favorites",
+            label: "Favorit",
+            sublabel: "Tersimpan",
+            shortcutKey: "4",
+            icon: "favorites",
+            accent: "rose",
+            isActive:
+              screenState.screen === "dashboard" &&
+              activeNavTab === "favorites",
+            onClick: () => handleSelectNavTab("favorites"),
+          },
+          {
+            id: "deck-rewards",
+            label: "Hadiah",
+            sublabel: "Tukar Poin",
+            shortcutKey: "5",
+            icon: "rewards",
+            accent: "amber",
+            isActive: rewardsModalOpen,
+            onClick: () => setRewardsModalOpen(true),
+          },
+          {
+            id: "deck-pro",
+            label: "Akses PRO",
+            sublabel: learnerIsPro ? "Status PRO" : "Kode / Upgrade",
+            shortcutKey: "6",
+            icon: "pro",
+            accent: "violet",
+            onClick: () => {
+              if (onOpenUpgradeModal) {
+                onOpenUpgradeModal();
+              } else {
+                handleSelectNavTab("profile");
+              }
+            },
+          },
         ];
 
         return (

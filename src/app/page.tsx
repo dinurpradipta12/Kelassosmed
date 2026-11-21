@@ -105,7 +105,10 @@ import {
 import {
   UserProfileScreen,
 } from "@/components/profile/UserProfileScreen";
-import { RumiFloatingAssistant } from "@/components/assistant/RumiFloatingAssistant";
+import {
+  RumiFloatingAssistant,
+  type RumiQuickAction,
+} from "@/components/assistant/RumiFloatingAssistant";
 import type { RumiPageContextId } from "@/lib/rumi-assistant-guide";
 import {
   type ContentType,
@@ -2179,43 +2182,77 @@ function RuangSosmedStudioInner() {
             ).length;
 
             const adminContextId = `admin:${activeNav}` as RumiPageContextId;
-            const adminQuickActions = [
-              ...(activeNav !== "learners"
-                ? [
-                    {
-                      id: "admin-go-learners",
-                      label: "Direktori Member",
-                      onClick: () => handleSelectNav("learners"),
-                    },
-                  ]
-                : []),
-              ...(activeNav !== "inbox"
-                ? [
-                    {
-                      id: "admin-go-inbox",
-                      label: "Mentor Inbox",
-                      onClick: () => handleSelectNav("inbox"),
-                    },
-                  ]
-                : []),
-              ...(activeNav !== "settings"
-                ? [
-                    {
-                      id: "admin-go-settings",
-                      label: "Pengaturan & Kode PRO",
-                      onClick: () => handleSelectNav("settings"),
-                    },
-                  ]
-                : []),
-              ...(activeNav !== "analytics"
-                ? [
-                    {
-                      id: "admin-go-analytics",
-                      label: "Analitik Live",
-                      onClick: () => handleSelectNav("analytics"),
-                    },
-                  ]
-                : []),
+            const adminQuickActions: RumiQuickAction[] = [
+              {
+                id: "admin-deck-home",
+                label: "Overview",
+                sublabel: "Dashboard",
+                shortcutKey: "1",
+                icon: "home",
+                accent: "indigo",
+                isActive: activeNav === "home",
+                onClick: () => handleSelectNav("home"),
+              },
+              {
+                id: "admin-deck-content",
+                label: "Materi LMS",
+                sublabel: "Kelola Kelas",
+                shortcutKey: "2",
+                icon: "content",
+                accent: "sky",
+                isActive: activeNav === "content",
+                onClick: () => handleSelectNav("content"),
+              },
+              {
+                id: "admin-deck-create",
+                label: "Buat Materi",
+                sublabel: "+ Course Baru",
+                shortcutKey: "3",
+                icon: "plus",
+                accent: "emerald",
+                onClick: () => {
+                  setCreateModalType("Course");
+                  setCreateModalOpen(true);
+                },
+              },
+              {
+                id: "admin-deck-learners",
+                label: "Member",
+                sublabel: "Direktori PRO",
+                shortcutKey: "4",
+                icon: "users",
+                accent: "violet",
+                badgeText:
+                  pendingProPaymentsCount > 0
+                    ? pendingProPaymentsCount
+                    : undefined,
+                isActive: activeNav === "learners",
+                onClick: () => handleSelectNav("learners"),
+              },
+              {
+                id: "admin-deck-inbox",
+                label: "Inbox",
+                sublabel: "Diskusi & Tugas",
+                shortcutKey: "5",
+                icon: "inbox",
+                accent: "amber",
+                badgeText:
+                  unreadDiscussionsCount > 0
+                    ? unreadDiscussionsCount
+                    : undefined,
+                isActive: activeNav === "inbox",
+                onClick: () => handleSelectNav("inbox"),
+              },
+              {
+                id: "admin-deck-settings",
+                label: "Pengaturan",
+                sublabel: "Kode & Bot",
+                shortcutKey: "6",
+                icon: "settings",
+                accent: "rose",
+                isActive: activeNav === "settings",
+                onClick: () => handleSelectNav("settings"),
+              },
             ];
 
             return (
