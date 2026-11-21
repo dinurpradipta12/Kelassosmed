@@ -16,21 +16,42 @@ export interface SubscriptionStatusInfo {
 }
 
 const MS_PER_DAY = 86_400_000;
+const SUBSCRIPTION_TIMEZONE = "Asia/Jakarta";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/**
- * Mengembalikan tanggal lokal hari ini dalam format `YYYY-MM-DD`.
- */
-export function getTodayIsoDate(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+function formatDateInWib(date: Date): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: SUBSCRIPTION_TIMEZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const year = parts.find((p) => p.type === "year")?.value;
+    const month = parts.find((p) => p.type === "month")?.value;
+    const day = parts.find((p) => p.type === "day")?.value;
+    if (year && month && day) {
+      return `${year}-${month}-${day}`;
+    }
+  } catch {}
+  const wib = new Date(date.getTime() + 7 * 3_600_000);
+  return `${wib.getUTCFullYear()}-${pad2(wib.getUTCMonth() + 1)}-${pad2(
+    wib.getUTCDate()
+  )}`;
 }
 
 /**
- * Mengubah timestamp ISO atau string tanggal menjadi `YYYY-MM-DD` lokal.
+ * Mengembalikan tanggal hari ini di zona WIB (`Asia/Jakarta`) dalam format `YYYY-MM-DD`.
+ */
+export function getTodayIsoDate(): string {
+  return formatDateInWib(new Date());
+}
+
+/**
+ * Mengubah timestamp ISO atau string tanggal menjadi `YYYY-MM-DD` pada zona WIB (`Asia/Jakarta`).
  */
 export function toIsoDateString(value?: string | null): string | null {
   if (!value) return null;
@@ -41,9 +62,7 @@ export function toIsoDateString(value?: string | null): string | null {
   }
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return null;
-  return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(
-    parsed.getDate()
-  )}`;
+  return formatDateInWib(parsed);
 }
 
 /**
