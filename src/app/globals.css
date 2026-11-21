@@ -846,29 +846,6 @@ html[data-theme-mode="dark"] .rs-hero-pastel {
   border-color: rgba(129, 140, 248, 0.28) !important;
 }
 
-.rs-hero-admin-sovereign {
-  background: linear-gradient(
-    135deg,
-    #F8FAFC 0%,
-    #EEF2FF 46%,
-    #ECFDF5 78%,
-    #FFFBEB 100%
-  );
-  border: 1px solid #CBD5E1;
-}
-
-html[data-theme-mode="dark"] .rs-hero-admin-sovereign,
-[data-theme="dark"] .rs-hero-admin-sovereign {
-  background: linear-gradient(
-    135deg,
-    rgba(15, 23, 42, 0.94) 0%,
-    rgba(49, 46, 129, 0.36) 52%,
-    rgba(6, 78, 59, 0.28) 82%,
-    rgba(120, 53, 15, 0.22) 100%
-  ) !important;
-  border-color: rgba(251, 191, 36, 0.28) !important;
-}
-
 /* Accessible Native <progress> Circular Progress Ring per modern-web-guidance (progress-ring) */
 .rs-progress-ring-wrapper {
   position: relative;

@@ -104,9 +104,9 @@ export function RumiMascotIllustration({
           <stop offset="100%" stopColor="#F59E0B" />
         </linearGradient>
         <linearGradient id={adminBodyGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#334155" />
-          <stop offset="50%" stopColor="#0F172A" />
-          <stop offset="100%" stopColor="#020617" />
+          <stop offset="0%" stopColor="#38BDF8" />
+          <stop offset="52%" stopColor="#0284C7" />
+          <stop offset="100%" stopColor="#0369A1" />
         </linearGradient>
         <linearGradient id={adminEmeraldGradId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#A7F3D0" />
@@ -114,19 +114,19 @@ export function RumiMascotIllustration({
           <stop offset="100%" stopColor="#047857" />
         </linearGradient>
         <linearGradient id={adminCapeGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#581C87" />
-          <stop offset="55%" stopColor="#881337" />
-          <stop offset="100%" stopColor="#BE123C" />
+          <stop offset="0%" stopColor="#7C3AED" />
+          <stop offset="60%" stopColor="#DB2777" />
+          <stop offset="100%" stopColor="#F43F5E" />
         </linearGradient>
         <linearGradient id={adminPrismWingGradId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#FEF08A" />
           <stop offset="48%" stopColor="#34D399" />
-          <stop offset="100%" stopColor="#047857" />
+          <stop offset="100%" stopColor="#059669" />
         </linearGradient>
         <linearGradient id={adminVisorGradId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#34D399" stopOpacity="0.48" />
-          <stop offset="50%" stopColor="#A7F3D0" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#10B981" stopOpacity="0.48" />
+          <stop offset="0%" stopColor="#E0F2FE" stopOpacity="0.42" />
+          <stop offset="50%" stopColor="#FFFFFF" stopOpacity="0.16" />
+          <stop offset="100%" stopColor="#7DD3FC" stopOpacity="0.42" />
         </linearGradient>
       </defs>
 
@@ -137,8 +137,8 @@ export function RumiMascotIllustration({
         cy="134"
         rx={isAdminSuperior || stage >= 4 ? 30 : 24}
         ry="4.8"
-        fill={isAdminSuperior ? "#0F172A" : stage === 5 ? "#D97706" : "#4F39F6"}
-        fillOpacity={isAdminSuperior ? "0.28" : stage === 5 ? "0.26" : "0.2"}
+        fill={isAdminSuperior ? "#0284C7" : stage === 5 ? "#D97706" : "#4F39F6"}
+        fillOpacity={isAdminSuperior ? "0.22" : stage === 5 ? "0.26" : "0.2"}
       />
 
       {/* Ambient Sparkles */}
@@ -937,7 +937,7 @@ export function RumiMascotIllustration({
             stroke={`url(#${goldGradId})`}
             strokeWidth="2.2"
           />
-          {/* Glowing Emerald Executive HUD Visor */}
+          {/* Glowing Ice-Cyan Executive HUD Visor */}
           <rect
             x="51"
             y="53"
@@ -945,7 +945,7 @@ export function RumiMascotIllustration({
             height="19"
             rx="9.5"
             fill={`url(#${adminVisorGradId})`}
-            stroke="#34D399"
+            stroke="#BAE6FD"
             strokeWidth="1.4"
           />
 
@@ -973,22 +973,24 @@ export function RumiMascotIllustration({
           />
           <circle cx="107.5" cy="63.5" r="2.2" fill="#10B981" />
 
-          {/* Luminous Emerald-Gold Studio Eyes & Executive Smile */}
+          {/* Soft Pink Cheeks + Cheerful Luminous Studio Eyes & Smile */}
+          <ellipse cx="56" cy="71" rx="4.5" ry="2.6" fill="#FDA4AF" fillOpacity="0.88" />
+          <ellipse cx="92" cy="71" rx="4.5" ry="2.6" fill="#FDA4AF" fillOpacity="0.88" />
           <g className="rs-rumi-eyes">
-            <circle cx="63" cy="62.5" r="4.8" fill="#020617" />
-            <circle cx="85" cy="62.5" r="4.8" fill="#020617" />
-            <circle cx="64.5" cy="60.6" r="2.1" fill="#34D399" />
-            <circle cx="86.5" cy="60.6" r="2.1" fill="#34D399" />
+            <circle cx="63" cy="62.5" r="4.8" fill="#1E1B4B" />
+            <circle cx="85" cy="62.5" r="4.8" fill="#1E1B4B" />
+            <circle cx="64.5" cy="60.6" r="2" fill="#FFFFFF" />
+            <circle cx="86.5" cy="60.6" r="2" fill="#FFFFFF" />
           </g>
           <path
             d="M66 75 Q74 82 82 75"
             fill="none"
-            stroke="#FEF08A"
+            stroke="#FFFFFF"
             strokeWidth="3"
             strokeLinecap="round"
           />
 
-          {/* Floating Holographic Studio Analytics Card (Left) */}
+          {/* Floating Pearl-White Holographic Studio Analytics Card (Left) */}
           <g className="rs-rumi-holo">
             <rect
               x="14"
@@ -996,14 +998,14 @@ export function RumiMascotIllustration({
               width="25"
               height="18"
               rx="4"
-              fill="#0F172A"
-              fillOpacity="0.92"
-              stroke="#34D399"
+              fill="#FFFFFF"
+              fillOpacity="0.96"
+              stroke="#0EA5E9"
               strokeWidth="1.5"
             />
-            <rect x="18" y="82" width="3.5" height="5" rx="1" fill="#34D399" />
-            <rect x="23" y="79" width="3.5" height="8" rx="1" fill="#FBBF24" />
-            <rect x="28" y="76" width="3.5" height="11" rx="1" fill="#34D399" />
+            <rect x="18" y="82" width="3.5" height="5" rx="1" fill="#10B981" />
+            <rect x="23" y="79" width="3.5" height="8" rx="1" fill="#F59E0B" />
+            <rect x="28" y="76" width="3.5" height="11" rx="1" fill="#4F39F6" />
           </g>
 
           {/* Commanding Right Arm with Glowing Emerald Command Scepter Orb */}
@@ -1011,7 +1013,7 @@ export function RumiMascotIllustration({
             <path
               d="M102 98 Q120 90 124 72"
               fill="none"
-              stroke="#334155"
+              stroke="#0284C7"
               strokeWidth="7"
               strokeLinecap="round"
             />
