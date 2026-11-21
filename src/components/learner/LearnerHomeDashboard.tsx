@@ -28,8 +28,20 @@ import type {
 } from "@/lib/phase5-data";
 import type { LeaderboardLearner } from "@/lib/design-tokens";
 import type { RewardItem } from "@/lib/rewards-data";
-import type { CourseCardAccessResult } from "@/lib/entitlements";
+import type {
+  CourseCardAccessResult,
+  PackageTierKind,
+} from "@/lib/entitlements";
 import { ContentBadge } from "@/components/ui/ContentBadge";
+import {
+  computeAwardedXp,
+  resolveRumiLevelInfo,
+  type RumiXpProfileState,
+} from "@/lib/rumi-xp";
+import {
+  RumiEvolutionModal,
+  RumiMascotIllustration,
+} from "@/components/learner/RumiEvolutionMascot";
 
 export interface LearnerHomeFolderItem {
   name: string;
@@ -46,6 +58,8 @@ export interface LearnerHomeDashboardProps {
   learnerDisplayName: string;
   timeGreeting: string;
   activeTierLabel: string;
+  activeTierKind: PackageTierKind;
+  rumiXpState: RumiXpProfileState;
   learnerIsPro: boolean;
   isUnlimitedPro: boolean;
   canCertificate: boolean;
@@ -87,210 +101,13 @@ const CHART_BAR_COLORS = [
   "#8B5CF6",
 ];
 
-const LEVEL_TIERS = [
-  { level: 1, minXp: 0, nextXp: 100, title: "Seed Creator", emoji: "🌱" },
-  { level: 2, minXp: 100, nextXp: 300, title: "Rising Strategist", emoji: "✨" },
-  { level: 3, minXp: 300, nextXp: 600, title: "Content Wizard", emoji: "🚀" },
-  { level: 4, minXp: 600, nextXp: 1000, title: "Social Media Pro", emoji: "👑" },
-  { level: 5, minXp: 1000, nextXp: null, title: "Agency Master", emoji: "🏆" },
-] as const;
-
-/**
- * Playful animated LMS Mascot ("Rumi") rendered framelessly without a box.
- */
-function RumiMascotIllustration({ paused = false }: { paused?: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 132 132"
-      className={`w-28 h-28 sm:w-32 sm:h-32 shrink-0 select-none overflow-visible drop-shadow-[0_6px_12px_rgba(79,57,246,0.18)] ${
-        paused ? "rs-rumi-paused" : ""
-      }`}
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id="rumiBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#818CF8" />
-          <stop offset="55%" stopColor="#6366F1" />
-          <stop offset="100%" stopColor="#4F39F6" />
-        </linearGradient>
-        <linearGradient id="rumiEarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FBBF24" />
-          <stop offset="100%" stopColor="#F59E0B" />
-        </linearGradient>
-      </defs>
-
-      {/* Synced Soft Ground Shadow */}
-      <ellipse
-        className="rs-rumi-shadow"
-        cx="66"
-        cy="118"
-        rx="23"
-        ry="4.5"
-        fill="#4F39F6"
-        fillOpacity="0.22"
-      />
-
-      {/* Ambient Floating Sparkles & Pastel Dots */}
-      <g className="rs-sparkle-bob" style={{ transformOrigin: "24px 32px" }}>
-        <path
-          d="M24 22 L26.5 29.5 L34 32 L26.5 34.5 L24 42 L21.5 34.5 L14 32 L21.5 29.5 Z"
-          fill="#F59E0B"
-        />
-      </g>
-      <g
-        className="rs-sparkle-bob-delayed"
-        style={{ transformOrigin: "108px 28px" }}
-      >
-        <path
-          d="M108 20 L110 26 L116 28 L110 30 L108 36 L106 30 L100 28 L106 26 Z"
-          fill="#EC4899"
-        />
-      </g>
-      <circle
-        className="rs-dot-float-a"
-        cx="110"
-        cy="96"
-        r="4"
-        fill="#10B981"
-        fillOpacity="0.8"
-      />
-      <circle
-        className="rs-dot-float-b"
-        cx="20"
-        cy="94"
-        r="3.5"
-        fill="#0EA5E9"
-        fillOpacity="0.8"
-      />
-
-      {/* Animated Floating Mascot Body */}
-      <g className="rs-rumi-character">
-        {/* Cute Headphones Arc */}
-        <path
-          d="M32 68 C32 42, 100 42, 100 68"
-          fill="none"
-          stroke="#1E293B"
-          strokeWidth="6"
-          strokeLinecap="round"
-        />
-
-        {/* Little Star Sprout Antenna */}
-        <g className="rs-rumi-antenna">
-          <path
-            d="M66 46 L66 35"
-            stroke="#4F39F6"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-          />
-          <circle
-            className="rs-rumi-orb-glow"
-            cx="66"
-            cy="31"
-            r="9.5"
-            fill="#FBBF24"
-          />
-          <circle cx="66" cy="31" r="6" fill="#FBBF24" />
-          <circle cx="64.5" cy="29.5" r="2" fill="#FEF3C7" />
-        </g>
-
-        {/* Rounded Cloud/Bean Mascot Body */}
-        <rect
-          x="34"
-          y="46"
-          width="64"
-          height="62"
-          rx="30"
-          fill="url(#rumiBodyGrad)"
-        />
-        {/* Forehead highlight */}
-        <ellipse
-          cx="55"
-          cy="58"
-          rx="12"
-          ry="5"
-          fill="#FFFFFF"
-          fillOpacity="0.22"
-          transform="rotate(-14 55 58)"
-        />
-
-        {/* Headphone Cups */}
-        <rect
-          x="24"
-          y="63"
-          width="13"
-          height="24"
-          rx="6.5"
-          fill="url(#rumiEarGrad)"
-          stroke="#FFFFFF"
-          strokeWidth="2"
-        />
-        <rect
-          x="95"
-          y="63"
-          width="13"
-          height="24"
-          rx="6.5"
-          fill="url(#rumiEarGrad)"
-          stroke="#FFFFFF"
-          strokeWidth="2"
-        />
-
-        {/* Rosy Cheeks */}
-        <ellipse
-          cx="47"
-          cy="83"
-          rx="6"
-          ry="3.6"
-          fill="#FDA4AF"
-          fillOpacity="0.85"
-        />
-        <ellipse
-          cx="85"
-          cy="83"
-          rx="6"
-          ry="3.6"
-          fill="#FDA4AF"
-          fillOpacity="0.85"
-        />
-
-        {/* Blinking Happy Eyes */}
-        <g className="rs-rumi-eyes">
-          <circle cx="53" cy="74" r="4.8" fill="#121215" />
-          <circle cx="79" cy="74" r="4.8" fill="#121215" />
-          <circle cx="54.6" cy="72.3" r="1.8" fill="#FFFFFF" />
-          <circle cx="80.6" cy="72.3" r="1.8" fill="#FFFFFF" />
-        </g>
-
-        {/* Cheerful Smile */}
-        <path
-          d="M59 84 Q66 91 73 84"
-          fill="none"
-          stroke="#FFFFFF"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-
-        {/* Friendly Waving Arm */}
-        <g className="rs-rumi-arm">
-          <path
-            d="M97 86 Q111 79 109 67"
-            fill="none"
-            stroke="#6366F1"
-            strokeWidth="7"
-            strokeLinecap="round"
-          />
-          <circle cx="109" cy="66" r="4.5" fill="#FDE68A" />
-        </g>
-      </g>
-    </svg>
-  );
-}
-
 export function LearnerHomeDashboard({
   learnerFirstName,
   learnerDisplayName,
   timeGreeting,
   activeTierLabel,
+  activeTierKind,
+  rumiXpState,
   learnerIsPro,
   isUnlimitedPro,
   canCertificate,
@@ -326,6 +143,7 @@ export function LearnerHomeDashboard({
   const [chartMode, setChartMode] = useState<"courses" | "skills">("courses");
   const [hoveredCourseId, setHoveredCourseId] = useState<string | null>(null);
   const [mascotPaused, setMascotPaused] = useState(false);
+  const [evolutionModalOpen, setEvolutionModalOpen] = useState(false);
 
   // Exclude unfoldered zero-progress spam items from Home KPIs & charts whenever real folders exist
   const dashboardCourses = useMemo(() => {
@@ -482,38 +300,15 @@ export function LearnerHomeDashboard({
       }));
   }, [enrichedCourses, stats.overallPct]);
 
-  // Gamified Level & XP calculation
-  const levelInfo = useMemo(() => {
-    const xp =
-      totalPoints +
-      stats.completedChaptersAll * 25 +
-      notesCount * 10 +
-      reviewsCount * 15;
-    let current: (typeof LEVEL_TIERS)[number] = LEVEL_TIERS[0];
-    for (const tier of LEVEL_TIERS) {
-      if (xp >= tier.minXp) current = tier;
-    }
-    const levelProgressPct =
-      current.nextXp === null
-        ? 100
-        : Math.min(
-            100,
-            Math.max(
-              0,
-              Math.round(
-                ((xp - current.minXp) / (current.nextXp - current.minXp)) * 100
-              )
-            )
-          );
-    const xpToNext =
-      current.nextXp === null ? 0 : Math.max(0, current.nextXp - xp);
-    return {
-      xp,
-      ...current,
-      levelProgressPct,
-      xpToNext,
-    };
-  }, [totalPoints, stats.completedChaptersAll, notesCount, reviewsCount]);
+  // Real Gamified Level & XP calculation backed by Rumi XP ledger
+  const levelInfo = useMemo(
+    () => resolveRumiLevelInfo(rumiXpState.totalXp),
+    [rumiXpState.totalXp]
+  );
+
+  const chapterXpReward = computeAwardedXp("chapter_complete", activeTierKind).xp;
+  const noteXpReward = computeAwardedXp("lesson_note", activeTierKind).xp;
+  const courseXpReward = computeAwardedXp("course_complete", activeTierKind).xp;
 
   // Next reward target
   const nextReward = useMemo(() => {
@@ -542,22 +337,31 @@ export function LearnerHomeDashboard({
     };
   }, [leaderboard, learnerDisplayName, totalPoints]);
 
-  // Cute speech bubble line
+  // Cute speech bubble line reflecting Rumi evolution & next milestone
   const mascotQuote = useMemo(() => {
     if (stats.totalCourses === 0) {
-      return "Yuk masukkan kode kelas dari mentor biar kita bisa mulai petualangan belajarmu! ✨";
+      return `Halo! Aku ${levelInfo.formName} ${levelInfo.emoji} Masukkan kode kelas dari mentor agar kita bisa mulai kumpulkan XP & berevolusi!`;
+    }
+    if (levelInfo.stage === 5) {
+      return `Wujud Superior tercapai! 🏆 Aku kini Superior Rumi berbekal ${levelInfo.xp} XP. Pertahankan dominasimu sebagai Agency Legend!`;
     }
     if (stats.overallPct >= 100) {
-      return "Wih keren pol! Semua materi aktif sudah kamu tuntaskan. Cek sertifikatmu yuk! 🏆";
-    }
-    if (stats.overallPct >= 50) {
-      return `Sedikit lagi tembus 100%! Kamu sudah menyelesaikan ${stats.completedChaptersAll} bab. Gas lanjut! 🚀`;
+      return `Keren banget! Semua kelas selesai. Kumpulkan ${levelInfo.xpToNext} XP lagi biar aku berevolusi jadi ${levelInfo.nextTier?.formName}! ✨`;
     }
     if (stats.completedChaptersAll > 0) {
-      return `Awal yang manis! ${stats.completedChaptersAll} bab selesai. Tambah 1 bab lagi hari ini biar XP makin ngebut ⚡`;
+      return `Sekarang aku ${levelInfo.formName} (${levelInfo.title}). Butuh ${levelInfo.xpToNext} XP lagi untuk berevolusi ke ${levelInfo.nextTier?.formName}! 🚀`;
     }
-    return "Halo! Aku Rumi ✨ Pilih satu kelas pertamamu hari ini dan kumpulkan Poin Bintang pertamamu!";
-  }, [stats.totalCourses, stats.overallPct, stats.completedChaptersAll]);
+    return `Aku ${levelInfo.formName} ${levelInfo.emoji} Selesaikan 1 bab (+${chapterXpReward} XP) atau login tiap hari (+${
+      computeAwardedXp("daily_login", activeTierKind).xp
+    } XP) biar aku makin dewasa!`;
+  }, [
+    stats.totalCourses,
+    stats.overallPct,
+    stats.completedChaptersAll,
+    levelInfo,
+    chapterXpReward,
+    activeTierKind,
+  ]);
 
   // Search filter across all assignedItems & learnerFolders when top navbar search is typed
   const searchResults = useMemo(() => {
@@ -578,19 +382,19 @@ export function LearnerHomeDashboard({
     return { matchedFolders, matchedCourses };
   }, [searchQuery, assignedItems, learnerFolders]);
 
-  // Missions checklist
+  // Missions checklist with real tier-adjusted XP rewards
   const missions = [
     {
       id: "first-chapter",
       label: "Selesaikan 1 bab pelajaran pertamamu",
       done: stats.completedChaptersAll >= 1,
-      rewardHint: "+Poin Bintang",
+      rewardHint: `+${chapterXpReward} XP`,
     },
     {
       id: "first-note",
       label: "Tulis 1 catatan belajar pribadi di kelas",
       done: notesCount >= 1,
-      rewardHint: "+10 XP",
+      rewardHint: `+${noteXpReward} XP`,
     },
     {
       id: "hundred-pts",
@@ -602,7 +406,7 @@ export function LearnerHomeDashboard({
       id: "finish-course",
       label: "Tuntaskan 1 kelas hingga progres 100%",
       done: stats.completedCoursesCount >= 1,
-      rewardHint: "Siap Sertifikat",
+      rewardHint: `+${courseXpReward} XP`,
     },
   ];
   const doneMissionsCount = missions.filter((m) => m.done).length;
@@ -747,36 +551,50 @@ export function LearnerHomeDashboard({
                 onClick={() => setMascotPaused((p) => !p)}
                 aria-label={
                   mascotPaused
-                    ? "Putar animasi maskot Rumi"
-                    : "Jeda animasi maskot Rumi"
+                    ? `Putar animasi ${levelInfo.formName}`
+                    : `Jeda animasi ${levelInfo.formName}`
                 }
                 title={
                   mascotPaused
-                    ? "Klik Rumi untuk memutar animasi"
-                    : "Klik Rumi untuk jeda animasi"
+                    ? `Klik ${levelInfo.formName} untuk memutar animasi`
+                    : `Klik ${levelInfo.formName} untuk jeda animasi`
                 }
                 className="rs-rumi-trigger inline-flex items-center justify-center bg-transparent border-0 p-0 rounded-full hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4F39F6] cursor-pointer"
               >
-                <RumiMascotIllustration paused={mascotPaused} />
+                <RumiMascotIllustration
+                  stage={levelInfo.stage}
+                  paused={mascotPaused}
+                />
               </button>
               <div className="sm:hidden space-y-1">
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/90 border border-[#E2E8F0] px-2.5 py-0.5 text-[11px] font-bold text-[#4F39F6]">
+                <button
+                  type="button"
+                  onClick={() => setEvolutionModalOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-full bg-white/90 border border-[#E2E8F0] px-2.5 py-0.5 text-[11px] font-bold text-[#4F39F6] cursor-pointer"
+                >
                   <span>{levelInfo.emoji}</span>
                   <span>
-                    Lv.{levelInfo.level} • {levelInfo.title}
+                    Lv.{levelInfo.level} • {levelInfo.formName}
                   </span>
-                </span>
+                </button>
               </div>
             </div>
 
             <div className="min-w-0 flex-1 space-y-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-white/95 border border-[#EAECEF] px-2.5 py-0.5 text-[11px] font-extrabold text-[#4F39F6] shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setEvolutionModalOpen(true)}
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-white/95 hover:bg-white border border-[#EAECEF] hover:border-[#4F39F6]/40 px-2.5 py-0.5 text-[11px] font-extrabold text-[#4F39F6] shadow-2xs transition-colors cursor-pointer"
+                >
                   <span>{levelInfo.emoji}</span>
                   <span>
-                    Lv.{levelInfo.level} • {levelInfo.title}
+                    Lv.{levelInfo.level} • {levelInfo.formName}
                   </span>
-                </span>
+                  <span className="text-[#64748B] font-semibold">
+                    ({levelInfo.title})
+                  </span>
+                </button>
                 <span
                   className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold shadow-2xs ${
                     learnerIsPro
@@ -793,6 +611,32 @@ export function LearnerHomeDashboard({
                   />
                   <span>Paket {activeTierLabel}</span>
                 </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF7ED] border border-[#FED7AA] px-2.5 py-0.5 text-[11px] font-bold text-[#EA580C]">
+                  <Flame size={11} />
+                  <span>Streak {rumiXpState.loginStreak} Hari</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEvolutionModalOpen(true)}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold cursor-pointer transition-colors ${
+                    activeTierKind === "pro"
+                      ? "bg-[#ECFDF5] border-[#10B981]/30 text-[#059669]"
+                      : activeTierKind === "basic" ||
+                        activeTierKind === "custom"
+                      ? "bg-[#EEF2FF] border-[#4F39F6]/30 text-[#4F39F6]"
+                      : "bg-[#FFFBEB] hover:bg-[#FEF3C7] border-[#FDE68A] text-[#B45309]"
+                  }`}
+                >
+                  <Sparkles size={10} />
+                  <span>
+                    {activeTierKind === "pro"
+                      ? "2× XP PRO Aktif"
+                      : activeTierKind === "basic" ||
+                        activeTierKind === "custom"
+                      ? "1.5× XP Basic Aktif"
+                      : "PRO = 2× XP"}
+                  </span>
+                </button>
               </div>
 
               <div>
@@ -804,16 +648,25 @@ export function LearnerHomeDashboard({
                 </p>
               </div>
 
-              {/* XP Progress Bar */}
-              <div className="max-w-md space-y-1.5 pt-0.5">
-                <div className="flex items-center justify-between text-[11px] font-bold">
-                  <span className="text-[#4F39F6] tabular-nums">
-                    {levelInfo.xp.toLocaleString()} XP Terkumpul
-                  </span>
+              {/* XP Progress Bar + Evolution Modal Trigger */}
+              <div className="max-w-lg space-y-1.5 pt-0.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#4F39F6] tabular-nums">
+                      {levelInfo.xp.toLocaleString()} XP Terkumpul
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEvolutionModalOpen(true)}
+                      className="text-[10px] font-bold text-[#6D28D9] hover:text-[#4F39F6] underline cursor-pointer"
+                    >
+                      Lihat 5 Tahap Evolusi ✨
+                    </button>
+                  </div>
                   <span className="text-[#64748B] tabular-nums">
                     {levelInfo.nextXp === null
-                      ? "Level Maksimal Tercapai 🎉"
-                      : `${levelInfo.xpToNext} XP lagi ke Lv.${levelInfo.level + 1}`}
+                      ? "Wujud Superior Tercapai! 🏆"
+                      : `${levelInfo.xpToNext} XP lagi ke ${levelInfo.nextTier?.formName}`}
                   </span>
                 </div>
                 <progress
@@ -1747,6 +1600,15 @@ export function LearnerHomeDashboard({
           )}
         </article>
       </section>
+
+      {/* Interactive 5-Stage Evolution & XP Rules Modal */}
+      <RumiEvolutionModal
+        open={evolutionModalOpen}
+        onClose={() => setEvolutionModalOpen(false)}
+        xpState={rumiXpState}
+        activeTierKind={activeTierKind}
+        onOpenUpgradeModal={onOpenUpgradeModal}
+      />
     </div>
   );
 }

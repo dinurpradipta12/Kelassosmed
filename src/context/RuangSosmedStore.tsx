@@ -110,6 +110,11 @@ import {
   type PackageFeatureKey,
   type PackageTierKind,
 } from "@/lib/entitlements";
+import {
+  awardRumiXpEvent,
+  getLocalDateKey,
+  resolveXpUserKey,
+} from "@/lib/rumi-xp";
 
 export {
   ALL_FALSE_ENTITLEMENTS,
@@ -2764,6 +2769,7 @@ export function RuangSosmedProvider({
   const [isStaffDbSession, setIsStaffDbSession] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const learnerTierKindRef = useRef<PackageTierKind>("free");
   const curriculumPushTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -8688,6 +8694,14 @@ export function RuangSosmedProvider({
         });
       }
 
+      awardRumiXpEvent({
+        userKey: resolveXpUserKey(activeUser),
+        type: "chapter_complete",
+        dedupeKey: `chapter:${chapterId}`,
+        detail: targetCh?.title,
+        tierKind: learnerTierKindRef.current,
+      });
+
       return true;
     },
     [state.courseSections]
@@ -8802,6 +8816,14 @@ export function RuangSosmedProvider({
                 )
               : prev.leaderboard,
         };
+      });
+
+      awardRumiXpEvent({
+        userKey: resolveXpUserKey(activeUser),
+        type: "quiz_submit",
+        dedupeKey: `quiz:${payload.title.trim().toLowerCase()}:${getLocalDateKey()}`,
+        detail: payload.title,
+        tierKind: learnerTierKindRef.current,
       });
     },
     []
@@ -9511,6 +9533,15 @@ export function RuangSosmedProvider({
         lessonKey: chapterOrLessonKey,
         content,
       });
+      if (content.trim().length > 0) {
+        awardRumiXpEvent({
+          userKey: resolveXpUserKey(activeUser),
+          type: "lesson_note",
+          dedupeKey: `note:${chapterOrLessonKey}`,
+          detail: chapterOrLessonKey,
+          tierKind: learnerTierKindRef.current,
+        });
+      }
     },
     []
   );
@@ -9540,6 +9571,18 @@ export function RuangSosmedProvider({
         ...prev,
         rsLessonReviews: [newReview, ...(prev.rsLessonReviews ?? [])],
       }));
+
+      awardRumiXpEvent({
+        userKey: resolveXpUserKey({
+          name: resolvedName,
+          username: resolvedUsername,
+          email: activeUser.email,
+        }),
+        type: "lesson_review",
+        dedupeKey: `review:${payload.lessonKey}`,
+        detail: payload.lessonKey,
+        tierKind: learnerTierKindRef.current,
+      });
 
       // Update Supabase contents.settings_json.reviews so all learners across all browsers & devices sync
       if (isSupabaseConfigured) {
@@ -10480,6 +10523,18 @@ export function RuangSosmedProvider({
         };
       });
 
+      awardRumiXpEvent({
+        userKey: resolveXpUserKey({
+          email: claimEmail,
+          name: claimName,
+          username: activeSess.username,
+        }),
+        type: "reward_claim",
+        dedupeKey: `reward:${reward.id}:${claimRecord.id}`,
+        detail: reward.title,
+        tierKind: learnerTierKindRef.current,
+      });
+
       return {
         success: true,
         message: `Selamat! Anda berhasil menukarkan "${reward.title}" (-${reward.pointsCost} pts).`,
@@ -11239,6 +11294,8 @@ export function RuangSosmedProvider({
       state.adminPreviewTierOverride,
     ]
   );
+
+  learnerTierKindRef.current = learnerAccess.tierKind;
 
   const value: RuangSosmedStoreContextValue = {
     ...state,

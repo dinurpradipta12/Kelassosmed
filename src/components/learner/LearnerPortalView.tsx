@@ -75,6 +75,16 @@ import {
   estimateWikiReadTime,
 } from "@/components/wiki/WikiArticleReader";
 import { LearnerHomeDashboard } from "@/components/learner/LearnerHomeDashboard";
+import {
+  EMPTY_RUMI_XP_STATE,
+  RUMI_LEVEL_TIERS,
+  RUMI_XP_UPDATED_EVENT,
+  awardRumiXpEvent,
+  claimDailyLoginXp,
+  loadRumiXpState,
+  resolveXpUserKey,
+  type RumiXpProfileState,
+} from "@/lib/rumi-xp";
 
 interface LearnerPortalViewProps {
   currentUser?: AuthenticatedUser | null;
@@ -1113,6 +1123,197 @@ export function LearnerPortalView({
       setTimeGreeting("Selamat malam");
     }
   }, []);
+
+  // Real Rumi XP Ledger, Daily Login (+1 XP / Streak), Tier Bonus & Evolution Tracker
+  const [rumiXpState, setRumiXpState] =
+    useState<RumiXpProfileState>(EMPTY_RUMI_XP_STATE);
+  const xpUserKey = React.useMemo(
+    () =>
+      resolveXpUserKey({
+        email: currentUser?.email,
+        username: currentUser?.username,
+        name: activeLearnerDisplayName,
+      }),
+    [currentUser?.email, currentUser?.username, activeLearnerDisplayName]
+  );
+
+  // Claim Daily Login XP (+1 XP FREE / +2 XP PRO) + Tier Activation Bonus (+15 Basic / +35 PRO)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const loginRes = claimDailyLoginXp(xpUserKey, learnerAccess.tierKind);
+    if (loginRes.awarded) {
+      onShowToast(
+        loginRes.streakBonusXp > 0
+          ? `🔥 Streak ${loginRes.streak} Hari! Login Harian + Bonus Streak total +${loginRes.xpAdded} XP untuk Rumi!`
+          : `🌱 Login Harian otomatis! +${loginRes.xpAdded} XP untuk Rumi (Streak ${loginRes.streak} hari).`
+      );
+      if (loginRes.evolved) {
+        const evolvedTier = RUMI_LEVEL_TIERS.find(
+          (t) => t.level === loginRes.nextLevel
+        );
+        if (evolvedTier) {
+          onShowToast(
+            `${evolvedTier.emoji} Selamat! Rumi berevolusi ke Lv.${evolvedTier.level} • ${evolvedTier.formName}!`
+          );
+        }
+      }
+    }
+
+    if (learnerAccess.tierKind === "basic") {
+      const bonus = awardRumiXpEvent({
+        userKey: xpUserKey,
+        type: "tier_bonus_basic",
+        dedupeKey: "tier_bonus:basic",
+        detail: learnerAccess.activePackage?.name || "Paket Basic",
+        tierKind: learnerAccess.tierKind,
+      });
+      if (bonus.awarded) {
+        onShowToast(
+          `⚡ Bonus Paket Basic! Rumi mendapat +${bonus.xpAdded} XP & Booster 1.5× XP aktif.`
+        );
+      }
+    } else if (learnerAccess.tierKind === "pro") {
+      const bonus = awardRumiXpEvent({
+        userKey: xpUserKey,
+        type: "tier_bonus_pro",
+        dedupeKey: "tier_bonus:pro",
+        detail: learnerAccess.activePackage?.name || "Paket PRO",
+        tierKind: learnerAccess.tierKind,
+      });
+      if (bonus.awarded) {
+        onShowToast(
+          `⚡ Bonus Paket PRO! Rumi mendapat +${bonus.xpAdded} XP & Booster 2× XP aktif.`
+        );
+      }
+    }
+
+    setRumiXpState(loadRumiXpState(xpUserKey));
+
+    const handleXpUpdated = (e: Event) => {
+      const detail = (
+        e as CustomEvent<{
+          userKey?: string;
+          state?: RumiXpProfileState;
+          evolved?: boolean;
+          nextLevel?: number;
+        }>
+      ).detail;
+      if (detail?.userKey && detail.userKey !== xpUserKey) return;
+      if (detail?.state) {
+        setRumiXpState(detail.state);
+      } else {
+        setRumiXpState(loadRumiXpState(xpUserKey));
+      }
+      if (detail?.evolved && detail.nextLevel) {
+        const evolvedTier = RUMI_LEVEL_TIERS.find(
+          (t) => t.level === detail.nextLevel
+        );
+        if (evolvedTier) {
+          onShowToast(
+            `${evolvedTier.emoji} Rumi naik ke Lv.${evolvedTier.level} • ${evolvedTier.formName}!`
+          );
+        }
+      }
+    };
+
+    const handleStorage = () => {
+      setRumiXpState(loadRumiXpState(xpUserKey));
+    };
+
+    window.addEventListener(RUMI_XP_UPDATED_EVENT, handleXpUpdated);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(RUMI_XP_UPDATED_EVENT, handleXpUpdated);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [
+    xpUserKey,
+    learnerAccess.tierKind,
+    learnerAccess.activePackage?.name,
+    onShowToast,
+  ]);
+
+  // Reconcile completed chapters (+2 XP/bab) & 100% completed courses (+5 XP/kelas) into Rumi XP ledger
+  useEffect(() => {
+    if (typeof window === "undefined" || assignedItems.length === 0) return;
+
+    let changed = false;
+    let evolvedToLevel: number | null = null;
+
+    assignedItems.forEach((item) => {
+      const secs =
+        getCourseCurriculum(item.title) ||
+        courseCurriculums?.[item.title.trim().toLowerCase()] ||
+        [];
+      const visibleChs = (secs || [])
+        .filter((s) => !s.hidden)
+        .flatMap((s) => (s.chapters || []).filter((c) => !c.hidden));
+
+      visibleChs.forEach((ch) => {
+        if (!ch.completed) return;
+        const chRes = awardRumiXpEvent({
+          userKey: xpUserKey,
+          type: "chapter_complete",
+          dedupeKey: `chapter:${ch.id}`,
+          detail: ch.title,
+          tierKind: learnerAccess.tierKind,
+          silent: true,
+        });
+        if (chRes.awarded) {
+          changed = true;
+          if (chRes.evolved) evolvedToLevel = chRes.nextLevel;
+        }
+      });
+
+      const pct =
+        visibleChs.length > 0
+          ? Math.round(
+              (visibleChs.filter((c) => c.completed).length / visibleChs.length) *
+                100
+            )
+          : item.progressPercent || 0;
+
+      if (pct >= 100) {
+        const courseRes = awardRumiXpEvent({
+          userKey: xpUserKey,
+          type: "course_complete",
+          dedupeKey: `course_complete:${item.title.trim().toLowerCase()}`,
+          detail: item.title,
+          tierKind: learnerAccess.tierKind,
+          silent: true,
+        });
+        if (courseRes.awarded) {
+          changed = true;
+          if (courseRes.evolved) evolvedToLevel = courseRes.nextLevel;
+          onShowToast(
+            `🎓 Kelas "${item.title}" tuntas 100%! Rumi mendapat +${courseRes.xpAdded} XP!`
+          );
+        }
+      }
+    });
+
+    if (changed) {
+      setRumiXpState(loadRumiXpState(xpUserKey));
+      if (evolvedToLevel) {
+        const evolvedTier = RUMI_LEVEL_TIERS.find(
+          (t) => t.level === evolvedToLevel
+        );
+        if (evolvedTier) {
+          onShowToast(
+            `${evolvedTier.emoji} Selamat! Rumi tumbuh menjadi ${evolvedTier.formName} (Lv.${evolvedTier.level})!`
+          );
+        }
+      }
+    }
+  }, [
+    xpUserKey,
+    assignedItems,
+    courseCurriculums,
+    getCourseCurriculum,
+    learnerAccess.tierKind,
+    onShowToast,
+  ]);
 
   // Trenning My Learning & Wiki State (ref_16, ref_16b, ref_23)
   const [myLearningStatusFilter, setMyLearningStatusFilter] = useState<
@@ -2216,6 +2417,8 @@ export function LearnerPortalView({
                 learnerDisplayName={activeLearnerDisplayName}
                 timeGreeting={timeGreeting}
                 activeTierLabel={activeTierLabel}
+                activeTierKind={learnerAccess.tierKind}
+                rumiXpState={rumiXpState}
                 learnerIsPro={learnerIsPro}
                 isUnlimitedPro={learnerAccess.isUnlimitedPro}
                 canCertificate={canCertificate}

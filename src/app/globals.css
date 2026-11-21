@@ -1045,6 +1045,60 @@ html[data-theme-mode="dark"] progress.rs-progress-bar {
   }
 }
 
+@keyframes rs-rumi-wing-left {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-12deg);
+  }
+}
+
+@keyframes rs-rumi-wing-right {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(12deg);
+  }
+}
+
+@keyframes rs-rumi-halo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rs-rumi-crown-bob {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3.5px);
+  }
+}
+
+@keyframes rs-rumi-holo-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(3deg);
+  }
+}
+
+@keyframes rs-rumi-cape-sway {
+  0%, 100% {
+    transform: rotate(-2.5deg);
+  }
+  50% {
+    transform: rotate(2.5deg);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .rs-mascot-float {
     animation: rs-float-gentle 3.8s ease-in-out infinite;
@@ -1077,11 +1131,13 @@ html[data-theme-mode="dark"] progress.rs-progress-bar {
     animation: rs-rumi-blink 4.2s ease-in-out infinite;
   }
   .rs-rumi-arm {
-    transform-origin: 96px 86px;
+    transform-box: fill-box;
+    transform-origin: left bottom;
     animation: rs-rumi-wave 1.35s ease-in-out infinite;
   }
   .rs-rumi-antenna {
-    transform-origin: 66px 46px;
+    transform-box: fill-box;
+    transform-origin: bottom center;
     animation: rs-rumi-antenna-sway 2.6s ease-in-out infinite;
   }
   .rs-rumi-orb-glow {
@@ -1098,6 +1154,36 @@ html[data-theme-mode="dark"] progress.rs-progress-bar {
     transform-box: fill-box;
     transform-origin: center;
     animation: rs-dot-drift 3.9s ease-in-out -1.6s infinite;
+  }
+  .rs-rumi-wing-l {
+    transform-box: fill-box;
+    transform-origin: right center;
+    animation: rs-rumi-wing-left 2.3s ease-in-out infinite;
+  }
+  .rs-rumi-wing-r {
+    transform-box: fill-box;
+    transform-origin: left center;
+    animation: rs-rumi-wing-right 2.3s ease-in-out infinite;
+  }
+  .rs-rumi-halo {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-halo-spin 16s linear infinite;
+  }
+  .rs-rumi-crown {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-crown-bob 2.5s ease-in-out infinite;
+  }
+  .rs-rumi-holo {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-holo-float 2.9s ease-in-out infinite;
+  }
+  .rs-rumi-cape {
+    transform-box: fill-box;
+    transform-origin: top center;
+    animation: rs-rumi-cape-sway 3.1s ease-in-out infinite;
   }
 }
 
