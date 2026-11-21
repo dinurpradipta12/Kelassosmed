@@ -229,3 +229,28 @@ export function isMissingSubDateColumnError(error: any): boolean {
     msg.includes("pro_package_name")
   );
 }
+
+/**
+ * Mendeteksi error kolom paket/trial belum tersedia sebelum migrasi 017 dijalankan di Supabase.
+ */
+export function isMissingTierV2ColumnError(error: any): boolean {
+  if (!error) return false;
+  const code = String(error.code || "");
+  const msg = String(error.message || "").toLowerCase();
+  const details = String(error.details || "").toLowerCase();
+  const matchesCol =
+    msg.includes("has_used_trial") ||
+    msg.includes("trial_used_at") ||
+    msg.includes("pro_package_id") ||
+    msg.includes("pro_billing_cycle") ||
+    msg.includes("billing_cycle") ||
+    msg.includes("duration_days") ||
+    msg.includes("request_type") ||
+    msg.includes("target_item_key") ||
+    msg.includes("target_item_title") ||
+    details.includes("has_used_trial") ||
+    details.includes("pro_package_id") ||
+    details.includes("pro_billing_cycle");
+  if (matchesCol) return true;
+  return code === "42703" || code === "PGRST204" || code === "42P01";
+}

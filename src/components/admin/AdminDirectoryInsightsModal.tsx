@@ -58,12 +58,18 @@ export interface InsightsProRequestRecord {
   id: string;
   user_email: string;
   user_name: string;
+  package_id?: string | null;
   package_name: string;
   price_label: string;
   payment_method: string;
   buyer_contact?: string;
   proof_url?: string | null;
   status?: string | null;
+  billing_cycle?: string | null;
+  duration_days?: number | null;
+  request_type?: string | null;
+  target_item_key?: string | null;
+  target_item_title?: string | null;
   created_at: string;
 }
 

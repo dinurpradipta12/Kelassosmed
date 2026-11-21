@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useState,
   useCallback,
+  useMemo,
   useRef,
 } from "react";
 import {
@@ -73,14 +74,70 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 import {
   isProSubscriptionActive,
   isMissingSubDateColumnError,
+  isMissingTierV2ColumnError,
 } from "@/lib/subscription-utils";
 import {
   INITIAL_REWARDS_CATALOG,
   type RewardItem,
   type ClaimedRewardRecord,
 } from "@/lib/rewards-data";
+import {
+  ALL_FALSE_ENTITLEMENTS,
+  ALL_TRUE_ENTITLEMENTS,
+  DEFAULT_LEARNER_PRO_FEATURES,
+  PACKAGE_FEATURE_DEFINITIONS,
+  buildPackageBenefitLines,
+  buildUnlockItemKey,
+  computeTrial7DaysPriceIdr,
+  createDefaultTierPackages,
+  evaluateChapterAccess,
+  evaluateCourseCardAccess,
+  formatIdr,
+  normalizeProPackages,
+  parseIdrFromLabel,
+  resolveLearnerAccess,
+  type BillingCycle,
+  type ChapterAccessResult,
+  type CourseCardAccessResult,
+  type LearnerAccessState,
+  type LearnerProPackageItem,
+  type LearnerProPlanConfig,
+  type LearnerUnlockedItemRecord,
+  type ModuleAccessMode,
+  type PackageEntitlements,
+  type PackageFeatureKey,
+  type PackageTierKind,
+} from "@/lib/entitlements";
+
+export {
+  ALL_FALSE_ENTITLEMENTS,
+  ALL_TRUE_ENTITLEMENTS,
+  DEFAULT_LEARNER_PRO_FEATURES,
+  PACKAGE_FEATURE_DEFINITIONS,
+  buildPackageBenefitLines,
+  buildUnlockItemKey,
+  computeTrial7DaysPriceIdr,
+  createDefaultTierPackages,
+  evaluateChapterAccess,
+  evaluateCourseCardAccess,
+  formatIdr,
+  parseIdrFromLabel,
+  resolveLearnerAccess,
+  type BillingCycle,
+  type ChapterAccessResult,
+  type CourseCardAccessResult,
+  type LearnerAccessState,
+  type LearnerProPackageItem,
+  type LearnerProPlanConfig,
+  type LearnerUnlockedItemRecord,
+  type ModuleAccessMode,
+  type PackageEntitlements,
+  type PackageFeatureKey,
+  type PackageTierKind,
+};
 
 let profilesHasSubDateCols = true;
+let profilesHasTierV2Cols = true;
 
 export interface ContentStatusSegment {
   label: string;
@@ -95,58 +152,8 @@ export interface CohortProjectItem {
   color: string;
   description?: string;
   count?: number;
+  shareWithAllLearners?: boolean;
 }
-
-export interface LearnerProPackageItem {
-  id: string;
-  name: string;
-  badge: string;
-  priceLabel: string;
-  periodLabel: string;
-  description: string;
-  ctaButtonLabel: string;
-  featuresHeading: string;
-  features: string[];
-  highlighted?: boolean;
-  qrCodeUrl?: string;
-}
-
-export interface LearnerProPlanConfig {
-  modalTitle: string;
-  modalSubtitle: string;
-  badgeText: string;
-  planName: string;
-  priceLabel: string;
-  periodLabel: string;
-  planSummary: string;
-  featuresHeading: string;
-  features: string[];
-  footerNote: string;
-  ctaButtonLabel: string;
-  bannerBadge: string;
-  bannerHeading: string;
-  bannerDescription: string;
-  bannerPeriodLabel: string;
-  bannerCtaLabel: string;
-  qrCodeUrl: string;
-  merchantName: string;
-  bankName: string;
-  accountNumber: string;
-  accountHolder: string;
-  whatsappNumber: string;
-  paymentInstructions: string;
-  packages?: LearnerProPackageItem[];
-}
-
-export const DEFAULT_LEARNER_PRO_FEATURES = [
-  "Akses Kelas & Materi Lanjutan (Advance Courses & Section 2–3)",
-  "Download File Template & Resource Kelas (PDF, Notion, ZIP, Hook Sheet)",
-  "Direktori Wiki & SOP Agency (Kalender Konten, 120 Hook Script, SOP Meta Ads)",
-  "Klaim & Download Sertifikat Resmi HD (Official Certificate PDF/PNG)",
-  "Review Tugas Praktik / Audit Akun 1-on-1 oleh Mentor",
-  "Tanya Jawab & Diskusi Bab langsung dengan Mentor (Chapter Q&A)",
-  "Fitur Catatan Pribadi & Simpan Favorit (Personal Lesson Notes & Favorites)",
-];
 
 export interface MaintenanceConfig {
   enabled: boolean;
@@ -178,25 +185,25 @@ export const DEFAULT_LEARNER_PAGES_CONFIG: LearnerPagesVisibilityConfig = {
 };
 
 export const DEFAULT_LEARNER_PRO_CONFIG: LearnerProPlanConfig = {
-  modalTitle: "Upgrade to Ruang Sosmed 2.0 Learner PRO",
+  modalTitle: "Pilih Paket Membership Ruang Sosmed 2.0",
   modalSubtitle:
-    "Unlock all 7 premium learning features, templates, mentor reviews, and verified certificates",
-  badgeText: "LEARNER PRO MEMBERSHIP",
-  planName: "Creator Academy Plan",
-  priceLabel: "Rp 149.000",
-  periodLabel: "/ month (or $14/mo)",
+    "Bandingkan paket FREE, Basic, dan Pro. Tersedia uji coba 7 hari (1× pakai) atau langganan 30 hari.",
+  badgeText: "LEARNER PRO UNLIMITED",
+  planName: "Pro",
+  priceLabel: "Rp 150.000",
+  periodLabel: "/ bulan",
   planSummary:
-    "Full access to every advanced social media track, downloadable agency SOP, and 1-on-1 mentor review.",
-  featuresHeading: "7 Premium Learner Features Included",
+    "Semua fitur FREE dan Basic ditambah akses penuh tanpa batas ke seluruh modul, Sertifikat HD, dan Review Tugas 1-on-1 bersama Mentor.",
+  featuresHeading: "Semua 7 Fitur Premium Tanpa Batas",
   features: [...DEFAULT_LEARNER_PRO_FEATURES],
-  footerNote: "Instant activation • Cancel anytime",
-  ctaButtonLabel: "Activate Learner PRO",
-  bannerBadge: "KHUSUS LEARNER • PRO PASS",
-  bannerHeading: "Upgrade ke Learner PRO — Buka Semua 7 Fitur Eksklusif",
+  footerNote: "Percobaan 7 hari berlaku 1× khusus member baru • Langganan fleksibel 30 hari",
+  ctaButtonLabel: "Aktifkan Paket Pro",
+  bannerBadge: "KHUSUS LEARNER • BASIC & PRO PASS",
+  bannerHeading: "Upgrade Paket Belajar — Pilih Basic atau Pro Unlimited",
   bannerDescription:
-    "Akses Bab Lanjutan (Advance Modules), Download Template & Hook Sheet, Direktori Wiki & SOP Agency, Klaim Sertifikat HD, Review Tugas 1-on-1 bersama Mentor, Q&A Diskusi Bab, serta Catatan Pribadi & Simpan Favorit.",
+    "Atur akses sesuai kebutuhan: mulai dari Paket FREE, Paket Basic (6 modul/materi + buka lanjutan pakai Poin), atau Paket Pro Unlimited semua fitur & modul.",
   bannerPeriodLabel: "/ bulan",
-  bannerCtaLabel: "Upgrade ke Learner PRO",
+  bannerCtaLabel: "Lihat Pilihan Paket",
   qrCodeUrl: "",
   merchantName: "Ruang Sosmed 2.0",
   bankName: "BCA / Mandiri",
@@ -205,54 +212,11 @@ export const DEFAULT_LEARNER_PRO_CONFIG: LearnerProPlanConfig = {
   whatsappNumber: "6281234567890",
   paymentInstructions:
     "Scan kode QRIS di atas melalui aplikasi m-Banking atau e-Wallet (GoPay, OVO, DANA, ShopeePay), lalu konfirmasi pembayaran Anda.",
-  packages: [
-    {
-      id: "pkg-creator-academy",
-      name: "Creator Academy Plan",
-      badge: "LEARNER PRO MEMBERSHIP",
-      priceLabel: "Rp 149.000",
-      periodLabel: "/ month (or $14/mo)",
-      description:
-        "Full access to every advanced social media track, downloadable agency SOP, and 1-on-1 mentor review.",
-      ctaButtonLabel: "Activate Learner PRO",
-      featuresHeading: "7 Premium Learner Features Included",
-      features: [...DEFAULT_LEARNER_PRO_FEATURES],
-      highlighted: true,
-      qrCodeUrl: "",
-    },
-  ],
+  packagesSchemaVersion: 2,
+  packages: createDefaultTierPackages(),
 };
 
-export function getNormalizedProPackages(
-  cfg?: Partial<LearnerProPlanConfig> | null
-): LearnerProPackageItem[] {
-  const merged = {
-    ...DEFAULT_LEARNER_PRO_CONFIG,
-    ...(cfg || {}),
-  };
-  if (Array.isArray(merged.packages) && merged.packages.length > 0) {
-    return merged.packages;
-  }
-  return [
-    {
-      id: "pkg-creator-academy",
-      name: merged.planName || "Creator Academy Plan",
-      badge: merged.badgeText || "LEARNER PRO MEMBERSHIP",
-      priceLabel: merged.priceLabel || "Rp 149.000",
-      periodLabel: merged.periodLabel || "/ month (or $14/mo)",
-      description: merged.planSummary || "",
-      ctaButtonLabel: merged.ctaButtonLabel || "Activate Learner PRO",
-      featuresHeading:
-        merged.featuresHeading || "7 Premium Learner Features Included",
-      features:
-        Array.isArray(merged.features) && merged.features.length > 0
-          ? merged.features
-          : [...DEFAULT_LEARNER_PRO_FEATURES],
-      highlighted: true,
-      qrCodeUrl: "",
-    },
-  ];
-}
+export const getNormalizedProPackages = normalizeProPackages;
 
 export interface AdminActivityNotification {
   id: string;
@@ -351,6 +315,12 @@ interface PersistedGlobalState {
   // Learner Subscription / Premium Tier State (Learner-Only Subscription)
   learnerIsPro: boolean;
   learnerSubscriptions: Record<string, "PRO" | "Free">;
+  learnerPackageId: string | null;
+  learnerPackageName: string | null;
+  learnerBillingCycle: "7d_trial" | "30d" | "custom" | null;
+  learnerHasUsedTrial: boolean;
+  learnerUnlockedItems: LearnerUnlockedItemRecord[];
+  adminPreviewTierOverride: "auto" | "free" | "basic" | "pro";
 
   // Rewards Redemption Center (Rewards Catalog & Claim History)
   rewardsCatalog: RewardItem[];
@@ -653,6 +623,12 @@ function buildCompactChapterOutline(
           locked: Boolean(ch.locked),
           points: ch.points,
           isPro: Boolean(ch.isPro),
+          ...(ch.unlockPointsCost !== undefined
+            ? { unlockPointsCost: ch.unlockPointsCost }
+            : {}),
+          ...(ch.unlockPriceIdr !== undefined
+            ? { unlockPriceIdr: ch.unlockPriceIdr }
+            : {}),
           hidden: Boolean(ch.hidden),
           videoUrl: ch.videoUrl ? ch.videoUrl : undefined,
         }))
@@ -768,6 +744,7 @@ async function pushContentToSupabase(
       folder_name: item.folderName || null,
       access_code: resolvedAccessCode,
       points_reward: 100,
+      is_pro_only: Boolean(item.isPro),
       status: "published",
       urgency: item.urgency === "Urgent" ? "urgent" : "not_urgent",
       category_tags:
@@ -783,6 +760,13 @@ async function pushContentToSupabase(
         explorer_meta: {
           itemType: item.type,
           isFolder: item.type === "Folder",
+          isPro: Boolean(item.isPro),
+          ...(item.unlockPriceIdr !== undefined
+            ? { unlockPriceIdr: item.unlockPriceIdr }
+            : {}),
+          ...(item.unlockPointsCost !== undefined
+            ? { unlockPointsCost: item.unlockPointsCost }
+            : {}),
           category: item.category,
           bannerGradient: item.bannerGradient,
           bannerAccent:
@@ -1143,6 +1127,78 @@ async function syncCohortProjectsToSupabase(
 const ADMIN_NOTIFS_STORAGE_KEY = "ruang_sosmed_admin_notifications_v1";
 const LEARNER_NOTIFS_STORAGE_KEY = "ruang_sosmed_learner_notifications_v1";
 
+function readLocalTrialUsed(email?: string | null): boolean {
+  if (typeof window === "undefined") return false;
+  const cleanEmail = (email || "").trim().toLowerCase();
+  if (!cleanEmail) return false;
+  try {
+    return (
+      window.localStorage.getItem(`ruang_sosmed_trial_used_${cleanEmail}`) ===
+      "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function markLocalTrialUsed(email?: string | null): void {
+  if (typeof window === "undefined") return;
+  const cleanEmail = (email || "").trim().toLowerCase();
+  if (!cleanEmail) return;
+  try {
+    window.localStorage.setItem(
+      `ruang_sosmed_trial_used_${cleanEmail}`,
+      "true"
+    );
+  } catch {}
+}
+
+function readLocalUnlockedItems(
+  email?: string | null
+): LearnerUnlockedItemRecord[] {
+  if (typeof window === "undefined") return [];
+  const cleanEmail = (email || "").trim().toLowerCase();
+  if (!cleanEmail) return [];
+  try {
+    const raw = window.localStorage.getItem(
+      `ruang_sosmed_unlocked_items_v1_${cleanEmail}`
+    );
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistLocalUnlockedItems(
+  email: string | null | undefined,
+  items: LearnerUnlockedItemRecord[]
+): void {
+  if (typeof window === "undefined") return;
+  const cleanEmail = (email || "").trim().toLowerCase();
+  if (!cleanEmail) return;
+  try {
+    window.localStorage.setItem(
+      `ruang_sosmed_unlocked_items_v1_${cleanEmail}`,
+      JSON.stringify(items)
+    );
+  } catch {}
+}
+
+function mergeUnlockedItems(
+  remoteItems: LearnerUnlockedItemRecord[],
+  localItems: LearnerUnlockedItemRecord[]
+): LearnerUnlockedItemRecord[] {
+  const byKey = new Map<string, LearnerUnlockedItemRecord>();
+  [...localItems, ...remoteItems].forEach((item) => {
+    const k = String(item?.itemKey || "").trim().toLowerCase();
+    if (!k) return;
+    byKey.set(k, { ...item, itemKey: k });
+  });
+  return Array.from(byKey.values());
+}
+
 export function inferLearnerNotifEventType(
   n: Partial<LearnerNotification>
 ): LearnerNotificationEventType {
@@ -1272,13 +1328,39 @@ export function isLearnerAssignedToContentTitle(
     name?: string | null;
     username?: string | null;
   },
-  courseCurriculums?: Record<string, CourseSectionAccordion[]>
+  courseCurriculums?: Record<string, CourseSectionAccordion[]>,
+  cohortProjects?: CohortProjectItem[]
 ): boolean {
   const needle = (contentTitle || "").trim().toLowerCase();
   if (!needle) return false;
   if (!Array.isArray(explorerItems) || explorerItems.length === 0) {
     return false;
   }
+
+  const sharedProjectNames = new Set(
+    (cohortProjects || [])
+      .filter((p) => p.shareWithAllLearners)
+      .map((p) => (p.name || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const folderProjectMap = new Map<string, string>();
+  explorerItems.forEach((e) => {
+    if (e.type === "Folder" && e.title && e.cohort) {
+      folderProjectMap.set(
+        e.title.trim().toLowerCase(),
+        e.cohort.trim().toLowerCase()
+      );
+    }
+  });
+  const isInSharedProject = (e: ExplorerContentItem): boolean => {
+    if (sharedProjectNames.size === 0) return false;
+    const itemProj = (e.cohort || "").trim().toLowerCase();
+    if (itemProj && sharedProjectNames.has(itemProj)) return true;
+    const fProj = e.folderName
+      ? folderProjectMap.get(e.folderName.trim().toLowerCase())
+      : undefined;
+    return Boolean(fProj && sharedProjectNames.has(fProj));
+  };
 
   const userEmail = (learner.email || "").toLowerCase().trim();
   const userName = (learner.name || "").toLowerCase().trim();
@@ -1294,7 +1376,8 @@ export function isLearnerAssignedToContentTitle(
       .filter(
         (e) =>
           e.type === "Folder" &&
-          matchesLearnerAssignedArray(e.assignedLearners, learner)
+          (isInSharedProject(e) ||
+            matchesLearnerAssignedArray(e.assignedLearners, learner))
       )
       .map((f) => (f.title || "").trim().toLowerCase())
       .filter(Boolean)
@@ -1332,7 +1415,10 @@ export function isLearnerAssignedToContentTitle(
 
   if (candidateItems.length > 0) {
     for (const item of candidateItems) {
-      if (matchesLearnerAssignedArray(item.assignedLearners, learner)) {
+      if (
+        isInSharedProject(item) ||
+        matchesLearnerAssignedArray(item.assignedLearners, learner)
+      ) {
         return true;
       }
       const folderKey = (item.folderName || "").trim().toLowerCase();
@@ -1376,22 +1462,54 @@ export function doesLearnerOwnAnyMaterial(
     email?: string | null;
     name?: string | null;
     username?: string | null;
-  }
+  },
+  cohortProjects?: CohortProjectItem[]
 ): boolean {
   if (!Array.isArray(explorerItems) || explorerItems.length === 0) return false;
+  const sharedProjectNames = new Set(
+    (cohortProjects || [])
+      .filter((p) => p.shareWithAllLearners)
+      .map((p) => (p.name || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const folderProjectMap = new Map<string, string>();
+  explorerItems.forEach((e) => {
+    if (e.type === "Folder" && e.title && e.cohort) {
+      folderProjectMap.set(
+        e.title.trim().toLowerCase(),
+        e.cohort.trim().toLowerCase()
+      );
+    }
+  });
+  const isInSharedProject = (e: ExplorerContentItem): boolean => {
+    if (sharedProjectNames.size === 0) return false;
+    const itemProj = (e.cohort || "").trim().toLowerCase();
+    if (itemProj && sharedProjectNames.has(itemProj)) return true;
+    const fProj = e.folderName
+      ? folderProjectMap.get(e.folderName.trim().toLowerCase())
+      : undefined;
+    return Boolean(fProj && sharedProjectNames.has(fProj));
+  };
+
   const assignedFolderNames = new Set(
     explorerItems
       .filter(
         (e) =>
           e.type === "Folder" &&
-          matchesLearnerAssignedArray(e.assignedLearners, learner)
+          (isInSharedProject(e) ||
+            matchesLearnerAssignedArray(e.assignedLearners, learner))
       )
       .map((f) => (f.title || "").trim().toLowerCase())
       .filter(Boolean)
   );
   return explorerItems.some((e) => {
     if (e.type === "Folder") return false;
-    if (matchesLearnerAssignedArray(e.assignedLearners, learner)) return true;
+    if (
+      isInSharedProject(e) ||
+      matchesLearnerAssignedArray(e.assignedLearners, learner)
+    ) {
+      return true;
+    }
     const fk = (e.folderName || "").trim().toLowerCase();
     return Boolean(fk && assignedFolderNames.has(fk));
   });
@@ -1944,6 +2062,22 @@ function overlayLocalProgress(
         videoDuration: c.videoDuration || l.videoDuration || resolvedDuration,
         videoMode: c.videoMode || l.videoMode || "embed",
         isPro: l.isPro !== undefined ? l.isPro : (c.isPro ?? false),
+        ...(l.unlockPointsCost !== undefined || c.unlockPointsCost !== undefined
+          ? {
+              unlockPointsCost:
+                l.unlockPointsCost !== undefined
+                  ? l.unlockPointsCost
+                  : c.unlockPointsCost,
+            }
+          : {}),
+        ...(l.unlockPriceIdr !== undefined || c.unlockPriceIdr !== undefined
+          ? {
+              unlockPriceIdr:
+                l.unlockPriceIdr !== undefined
+                  ? l.unlockPriceIdr
+                  : c.unlockPriceIdr,
+            }
+          : {}),
         completed: l.completed ?? c.completed ?? false,
         locked: l.locked ?? c.locked ?? false,
         hidden: c.hidden !== undefined ? c.hidden : (l.hidden ?? false),
@@ -2124,6 +2258,14 @@ function syncLearnerCatalogWithExplorer(
           : [exp.category || "Social Media Strategy", exp.type],
       description: exp.description || existing?.description || "",
       isFavorite: existing?.isFavorite ?? false,
+      isPro: typeof exp.isPro === "boolean" ? exp.isPro : existing?.isPro,
+      ...(exp.unlockPriceIdr !== undefined || existing?.unlockPriceIdr !== undefined
+        ? { unlockPriceIdr: exp.unlockPriceIdr ?? existing?.unlockPriceIdr }
+        : {}),
+      ...(exp.unlockPointsCost !== undefined || existing?.unlockPointsCost !== undefined
+        ? { unlockPointsCost: exp.unlockPointsCost ?? existing?.unlockPointsCost }
+        : {}),
+      ...(exp.cohort || existing?.cohort ? { cohort: exp.cohort || existing?.cohort } : {}),
       thumbnailUrl: exp.thumbnailUrl || existing?.thumbnailUrl,
       bannerGradient: exp.bannerGradient || existing?.bannerGradient,
       bannerAccent: exp.bannerAccent || existing?.bannerAccent,
@@ -2177,6 +2319,12 @@ export const DEMO_GLOBAL_STATE: PersistedGlobalState = {
     "Dimas Anggara": "PRO",
     "Ayu Lestari": "Free",
   },
+  learnerPackageId: null,
+  learnerPackageName: null,
+  learnerBillingCycle: null,
+  learnerHasUsedTrial: false,
+  learnerUnlockedItems: [],
+  adminPreviewTierOverride: "auto",
 
   rewardsCatalog: INITIAL_REWARDS_CATALOG,
   claimedRewards: [],
@@ -2230,6 +2378,12 @@ const DEFAULT_GLOBAL_STATE: PersistedGlobalState = {
 
   learnerIsPro: false,
   learnerSubscriptions: {},
+  learnerPackageId: null,
+  learnerPackageName: null,
+  learnerBillingCycle: null,
+  learnerHasUsedTrial: false,
+  learnerUnlockedItems: [],
+  adminPreviewTierOverride: "auto",
 
   rewardsCatalog: INITIAL_REWARDS_CATALOG,
   claimedRewards: [],
@@ -2293,6 +2447,9 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
       bannerGradient?: string;
       language?: string;
       description?: string;
+      isPro?: boolean;
+      unlockPriceIdr?: number;
+      unlockPointsCost?: number;
     }
   ) => void;
   addWikiResourceCard: (card: WikiResourceCard) => void;
@@ -2404,6 +2561,8 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
   }) => void;
 
   // 7. Learner-Only Subscription & Premium Access Controls (Synced between Learner & Admin)
+  learnerAccess: LearnerAccessState;
+  setAdminPreviewTier: (tier: "auto" | "free" | "basic" | "pro") => void;
   setLearnerProStatus: (
     isPro: boolean,
     user?: { name?: string; email?: string } | null
@@ -2416,7 +2575,18 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     buyerContact?: string;
     paymentMethod?: string;
     proofUrl?: string;
+    billingCycle?: "7d_trial" | "30d" | "single_item";
+    durationDays?: number;
+    requestType?: "subscription" | "item_unlock";
+    targetItemKey?: string;
+    targetItemTitle?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  unlockModuleWithPoints: (params: {
+    courseTitle: string;
+    chapterId?: string | null;
+    chapterTitle?: string;
+    pointsCost: number;
+  }) => Promise<{ ok: boolean; message: string; newPoints?: number }>;
   toggleStudentProByAdmin: (studentName: string, studentEmail?: string) => void;
   setStudentProTierLocal: (
     studentName: string,
@@ -2448,10 +2618,20 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
   ) => { success: boolean; message: string; claimedItem?: ClaimedRewardRecord };
 
   // 9. Cohorts / Projects Management (CRUD & Color customization)
-  addCohortProject: (name: string, color?: string, description?: string) => void;
+  addCohortProject: (
+    name: string,
+    color?: string,
+    description?: string,
+    shareWithAllLearners?: boolean
+  ) => void;
   updateCohortProject: (
     idOrName: string,
-    updates: { name?: string; color?: string; description?: string }
+    updates: {
+      name?: string;
+      color?: string;
+      description?: string;
+      shareWithAllLearners?: boolean;
+    }
   ) => void;
   deleteCohortProject: (idOrName: string) => void;
 
@@ -2577,6 +2757,7 @@ export function RuangSosmedProvider({
   const [state, setState] =
     useState<PersistedGlobalState>(DEFAULT_GLOBAL_STATE);
   const [hydrated, setHydrated] = useState(false);
+  const [isStaffDbSession, setIsStaffDbSession] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
   const curriculumPushTimer = useRef<ReturnType<typeof setTimeout> | null>(
@@ -3754,7 +3935,25 @@ export function RuangSosmedProvider({
 
         if (authUserId) {
           let ownProf: any = null;
-          if (profilesHasSubDateCols) {
+          if (profilesHasSubDateCols && profilesHasTierV2Cols) {
+            const v2Res = await supabase
+              .from("profiles")
+              .select(
+                "id, role, full_name, email, avatar_url, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, pro_package_id, pro_billing_cycle, has_used_trial, trial_used_at, total_points, job_title"
+              )
+              .eq("id", authUserId)
+              .maybeSingle();
+            if (!v2Res.error) {
+              ownProf = v2Res.data;
+            } else if (isMissingTierV2ColumnError(v2Res.error)) {
+              profilesHasTierV2Cols = false;
+            } else if (isMissingSubDateColumnError(v2Res.error)) {
+              profilesHasSubDateCols = false;
+            } else {
+              ownProf = v2Res.data;
+            }
+          }
+          if (!ownProf && profilesHasSubDateCols) {
             const res = await supabase
               .from("profiles")
               .select(
@@ -3786,6 +3985,7 @@ export function RuangSosmedProvider({
 
         // Governance koneksi Realtime: hanya buka WebSocket permanen untuk Admin/Mentor
         isStaffSessionRef.current = isStaffSession;
+        setIsStaffDbSession(isStaffSession);
         if (isStaffSession) {
           realtimeControlRef.current?.connect();
         } else {
@@ -3875,6 +4075,8 @@ export function RuangSosmedProvider({
           data: null,
           error: null,
         };
+        let remoteUnlockedItems: LearnerUnlockedItemRecord[] = [];
+        let ownTrialRequestDetected = false;
 
         if (authUserId) {
           const [
@@ -3883,6 +4085,8 @@ export function RuangSosmedProvider({
             proSettingsRes,
             staffProfilesRes,
             staffUserProfilesRes,
+            unlockedItemsRes,
+            ownProReqsRes,
           ] = await Promise.all([
             supabase
               .from("mentor_inbox_threads")
@@ -3905,6 +4109,21 @@ export function RuangSosmedProvider({
               .maybeSingle(),
             isStaffSession
               ? (async () => {
+                  if (profilesHasSubDateCols && profilesHasTierV2Cols) {
+                    const v2Res = await supabase
+                      .from("profiles")
+                      .select(
+                        "id, full_name, email, avatar_url, role, job_title, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, pro_package_id, pro_billing_cycle, has_used_trial, trial_used_at, total_points, created_at"
+                      );
+                    if (!v2Res.error) return v2Res;
+                    if (isMissingTierV2ColumnError(v2Res.error)) {
+                      profilesHasTierV2Cols = false;
+                    } else if (isMissingSubDateColumnError(v2Res.error)) {
+                      profilesHasSubDateCols = false;
+                    } else {
+                      return v2Res;
+                    }
+                  }
                   if (profilesHasSubDateCols) {
                     const res = await supabase
                       .from("profiles")
@@ -3941,6 +4160,32 @@ export function RuangSosmedProvider({
                       authUser?.email ? `,email.ilike.${authUser.email}` : ""
                     }`
                   ),
+            (async () => {
+              try {
+                const res = await supabase
+                  .from("learner_unlocked_items")
+                  .select(
+                    "id, item_key, course_title, chapter_id, unlock_method, points_spent, price_paid_idr, created_at"
+                  )
+                  .eq("user_id", authUserId);
+                return res;
+              } catch {
+                return { data: [], error: null };
+              }
+            })(),
+            (async () => {
+              try {
+                const res = await supabase
+                  .from("pro_upgrade_requests")
+                  .select("id, package_name, price_label, status, created_at")
+                  .eq("user_id", authUserId)
+                  .in("status", ["pending", "approved"])
+                  .limit(30);
+                return res;
+              } catch {
+                return { data: [], error: null };
+              }
+            })(),
           ]);
 
           inboxThreadsRes = inboxRes;
@@ -3948,6 +4193,26 @@ export function RuangSosmedProvider({
           learnerProSettingsRes = proSettingsRes;
           profilesRes = staffProfilesRes;
           userProfilesRes = staffUserProfilesRes;
+          if (!unlockedItemsRes?.error && Array.isArray(unlockedItemsRes?.data)) {
+            remoteUnlockedItems = (unlockedItemsRes.data as any[]).map((row) => ({
+              id: row.id,
+              itemKey: row.item_key,
+              courseTitle: row.course_title,
+              chapterId: row.chapter_id || null,
+              unlockMethod: row.unlock_method || "purchase",
+              pointsSpent: Number(row.points_spent || 0),
+              pricePaidIdr: Number(row.price_paid_idr || 0),
+              createdAt: row.created_at,
+            }));
+          }
+          if (!ownProReqsRes?.error && Array.isArray(ownProReqsRes?.data)) {
+            ownTrialRequestDetected = (ownProReqsRes.data as any[]).some(
+              (r) =>
+                /7\s*hari|trial|percobaan/i.test(
+                  `${r.package_name || ""} ${r.price_label || ""}`
+                )
+            );
+          }
         } else if (typeof window !== "undefined") {
           try {
             window.localStorage.removeItem(ADMIN_NOTIFS_STORAGE_KEY);
@@ -4173,6 +4438,10 @@ export function RuangSosmedProvider({
           // Strictly derive active user's PRO tier and points ONLY from authenticated DB profile
           let activeUserPro = false;
           let activeUserPoints = 0;
+          let activeUserPackageId: string | null = null;
+          let activeUserPackageName: string | null = null;
+          let activeUserBillingCycle: "7d_trial" | "30d" | "custom" | null = null;
+          let activeUserHasUsedTrial = false;
           const activeLearnerEmail = String(
             ownProfile?.email || authUser?.email || ""
           )
@@ -4181,6 +4450,13 @@ export function RuangSosmedProvider({
           const activeLearnerName = String(
             ownProfile?.full_name || authUser?.user_metadata?.full_name || ""
           ).trim();
+          const mergedUnlockedForActiveUser = mergeUnlockedItems(
+            remoteUnlockedItems,
+            readLocalUnlockedItems(activeLearnerEmail)
+          );
+          if (mergedUnlockedForActiveUser.length > 0 && activeLearnerEmail) {
+            persistLocalUnlockedItems(activeLearnerEmail, mergedUnlockedForActiveUser);
+          }
 
           const activeUserKeys = normalizeAvatarKeys({
             id: ownProfile?.id || authUserId,
@@ -4247,23 +4523,56 @@ export function RuangSosmedProvider({
                 ownProfile.pro_expires_at
               );
 
+            const ownUpMatch = Array.isArray(userProfilesRes.data)
+              ? userProfilesRes.data.find(
+                  (up: any) =>
+                    up.user_id === authUserId ||
+                    (activeLearnerEmail &&
+                      String(up.email || "").toLowerCase().trim() ===
+                        activeLearnerEmail)
+                )
+              : null;
+
             if (
               !activeUserPro &&
               !ownExplicitlyExpired &&
-              Array.isArray(userProfilesRes.data)
+              ownUpMatch
             ) {
-              const ownUp = userProfilesRes.data.find(
-                (up: any) =>
-                  up.user_id === authUserId ||
-                  (activeLearnerEmail &&
-                    String(up.email || "").toLowerCase().trim() === activeLearnerEmail)
-              );
               if (
-                ownUp?.perks?.is_pro &&
-                isProSubscriptionActive("pro", ownUp?.perks?.pro_expires_at)
+                ownUpMatch?.perks?.is_pro &&
+                isProSubscriptionActive("pro", ownUpMatch?.perks?.pro_expires_at)
               ) {
                 activeUserPro = true;
               }
+            }
+
+            activeUserPackageId =
+              ownProfile.pro_package_id ||
+              ownUpMatch?.perks?.pro_package_id ||
+              null;
+            activeUserPackageName =
+              ownProfile.pro_package_name ||
+              ownUpMatch?.perks?.pro_package_name ||
+              (activeUserPro ? "Pro" : null);
+            const rawBillingCycle =
+              ownProfile.pro_billing_cycle ||
+              ownUpMatch?.perks?.pro_billing_cycle ||
+              null;
+            activeUserBillingCycle =
+              rawBillingCycle === "7d_trial" ||
+              rawBillingCycle === "30d" ||
+              rawBillingCycle === "custom"
+                ? rawBillingCycle
+                : null;
+            activeUserHasUsedTrial = Boolean(
+              ownProfile.has_used_trial ||
+                ownUpMatch?.perks?.has_used_trial ||
+                activeUserBillingCycle === "7d_trial" ||
+                ownTrialRequestDetected ||
+                readLocalTrialUsed(activeLearnerEmail)
+            );
+            if (activeUserHasUsedTrial && activeLearnerEmail) {
+              markLocalTrialUsed(activeLearnerEmail);
             }
 
             const ownTierLabel: "PRO" | "Free" = activeUserPro ? "PRO" : "Free";
@@ -4829,6 +5138,26 @@ export function RuangSosmedProvider({
                   : meta.bannerAccent || cfg.colorHex,
                 bannerPattern: meta.bannerPattern || "carousel",
                 description: r.description || "",
+                isPro:
+                  typeof meta.isPro === "boolean"
+                    ? meta.isPro
+                    : typeof r.is_pro_only === "boolean"
+                    ? r.is_pro_only
+                    : local?.isPro,
+                ...(meta.unlockPriceIdr !== undefined ||
+                local?.unlockPriceIdr !== undefined
+                  ? {
+                      unlockPriceIdr:
+                        meta.unlockPriceIdr ?? local?.unlockPriceIdr,
+                    }
+                  : {}),
+                ...(meta.unlockPointsCost !== undefined ||
+                local?.unlockPointsCost !== undefined
+                  ? {
+                      unlockPointsCost:
+                        meta.unlockPointsCost ?? local?.unlockPointsCost,
+                    }
+                  : {}),
                 cohort: (() => {
                   const raw = r.cohort || meta.cohort || local?.cohort;
                   if (!raw || raw.toLowerCase() === "ruang sosmed core") {
@@ -4921,38 +5250,6 @@ export function RuangSosmedProvider({
               ...localOnly,
               ...dbExplorer,
             ]);
-
-            // Deteksi penambahan materi baru dari server untuk notifikasi Learner
-            dbExplorer.forEach((exp) => {
-              if (!exp?.id) return;
-              const titleKey = (exp.title || "").trim().toLowerCase();
-              newlyObservedContentKeys.push(exp.id);
-              if (titleKey) newlyObservedContentKeys.push(titleKey);
-
-              if (
-                learnerContentSyncInitializedRef.current &&
-                exp.type !== "Folder" &&
-                !exp.isArchived &&
-                !knownSyncedContentIdsRef.current.has(exp.id) &&
-                (!titleKey || !knownSyncedContentIdsRef.current.has(titleKey)) &&
-                isLearnerAssignedToContentTitle(
-                  exp.title,
-                  nextExplorer,
-                  activeLearnerIdentity,
-                  nextCurriculums
-                )
-              ) {
-                enqueueSyncedLearnerNotif({
-                  id: `notif-mat-sync-${exp.id}`,
-                  title: `📚 Materi Baru Tersedia: ${exp.title}`,
-                  body: `Admin/Mentor telah menambahkan materi ${exp.type} "${exp.title}". Yuk cek di katalog atau My Learning!`,
-                  time: "Baru saja",
-                  unread: true,
-                  eventType: "material_added",
-                  meta: { contentTitle: exp.title },
-                });
-              }
-            });
           } else {
             nextExplorer = deduplicateExplorerItems(nextExplorer);
           }
@@ -4982,6 +5279,10 @@ export function RuangSosmedProvider({
                 candidate.description ||
                 existing?.description ||
                 "Custom Cohort / Track",
+              shareWithAllLearners:
+                candidate.shareWithAllLearners !== undefined
+                  ? Boolean(candidate.shareWithAllLearners)
+                  : Boolean(existing?.shareWithAllLearners),
             });
           };
 
@@ -5032,6 +5333,41 @@ export function RuangSosmedProvider({
             }
           }
 
+          // Deteksi penambahan materi baru dari server untuk notifikasi Learner (termasuk project shareWithAllLearners)
+          if (!contentsRes.error && Array.isArray(contentsRes.data)) {
+            nextExplorer.forEach((exp) => {
+              if (!exp?.id) return;
+              const titleKey = (exp.title || "").trim().toLowerCase();
+              newlyObservedContentKeys.push(exp.id);
+              if (titleKey) newlyObservedContentKeys.push(titleKey);
+
+              if (
+                learnerContentSyncInitializedRef.current &&
+                exp.type !== "Folder" &&
+                !exp.isArchived &&
+                !knownSyncedContentIdsRef.current.has(exp.id) &&
+                (!titleKey || !knownSyncedContentIdsRef.current.has(titleKey)) &&
+                isLearnerAssignedToContentTitle(
+                  exp.title,
+                  nextExplorer,
+                  activeLearnerIdentity,
+                  nextCurriculums,
+                  nextCohortProjects
+                )
+              ) {
+                enqueueSyncedLearnerNotif({
+                  id: `notif-mat-sync-${exp.id}`,
+                  title: `📚 Materi Baru Tersedia: ${exp.title}`,
+                  body: `Admin/Mentor telah menambahkan materi ${exp.type} "${exp.title}". Yuk cek di katalog atau My Learning!`,
+                  time: "Baru saja",
+                  unread: true,
+                  eventType: "material_added",
+                  meta: { contentTitle: exp.title },
+                });
+              }
+            });
+          }
+
           const nextCatalog = syncLearnerCatalogWithExplorer(
             nextExplorer,
             prev.learnerAssignedItems,
@@ -5042,6 +5378,16 @@ export function RuangSosmedProvider({
 
           // Hindari trigger re-render / flicker jika data sama persis dengan state sekarang
           const proChanged = prev.learnerIsPro !== activeUserPro;
+          const packageIdChanged = prev.learnerPackageId !== activeUserPackageId;
+          const packageNameChanged =
+            prev.learnerPackageName !== activeUserPackageName;
+          const billingCycleChanged =
+            prev.learnerBillingCycle !== activeUserBillingCycle;
+          const hasUsedTrialChanged =
+            prev.learnerHasUsedTrial !== activeUserHasUsedTrial;
+          const unlockedItemsChanged =
+            JSON.stringify(prev.learnerUnlockedItems || []) !==
+            JSON.stringify(mergedUnlockedForActiveUser);
           const subsChanged =
             JSON.stringify(prev.learnerSubscriptions) !==
             JSON.stringify(nextSubs);
@@ -5075,6 +5421,9 @@ export function RuangSosmedProvider({
                 pi.folderName !== ni.folderName ||
                 pi.accessCode !== ni.accessCode ||
                 pi.assignedCount !== ni.assignedCount ||
+                pi.isPro !== ni.isPro ||
+                pi.unlockPriceIdr !== ni.unlockPriceIdr ||
+                pi.unlockPointsCost !== ni.unlockPointsCost ||
                 pi.wikiReadTime !== ni.wikiReadTime ||
                 JSON.stringify(pi.wikiSections || []) !==
                   JSON.stringify(ni.wikiSections || []) ||
@@ -5123,7 +5472,8 @@ export function RuangSosmedProvider({
                   courseTitle,
                   nextExplorer,
                   activeLearnerIdentity,
-                  nextCurriculums
+                  nextCurriculums,
+                  nextCohortProjects
                 )
               ) {
                 const notifTitle = `📚 Materi Diperbarui: ${courseTitle}`;
@@ -5851,6 +6201,11 @@ export function RuangSosmedProvider({
 
           if (
             !proChanged &&
+            !packageIdChanged &&
+            !packageNameChanged &&
+            !billingCycleChanged &&
+            !hasUsedTrialChanged &&
+            !unlockedItemsChanged &&
             !subsChanged &&
             !assigneesChanged &&
             !lbChanged &&
@@ -5892,6 +6247,11 @@ export function RuangSosmedProvider({
             learnerPoints: activeUserPoints,
             learnerNotifications: nextNotifications,
             learnerIsPro: activeUserPro,
+            learnerPackageId: activeUserPackageId,
+            learnerPackageName: activeUserPackageName,
+            learnerBillingCycle: activeUserBillingCycle,
+            learnerHasUsedTrial: activeUserHasUsedTrial,
+            learnerUnlockedItems: mergedUnlockedForActiveUser,
             learnerSubscriptions: nextSubs,
             assignees: nextAssignees,
             leaderboard: sortedLb,
@@ -5969,6 +6329,11 @@ export function RuangSosmedProvider({
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "learner_pro_settings" },
+          () => scheduleRealtimeSync()
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "learner_unlocked_items" },
           () => scheduleRealtimeSync()
         )
         .subscribe();
@@ -7158,6 +7523,9 @@ export function RuangSosmedProvider({
         bannerGradient?: string;
         language?: string;
         description?: string;
+        isPro?: boolean;
+        unlockPriceIdr?: number;
+        unlockPointsCost?: number;
       }
     ) => {
       const normalizedNeedle = idOrTitle.trim().toLowerCase();
@@ -7187,6 +7555,13 @@ export function RuangSosmedProvider({
         ...(patch.description !== undefined
           ? { description: patch.description }
           : {}),
+        ...(patch.isPro !== undefined ? { isPro: patch.isPro } : {}),
+        ...(patch.unlockPriceIdr !== undefined
+          ? { unlockPriceIdr: patch.unlockPriceIdr }
+          : {}),
+        ...(patch.unlockPointsCost !== undefined
+          ? { unlockPointsCost: patch.unlockPointsCost }
+          : {}),
       };
 
       if (typeof window !== "undefined") {
@@ -7205,6 +7580,12 @@ export function RuangSosmedProvider({
               window.localStorage.removeItem(`ruang_sosmed_thumb_${target.id}`);
               window.localStorage.removeItem(`ruang_sosmed_thumb_${newKey}`);
             }
+          }
+          if (patch.isPro !== undefined) {
+            window.localStorage.setItem(
+              `ruang_sosmed_course_tier_${newKey}`,
+              patch.isPro ? "pro" : "free"
+            );
           }
           if (isRenamed) {
             for (const prefix of [
@@ -7242,6 +7623,13 @@ export function RuangSosmedProvider({
                 ...(patch.description !== undefined
                   ? { description: patch.description }
                   : {}),
+                ...(patch.isPro !== undefined ? { isPro: patch.isPro } : {}),
+                ...(patch.unlockPriceIdr !== undefined
+                  ? { unlockPriceIdr: patch.unlockPriceIdr }
+                  : {}),
+                ...(patch.unlockPointsCost !== undefined
+                  ? { unlockPointsCost: patch.unlockPointsCost }
+                  : {}),
               }
             : item
         );
@@ -7260,6 +7648,10 @@ export function RuangSosmedProvider({
           courseCurriculums: nextCurriculums,
         };
       });
+
+      cachedContentsRowsRef.current = null;
+      lastContentsWmKeyRef.current = "";
+      lastWatermarkRef.current = "";
 
       const currentCurr =
         stateRef.current.courseCurriculums?.[newKey] ??
@@ -9257,7 +9649,24 @@ export function RuangSosmedProvider({
       buyerContact?: string;
       paymentMethod?: string;
       proofUrl?: string;
+      billingCycle?: "7d_trial" | "30d" | "single_item";
+      durationDays?: number;
+      requestType?: "subscription" | "item_unlock";
+      targetItemKey?: string;
+      targetItemTitle?: string;
     }): Promise<{ ok: boolean; error?: string }> => {
+      const cycle = params.billingCycle || "30d";
+      const activeUserEmail = (getActiveSessionUser().email || "").trim().toLowerCase();
+      if (
+        cycle === "7d_trial" &&
+        (stateRef.current.learnerHasUsedTrial || readLocalTrialUsed(activeUserEmail))
+      ) {
+        return {
+          ok: false,
+          error:
+            "Paket percobaan 7 hari hanya berlaku 1× untuk member baru dan sudah digunakan pada akun Anda.",
+        };
+      }
       if (!isSupabaseConfigured) {
         return {
           ok: false,
@@ -9270,27 +9679,92 @@ export function RuangSosmedProvider({
           return { ok: false, error: "Silakan login terlebih dahulu." };
         }
 
-        const { error } = await supabase.rpc("submit_pro_upgrade_request", {
-          p_user_name: (params.buyerName || "").trim() || "Learner",
-          p_package_id: (params.packageId || "").trim() || "pro-monthly",
-          p_package_name: params.packageName.trim() || "Learner PRO Monthly",
-          p_price_label: params.priceLabel.trim() || "Rp 149.000",
-          p_payment_method: (params.paymentMethod || "").trim() || "QRIS / Transfer Manual",
-          p_buyer_contact: (params.buyerContact || "").trim(),
-          p_proof_url: params.proofUrl || null,
-        });
+        const sessionEmail = String(sessionData.session.user.email || activeUserEmail).toLowerCase().trim();
+        const duration =
+          params.durationDays !== undefined
+            ? params.durationDays
+            : cycle === "7d_trial"
+            ? 7
+            : cycle === "single_item"
+            ? 0
+            : 30;
+        const reqType =
+          params.requestType ||
+          (cycle === "single_item" ? "item_unlock" : "subscription");
 
-        if (error) {
-          return { ok: false, error: error.message || "Gagal mengirim konfirmasi pembayaran." };
+        const { error: v2Err } = await supabase.rpc(
+          "submit_pro_upgrade_request",
+          {
+            p_user_name: (params.buyerName || "").trim() || "Learner",
+            p_package_id: (params.packageId || "").trim() || "pkg-pro",
+            p_package_name: params.packageName.trim() || "Pro",
+            p_price_label: params.priceLabel.trim() || "Rp 150.000",
+            p_payment_method:
+              (params.paymentMethod || "").trim() || "QRIS / Transfer Manual",
+            p_buyer_contact: (params.buyerContact || "").trim(),
+            p_proof_url: params.proofUrl || null,
+            p_billing_cycle: cycle,
+            p_duration_days: duration,
+            p_request_type: reqType,
+            p_target_item_key: params.targetItemKey || null,
+            p_target_item_title: params.targetItemTitle || null,
+          }
+        );
+
+        let finalError = v2Err;
+        if (finalError) {
+          const msg = String(finalError.message || "").toLowerCase();
+          const missingV2 =
+            finalError.code === "PGRST202" ||
+            msg.includes("could not find the function") ||
+            msg.includes("p_billing_cycle");
+          if (missingV2) {
+            const fallbackPkgName =
+              reqType === "item_unlock" && params.targetItemTitle
+                ? `${params.packageName} • ${params.targetItemTitle}`
+                : cycle === "7d_trial"
+                ? `${params.packageName} (Trial 7 Hari)`
+                : params.packageName.trim() || "Pro";
+            const legacyRes = await supabase.rpc("submit_pro_upgrade_request", {
+              p_user_name: (params.buyerName || "").trim() || "Learner",
+              p_package_id: (params.packageId || "").trim() || "pkg-pro",
+              p_package_name: fallbackPkgName,
+              p_price_label: params.priceLabel.trim() || "Rp 150.000",
+              p_payment_method:
+                (params.paymentMethod || "").trim() || "QRIS / Transfer Manual",
+              p_buyer_contact: (params.buyerContact || "").trim(),
+              p_proof_url: params.proofUrl || null,
+            });
+            finalError = legacyRes.error;
+          }
+        }
+
+        if (finalError) {
+          return {
+            ok: false,
+            error: finalError.message || "Gagal mengirim konfirmasi pembayaran.",
+          };
+        }
+
+        if (cycle === "7d_trial") {
+          markLocalTrialUsed(sessionEmail);
         }
 
         setState((prev) => ({
           ...prev,
+          learnerHasUsedTrial:
+            prev.learnerHasUsedTrial || cycle === "7d_trial",
           learnerNotifications: [
             {
               id: `notif-pro-pending-${Date.now()}`,
-              title: "⏳ Konfirmasi Pembayaran PRO Terkirim",
-              body: `Permintaan aktivasi paket "${params.packageName}" (${params.priceLabel}) sedang menunggu verifikasi Admin.`,
+              title:
+                reqType === "item_unlock"
+                  ? "⏳ Konfirmasi Buka Materi Satuan Terkirim"
+                  : "⏳ Konfirmasi Pembayaran Paket Terkirim",
+              body:
+                reqType === "item_unlock"
+                  ? `Permintaan buka "${params.targetItemTitle || params.packageName}" (${params.priceLabel}) sedang menunggu verifikasi Admin.`
+                  : `Permintaan aktivasi paket "${params.packageName}" (${params.priceLabel}) sedang menunggu verifikasi Admin.`,
               time: "Just now",
               unread: true,
             },
@@ -9302,6 +9776,171 @@ export function RuangSosmedProvider({
       } catch {
         return { ok: false, error: "Gagal mengirim konfirmasi pembayaran." };
       }
+    },
+    []
+  );
+
+  const unlockModuleWithPoints = useCallback(
+    async (params: {
+      courseTitle: string;
+      chapterId?: string | null;
+      chapterTitle?: string;
+      pointsCost: number;
+    }): Promise<{ ok: boolean; message: string; newPoints?: number }> => {
+      const cost = Math.max(1, Math.round(Number(params.pointsCost) || 0));
+      const currentPoints = Math.max(0, stateRef.current.learnerPoints || 0);
+      if (currentPoints < cost) {
+        return {
+          ok: false,
+          message: `Poin Anda tidak cukup. Butuh ${cost} pts (saldo saat ini: ${currentPoints} pts).`,
+        };
+      }
+
+      const itemKey = buildUnlockItemKey(params.courseTitle, params.chapterId);
+      const alreadyUnlocked = (stateRef.current.learnerUnlockedItems || []).some(
+        (u) => u.itemKey === itemKey
+      );
+      if (alreadyUnlocked) {
+        return {
+          ok: true,
+          message: "Materi ini sudah terbuka di akun Anda.",
+          newPoints: currentPoints,
+        };
+      }
+
+      const activeSess = getActiveSessionUser();
+      const targetEmail = (activeSess.email || "").trim().toLowerCase();
+      let newPoints = currentPoints - cost;
+
+      if (isSupabaseConfigured) {
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.user) {
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc(
+              "unlock_module_with_points",
+              {
+                p_course_title: params.courseTitle,
+                p_chapter_id: params.chapterId || null,
+                p_points_cost: cost,
+              }
+            );
+            if (!rpcErr && rpcRes) {
+              if ((rpcRes as any).ok === false) {
+                return {
+                  ok: false,
+                  message:
+                    (rpcRes as any).error ||
+                    "Gagal memotong poin untuk membuka materi.",
+                };
+              }
+              if (typeof (rpcRes as any).new_points === "number") {
+                newPoints = (rpcRes as any).new_points;
+              }
+            } else if (rpcErr) {
+              const msg = String(rpcErr.message || "").toLowerCase();
+              const missingRpc =
+                rpcErr.code === "PGRST202" ||
+                msg.includes("unlock_module_with_points");
+              if (missingRpc) {
+                const { data: redeemed } = await supabase.rpc(
+                  "redeem_learner_points",
+                  { p_points_cost: cost }
+                );
+                if (redeemed === false) {
+                  return {
+                    ok: false,
+                    message: "Saldo poin di server tidak mencukupi.",
+                  };
+                }
+                await persistUserPointsToSupabase({
+                  email: targetEmail,
+                  name: activeSess.name,
+                  username: activeSess.username,
+                  newPoints,
+                });
+              } else {
+                return {
+                  ok: false,
+                  message: rpcErr.message || "Gagal membuka materi dengan poin.",
+                };
+              }
+            }
+          }
+        } catch {
+          return {
+            ok: false,
+            message: "Terjadi kesalahan jaringan saat membuka materi dengan poin.",
+          };
+        }
+      }
+
+      const newRecord: LearnerUnlockedItemRecord = {
+        id: `unl-${Date.now()}`,
+        itemKey,
+        courseTitle: params.courseTitle,
+        chapterId: params.chapterId || null,
+        unlockMethod: "points",
+        pointsSpent: cost,
+        pricePaidIdr: 0,
+        createdAt: new Date().toISOString(),
+      };
+
+      const pointKeys = normalizeAvatarKeys({
+        email: targetEmail,
+        name: activeSess.name,
+        username: activeSess.username,
+      });
+      const expiresAt = Date.now() + 15_000;
+      const ptsPatch: Record<string, number> = {};
+      pointKeys.forEach((k) => {
+        recentPointLocksRef.current.set(k, { value: newPoints, expiresAt });
+        ptsPatch[k] = newPoints;
+      });
+
+      const mergedUnlocked = mergeUnlockedItems(
+        [newRecord],
+        stateRef.current.learnerUnlockedItems || []
+      );
+      if (targetEmail) {
+        persistLocalUnlockedItems(targetEmail, mergedUnlocked);
+      }
+
+      const displayTarget = params.chapterTitle || params.courseTitle;
+      setState((prev) => ({
+        ...prev,
+        learnerPoints: newPoints,
+        userPointsMap: { ...(prev.userPointsMap || {}), ...ptsPatch },
+        learnerUnlockedItems: mergedUnlocked,
+        learnerNotifications: [
+          {
+            id: `notif-unlock-pts-${Date.now()}`,
+            title: `🔓 Materi Terbuka: ${displayTarget}`,
+            body: `Anda menukarkan ${cost} ★ pts untuk membuka "${displayTarget}". Sisa saldo: ${newPoints.toLocaleString()} pts.`,
+            time: "Baru saja",
+            unread: true,
+            eventType: "material_added",
+          },
+          ...prev.learnerNotifications,
+        ],
+      }));
+
+      return {
+        ok: true,
+        message: `Berhasil membuka "${displayTarget}" (-${cost} pts).`,
+        newPoints,
+      };
+    },
+    []
+  );
+
+  const setAdminPreviewTier = useCallback(
+    (tier: "auto" | "free" | "basic" | "pro") => {
+      setState((prev) => ({
+        ...prev,
+        adminPreviewTierOverride: tier,
+        learnerIsPro:
+          tier === "auto" ? prev.learnerIsPro : tier !== "free",
+      }));
     },
     []
   );
@@ -9851,7 +10490,12 @@ export function RuangSosmedProvider({
   );
 
   const addCohortProject = useCallback(
-    (name: string, color = "#4F39F6", description?: string) => {
+    (
+      name: string,
+      color = "#4F39F6",
+      description?: string,
+      shareWithAllLearners = false
+    ) => {
       const trimmed = name.trim();
       if (!trimmed) return;
       const current = stateRef.current.cohortProjects || [];
@@ -9865,6 +10509,7 @@ export function RuangSosmedProvider({
         name: trimmed,
         color,
         description: description || "Custom Cohort / Track",
+        shareWithAllLearners: Boolean(shareWithAllLearners),
       };
       const nextCohorts = [...current, newCohort];
       setState((prev) => ({
@@ -9879,7 +10524,12 @@ export function RuangSosmedProvider({
   const updateCohortProject = useCallback(
     (
       idOrName: string,
-      updates: { name?: string; color?: string; description?: string }
+      updates: {
+        name?: string;
+        color?: string;
+        description?: string;
+        shareWithAllLearners?: boolean;
+      }
     ) => {
       const current = stateRef.current.cohortProjects || [];
       const nextCohorts = current.map((c) => {
@@ -9892,6 +10542,10 @@ export function RuangSosmedProvider({
               updates.description !== undefined
                 ? updates.description
                 : c.description,
+            shareWithAllLearners:
+              updates.shareWithAllLearners !== undefined
+                ? Boolean(updates.shareWithAllLearners)
+                : c.shareWithAllLearners,
           };
         }
         return c;
@@ -9995,6 +10649,12 @@ export function RuangSosmedProvider({
                       calloutTip: ch.calloutText || "",
                       attachments: ch.attachments || [],
                       isPro: Boolean(ch.isPro),
+                      ...(ch.unlockPointsCost !== undefined
+                        ? { unlockPointsCost: Number(ch.unlockPointsCost) }
+                        : {}),
+                      ...(ch.unlockPriceIdr !== undefined
+                        ? { unlockPriceIdr: Number(ch.unlockPriceIdr) }
+                        : {}),
                       hidden: Boolean(ch.hidden),
                     })
                   ),
@@ -10535,8 +11195,40 @@ export function RuangSosmedProvider({
     }));
   }, []);
 
+  const learnerAccess = useMemo(
+    () =>
+      resolveLearnerAccess({
+        learnerIsPro: state.learnerIsPro,
+        learnerPackageId: state.learnerPackageId,
+        learnerPackageName: state.learnerPackageName,
+        learnerBillingCycle: state.learnerBillingCycle,
+        hasUsedTrial: state.learnerHasUsedTrial,
+        unlockedItems: state.learnerUnlockedItems,
+        proConfig: state.learnerProConfig,
+        showWikiPage: state.learnerPagesConfig?.showWikiPage ?? true,
+        showFavoritesPage: state.learnerPagesConfig?.showFavoritesPage ?? true,
+        isStaffSession: isStaffDbSession,
+        previewTierOverride: state.adminPreviewTierOverride,
+      }),
+    [
+      state.learnerIsPro,
+      state.learnerPackageId,
+      state.learnerPackageName,
+      state.learnerBillingCycle,
+      state.learnerHasUsedTrial,
+      state.learnerUnlockedItems,
+      state.learnerProConfig,
+      state.learnerPagesConfig,
+      isStaffDbSession,
+      state.adminPreviewTierOverride,
+    ]
+  );
+
   const value: RuangSosmedStoreContextValue = {
     ...state,
+    learnerAccess,
+    setAdminPreviewTier,
+    unlockModuleWithPoints,
     publishContentToStudioAndCatalog,
     createFolder,
     updateFolder,

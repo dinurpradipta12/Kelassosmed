@@ -38,6 +38,8 @@ import {
 import {
   useRuangSosmedStore,
   getNormalizedProPackages,
+  computeTrial7DaysPriceIdr,
+  formatIdr,
 } from "@/context/RuangSosmedStore";
 import { type ExplorerContentItem } from "@/lib/phase2-data";
 import { ModalDialog } from "@/components/ui/ModalDialog";
@@ -56,10 +58,13 @@ import {
   getSubscriptionStatusInfo,
   getTodayIsoDate,
   isMissingSubDateColumnError,
+  isMissingTierV2ColumnError,
   type SubscriptionStatusInfo,
 } from "@/lib/subscription-utils";
 
 let dirProfilesHasSubDateCols = true;
+let dirProfilesHasTierV2Cols = true;
+let dirProReqHasTierV2Cols = true;
 
 interface AdminLearnersDirectoryProps {
   onShowToast: (msg: string) => void;
@@ -89,6 +94,10 @@ interface DirectoryMember {
   proStartedAt?: string | null;
   proExpiresAt?: string | null;
   proPackageName?: string | null;
+  proPackageId?: string | null;
+  proBillingCycle?: string | null;
+  hasUsedTrial?: boolean;
+  trialUsedAt?: string | null;
   createdAt?: string | null;
   paymentMethod?: string | null;
 }
@@ -164,8 +173,10 @@ export function AdminLearnersDirectory({
   const [renewDueDate, setRenewDueDate] = useState<string>(() =>
     addDaysToIsoDate(getTodayIsoDate(), 30)
   );
-  const [renewPackageName, setRenewPackageName] = useState<string>(
-    "Learner PRO Monthly"
+  const [renewPackageName, setRenewPackageName] = useState<string>("Pro");
+  const [renewPackageId, setRenewPackageId] = useState<string>("pkg-pro");
+  const [renewBillingCycle, setRenewBillingCycle] = useState<"7d_trial" | "30d">(
+    "30d"
   );
   const [isSavingRenewal, setIsSavingRenewal] = useState(false);
   const [quickExtendingEmail, setQuickExtendingEmail] = useState<string | null>(
@@ -179,6 +190,9 @@ export function AdminLearnersDirectory({
         proStartedAt: string | null;
         proExpiresAt: string | null;
         proPackageName: string | null;
+        proPackageId?: string | null;
+        proBillingCycle?: string | null;
+        hasUsedTrial?: boolean;
       }
     >
   >({});
@@ -214,18 +228,7 @@ export function AdminLearnersDirectory({
   } | null>(null);
 
   const [pendingProRequests, setPendingProRequests] = useState<
-    Array<{
-      id: string;
-      user_email: string;
-      user_name: string;
-      package_name: string;
-      price_label: string;
-      payment_method: string;
-      buyer_contact: string;
-      proof_url?: string | null;
-      status?: string | null;
-      created_at: string;
-    }>
+    InsightsProRequestRecord[]
   >([]);
   const [allProRequests, setAllProRequests] = useState<
     InsightsProRequestRecord[]
@@ -247,6 +250,22 @@ export function AdminLearnersDirectory({
       lastDirFetchAtRef.current = Date.now();
 
       const fetchProfilesWithFallback = async () => {
+        if (dirProfilesHasSubDateCols && dirProfilesHasTierV2Cols) {
+          const res = await supabase
+            .from("profiles")
+            .select(
+              "id, full_name, email, avatar_url, role, job_title, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, pro_package_id, pro_billing_cycle, has_used_trial, trial_used_at, total_points, created_at"
+            )
+            .order("created_at", { ascending: false });
+          if (!res.error) return res;
+          if (isMissingTierV2ColumnError(res.error)) {
+            dirProfilesHasTierV2Cols = false;
+          } else if (isMissingSubDateColumnError(res.error)) {
+            dirProfilesHasSubDateCols = false;
+          } else {
+            return res;
+          }
+        }
         if (dirProfilesHasSubDateCols) {
           const res = await supabase
             .from("profiles")
@@ -267,6 +286,31 @@ export function AdminLearnersDirectory({
             "id, full_name, email, avatar_url, role, job_title, subscription_tier, total_points, created_at"
           )
           .order("created_at", { ascending: false });
+      };
+
+      const fetchProRequestsWithFallback = async () => {
+        if (dirProReqHasTierV2Cols) {
+          const res = await supabase
+            .from("pro_upgrade_requests")
+            .select(
+              "id, user_email, user_name, package_id, package_name, price_label, payment_method, buyer_contact, proof_url, status, billing_cycle, duration_days, request_type, target_item_key, target_item_title, created_at"
+            )
+            .order("created_at", { ascending: false })
+            .limit(200);
+          if (!res.error) return res;
+          if (isMissingTierV2ColumnError(res.error)) {
+            dirProReqHasTierV2Cols = false;
+          } else {
+            return res;
+          }
+        }
+        return supabase
+          .from("pro_upgrade_requests")
+          .select(
+            "id, user_email, user_name, package_name, price_label, payment_method, buyer_contact, proof_url, status, created_at"
+          )
+          .order("created_at", { ascending: false })
+          .limit(200);
       };
 
       const [
@@ -293,11 +337,7 @@ export function AdminLearnersDirectory({
         supabase
           .from("submissions")
           .select("learner_id, score_percent"),
-        supabase
-          .from("pro_upgrade_requests")
-          .select("id, user_email, user_name, package_name, price_label, payment_method, buyer_contact, proof_url, status, created_at")
-          .order("created_at", { ascending: false })
-          .limit(200),
+        fetchProRequestsWithFallback(),
       ]);
 
       if (Array.isArray(proReqRes.data)) {
@@ -435,7 +475,7 @@ export function AdminLearnersDirectory({
           const resolvedPackageName =
             p.pro_package_name ??
             upMatch?.perks?.pro_package_name ??
-            (isProProfile ? "Learner PRO Monthly" : null);
+            (isProProfile ? "Pro" : null);
 
           merged.push({
             id: p.id || `sb-prof-${idx}`,
@@ -464,6 +504,10 @@ export function AdminLearnersDirectory({
             proStartedAt: resolvedStartedAt,
             proExpiresAt: resolvedExpiresAt,
             proPackageName: resolvedPackageName,
+            proPackageId: p.pro_package_id ?? null,
+            proBillingCycle: p.pro_billing_cycle ?? null,
+            hasUsedTrial: Boolean(p.has_used_trial),
+            trialUsedAt: p.trial_used_at ?? null,
             createdAt: p.created_at ?? null,
             paymentMethod: subMatch?.payment_method ?? null,
           });
@@ -1009,6 +1053,10 @@ export function AdminLearnersDirectory({
       proStartedAt: sbMatch?.proStartedAt,
       proExpiresAt: sbMatch?.proExpiresAt,
       proPackageName: sbMatch?.proPackageName,
+      proPackageId: sbMatch?.proPackageId,
+      proBillingCycle: sbMatch?.proBillingCycle,
+      hasUsedTrial: sbMatch?.hasUsedTrial,
+      trialUsedAt: sbMatch?.trialUsedAt,
       createdAt: sbMatch?.createdAt,
       paymentMethod: sbMatch?.paymentMethod,
     };
@@ -1188,6 +1236,15 @@ export function AdminLearnersDirectory({
         sbMatch?.proExpiresAt ?? m.proExpiresAt ?? existing.proExpiresAt,
       proPackageName:
         sbMatch?.proPackageName ?? m.proPackageName ?? existing.proPackageName,
+      proPackageId:
+        sbMatch?.proPackageId ?? m.proPackageId ?? existing.proPackageId,
+      proBillingCycle:
+        sbMatch?.proBillingCycle ?? m.proBillingCycle ?? existing.proBillingCycle,
+      hasUsedTrial: Boolean(
+        sbMatch?.hasUsedTrial ?? m.hasUsedTrial ?? existing.hasUsedTrial
+      ),
+      trialUsedAt:
+        sbMatch?.trialUsedAt ?? m.trialUsedAt ?? existing.trialUsedAt,
       createdAt:
         sbMatch?.createdAt ?? m.createdAt ?? existing.createdAt,
       paymentMethod:
@@ -1220,6 +1277,12 @@ export function AdminLearnersDirectory({
             proStartedAt: override.proStartedAt,
             proExpiresAt: override.proExpiresAt,
             proPackageName: override.proPackageName,
+            proPackageId: override.proPackageId ?? member.proPackageId,
+            proBillingCycle: override.proBillingCycle ?? member.proBillingCycle,
+            hasUsedTrial:
+              typeof override.hasUsedTrial === "boolean"
+                ? override.hasUsedTrial
+                : member.hasUsedTrial,
           }
         : {}),
     };
@@ -1355,14 +1418,22 @@ export function AdminLearnersDirectory({
       : filteredMembers;
 
   const applyLocalSubscriptionUpdate = (
-    member: { name: string; email: string },
+    member: { name: string; email: string; hasUsedTrial?: boolean },
     tier: "PRO" | "Free",
     startedAt: string | null,
     expiresAt: string | null,
-    packageName: string | null
+    packageName: string | null,
+    packageId?: string | null,
+    billingCycle?: string | null,
+    markTrialUsed?: boolean
   ) => {
     const emailLower = (member.email || "").toLowerCase().trim();
     const nameLower = (member.name || "").toLowerCase().trim();
+    const nextUsedTrial = Boolean(
+      markTrialUsed ||
+        billingCycle === "7d_trial" ||
+        member.hasUsedTrial
+    );
 
     setLocalSubOverrides((prev) => ({
       ...prev,
@@ -1371,6 +1442,9 @@ export function AdminLearnersDirectory({
         proStartedAt: startedAt,
         proExpiresAt: expiresAt,
         proPackageName: packageName,
+        ...(packageId !== undefined ? { proPackageId: packageId } : {}),
+        ...(billingCycle !== undefined ? { proBillingCycle: billingCycle } : {}),
+        hasUsedTrial: nextUsedTrial,
       },
     }));
 
@@ -1383,6 +1457,11 @@ export function AdminLearnersDirectory({
               proStartedAt: startedAt,
               proExpiresAt: expiresAt,
               proPackageName: packageName,
+              ...(packageId !== undefined ? { proPackageId: packageId } : {}),
+              ...(billingCycle !== undefined
+                ? { proBillingCycle: billingCycle }
+                : {}),
+              hasUsedTrial: m.hasUsedTrial || nextUsedTrial,
             }
           : m
       )
@@ -1405,6 +1484,11 @@ export function AdminLearnersDirectory({
             proStartedAt: startedAt,
             proExpiresAt: expiresAt,
             proPackageName: packageName,
+            ...(packageId !== undefined ? { proPackageId: packageId } : {}),
+            ...(billingCycle !== undefined
+              ? { proBillingCycle: billingCycle }
+              : {}),
+            hasUsedTrial: prev.hasUsedTrial || nextUsedTrial,
           }
         : prev
     );
@@ -1424,10 +1508,27 @@ export function AdminLearnersDirectory({
       ? addDaysToIsoDate(info.dueDateIso, 30)
       : addDaysToIsoDate(todayIso, 30);
 
+    const paidPkgs = getNormalizedProPackages(learnerProConfig).filter(
+      (p) => p.tierKind !== "free"
+    );
+    const matchedPkg =
+      paidPkgs.find(
+        (p) =>
+          (member.proPackageId && p.id === member.proPackageId) ||
+          (member.proPackageName &&
+            p.name.toLowerCase() === member.proPackageName.toLowerCase())
+      ) ||
+      paidPkgs.find((p) => p.highlighted || p.tierKind === "pro") ||
+      paidPkgs[0];
+
     setRenewModalMember(member);
     setRenewStartDate(initialStart);
     setRenewDueDate(initialDue);
-    setRenewPackageName(member.proPackageName || "Learner PRO Monthly");
+    setRenewPackageId(matchedPkg?.id || member.proPackageId || "pkg-pro");
+    setRenewPackageName(member.proPackageName || matchedPkg?.name || "Pro");
+    setRenewBillingCycle(
+      member.proBillingCycle === "7d_trial" ? "7d_trial" : "30d"
+    );
   };
 
   const persistManualProDates = async (params: {
@@ -1435,10 +1536,18 @@ export function AdminLearnersDirectory({
     startDateIso: string;
     dueDateIso: string;
     packageName: string;
+    packageId?: string | null;
+    billingCycle?: "7d_trial" | "30d";
   }) => {
     const cleanEmail = (params.member.email || "").trim().toLowerCase();
     const cleanName = (params.member.name || cleanEmail).trim();
-    const pkg = params.packageName.trim() || "Learner PRO Monthly";
+    const pkg = params.packageName.trim() || "Pro";
+    const pkgId = params.packageId || params.member.proPackageId || null;
+    const cycle =
+      params.billingCycle ||
+      (diffCalendarDays(params.startDateIso, params.dueDateIso) <= 8
+        ? "7d_trial"
+        : "30d");
 
     if (!isSupabaseConfigured || !cleanEmail) {
       applyLocalSubscriptionUpdate(
@@ -1446,18 +1555,42 @@ export function AdminLearnersDirectory({
         "PRO",
         params.startDateIso,
         params.dueDateIso,
-        pkg
+        pkg,
+        pkgId,
+        cycle,
+        cycle === "7d_trial"
       );
       return { ok: true, usedFallback: false };
     }
 
-    const { data, error } = await supabase.rpc("admin_extend_learner_pro", {
+    let { data, error } = await supabase.rpc("admin_extend_learner_pro", {
       p_target_email: cleanEmail,
       p_target_name: cleanName,
       p_started_at: params.startDateIso,
       p_due_at: params.dueDateIso,
       p_package_name: pkg,
+      p_package_id: pkgId,
+      p_billing_cycle: cycle,
     });
+
+    if (error) {
+      const msg = String(error.message || "").toLowerCase();
+      if (
+        error.code === "PGRST202" ||
+        msg.includes("p_package_id") ||
+        msg.includes("p_billing_cycle")
+      ) {
+        const legacyRes = await supabase.rpc("admin_extend_learner_pro", {
+          p_target_email: cleanEmail,
+          p_target_name: cleanName,
+          p_started_at: params.startDateIso,
+          p_due_at: params.dueDateIso,
+          p_package_name: pkg,
+        });
+        data = legacyRes.data;
+        error = legacyRes.error;
+      }
+    }
 
     if (error) {
       const msg = String(error.message || "").toLowerCase();
@@ -1481,7 +1614,10 @@ export function AdminLearnersDirectory({
           "PRO",
           params.startDateIso,
           params.dueDateIso,
-          pkg
+          pkg,
+          pkgId,
+          cycle,
+          cycle === "7d_trial"
         );
         return { ok: true, usedFallback: true };
       }
@@ -1495,7 +1631,10 @@ export function AdminLearnersDirectory({
       "PRO",
       returnedStart,
       returnedDue,
-      pkg
+      pkg,
+      pkgId,
+      cycle,
+      cycle === "7d_trial"
     );
     return { ok: true, usedFallback: false };
   };
@@ -1518,21 +1657,23 @@ export function AdminLearnersDirectory({
         startDateIso: renewStartDate,
         dueDateIso: renewDueDate,
         packageName: renewPackageName,
+        packageId: renewPackageId,
+        billingCycle: renewBillingCycle,
       });
 
       setRenewModalMember(null);
       if (result.usedFallback) {
         onShowToast(
-          `✅ PRO ${target.name} diaktifkan di tampilan (jalankan migrasi 013 SQL agar tanggal jatuh tempo tersimpan permanen).`
+          `✅ Paket ${renewPackageName} untuk ${target.name} diaktifkan di tampilan (jalankan migrasi 017 SQL agar tersimpan permanen).`
         );
       } else {
         onShowToast(
-          `⚡ Langganan PRO ${target.name} aktif s/d ${formatIndoDate(renewDueDate)}.`
+          `⚡ Paket ${renewPackageName} untuk ${target.name} aktif s/d ${formatIndoDate(renewDueDate)}.`
         );
       }
     } catch (err: any) {
       onShowToast(
-        `Gagal memperpanjang PRO: ${err?.message || "Pastikan Anda login sebagai Admin."}`
+        `Gagal menyimpan langganan: ${err?.message || "Pastikan Anda login sebagai Admin."}`
       );
     } finally {
       setIsSavingRenewal(false);
@@ -1561,12 +1702,14 @@ export function AdminLearnersDirectory({
         member,
         startDateIso: startIso,
         dueDateIso: nextDueIso,
-        packageName: member.proPackageName || "Learner PRO Monthly",
+        packageName: member.proPackageName || "Pro",
+        packageId: member.proPackageId || null,
+        billingCycle: "30d",
       });
 
       if (res.usedFallback) {
         onShowToast(
-          `✅ ${member.name} diperpanjang +30 hari (jalankan migrasi 013 SQL untuk simpan tanggal permanen).`
+          `✅ ${member.name} diperpanjang +30 hari (jalankan migrasi 017 SQL untuk simpan permanen).`
         );
       } else {
         onShowToast(
@@ -1589,14 +1732,23 @@ export function AdminLearnersDirectory({
           p_target_email: cleanEmail,
           p_target_name: member.name,
           p_is_pro: false,
-          p_package_name: member.proPackageName || "Learner PRO Monthly",
+          p_package_name: member.proPackageName || "Free",
         });
         if (error) {
           throw new Error(error.message);
         }
       }
 
-      applyLocalSubscriptionUpdate(member, "Free", member.proStartedAt ?? null, null, null);
+      applyLocalSubscriptionUpdate(
+        member,
+        "Free",
+        member.proStartedAt ?? null,
+        null,
+        null,
+        null,
+        null,
+        member.hasUsedTrial
+      );
       setRenewModalMember(null);
       onShowToast(`Status langganan ${member.name} dikembalikan ke Free Plan.`);
     } catch (err: any) {
@@ -1915,90 +2067,252 @@ export function AdminLearnersDirectory({
           </div>
 
           <div className="space-y-2">
-            {pendingProRequests.map((req) => (
-              <div
-                key={req.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#FFFFFF] px-3.5 py-2.5 border border-[#FDE68A]"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <p className="text-xs font-bold text-[#121215]">
-                    {req.user_name}{" "}
-                    <span className="font-normal text-[#5E5E5E]">({req.user_email})</span>
-                  </p>
-                  <p className="text-[11px] text-[#5E5E5E]">
-                    Paket: <strong className="text-[#121215]">{req.package_name}</strong> ({req.price_label}) •{" "}
-                    Metode: {req.payment_method}
-                    {req.buyer_contact ? ` • WA: ${req.buyer_contact}` : ""}
-                  </p>
-                  {req.proof_url && /^https?:\/\//i.test(req.proof_url) && (
-                    <a
-                      href={req.proof_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block text-[11px] font-semibold text-[#4F39F6] hover:underline"
+            {pendingProRequests.map((req) => {
+              const isItemUnlock = req.request_type === "item_unlock";
+              const isTrialReq = req.billing_cycle === "7d_trial";
+              const reqDurationDays =
+                Number(req.duration_days) || (isTrialReq ? 7 : 30);
+
+              return (
+                <div
+                  key={req.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#FFFFFF] px-3.5 py-2.5 border border-[#FDE68A]"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-xs font-bold text-[#121215]">
+                        {req.user_name}{" "}
+                        <span className="font-normal text-[#5E5E5E]">
+                          ({req.user_email})
+                        </span>
+                      </p>
+                      {isItemUnlock ? (
+                        <span className="inline-flex items-center rounded bg-[#EEF2FF] border border-[#C7D2FE] px-1.5 py-0.5 text-[10px] font-bold text-[#4F39F6]">
+                          Buka Materi Satuan
+                        </span>
+                      ) : isTrialReq ? (
+                        <span className="inline-flex items-center rounded bg-[#FEF3C7] border border-[#F59E0B]/40 px-1.5 py-0.5 text-[10px] font-bold text-[#92400E]">
+                          Trial 7 Hari (1×)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 text-[10px] font-bold text-[#059669]">
+                          Paket {reqDurationDays} Hari
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[#5E5E5E]">
+                      {isItemUnlock ? (
+                        <>
+                          Materi:{" "}
+                          <strong className="text-[#121215]">
+                            {req.target_item_title || req.package_name}
+                          </strong>
+                        </>
+                      ) : (
+                        <>
+                          Paket:{" "}
+                          <strong className="text-[#121215]">
+                            {req.package_name}
+                          </strong>
+                        </>
+                      )}{" "}
+                      ({req.price_label}) • Metode: {req.payment_method}
+                      {req.buyer_contact ? ` • WA: ${req.buyer_contact}` : ""}
+                    </p>
+                    {req.proof_url && /^https?:\/\//i.test(req.proof_url) && (
+                      <a
+                        href={req.proof_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block text-[11px] font-semibold text-[#4F39F6] hover:underline"
+                      >
+                        Lihat Bukti Pembayaran ↗
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (isItemUnlock && req.target_item_key) {
+                          const { error: grantErr } = await supabase.rpc(
+                            "admin_grant_unlocked_item",
+                            {
+                              p_target_email: req.user_email,
+                              p_item_key: req.target_item_key,
+                              p_course_title:
+                                req.target_item_title || req.package_name,
+                              p_chapter_id: null,
+                              p_request_id: req.id,
+                            }
+                          );
+                          if (grantErr) {
+                            const msg = String(
+                              grantErr.message || ""
+                            ).toLowerCase();
+                            if (
+                              grantErr.code === "PGRST202" ||
+                              msg.includes("admin_grant_unlocked_item")
+                            ) {
+                              await supabase
+                                .from("pro_upgrade_requests")
+                                .update({ status: "approved" })
+                                .eq("id", req.id);
+                              setPendingProRequests((prev) =>
+                                prev.filter((r) => r.id !== req.id)
+                              );
+                              onShowToast(
+                                `⚠️ Jalankan SQL 017 agar unlock "${req.target_item_title || req.package_name}" untuk ${req.user_name} tercatat ke database.`
+                              );
+                              return;
+                            }
+                            onShowToast(
+                              `Gagal membuka akses materi: ${grantErr.message}`
+                            );
+                            return;
+                          }
+                          setPendingProRequests((prev) =>
+                            prev.filter((r) => r.id !== req.id)
+                          );
+                          void loadSupabaseDirectory();
+                          onShowToast(
+                            `✅ Materi "${req.target_item_title || req.package_name}" resmi dibuka untuk ${req.user_name}.`
+                          );
+                          return;
+                        }
+
+                        const todayIso = getTodayIsoDate();
+                        const cycle = isTrialReq ? "7d_trial" : "30d";
+                        const dueIso = addDaysToIsoDate(
+                          todayIso,
+                          reqDurationDays
+                        );
+                        let { error } = await supabase.rpc(
+                          "admin_set_learner_pro",
+                          {
+                            p_target_email: req.user_email,
+                            p_target_name: req.user_name,
+                            p_is_pro: true,
+                            p_package_name: req.package_name,
+                            p_request_id: req.id,
+                            p_started_at: todayIso,
+                            p_due_at: dueIso,
+                            p_duration_days: reqDurationDays,
+                            p_package_id: req.package_id || null,
+                            p_billing_cycle: cycle,
+                          }
+                        );
+                        if (error) {
+                          const msg = String(error.message || "").toLowerCase();
+                          if (
+                            error.code === "PGRST202" ||
+                            msg.includes("p_package_id") ||
+                            msg.includes("p_billing_cycle") ||
+                            msg.includes("could not find the function")
+                          ) {
+                            const legacyRes = await supabase.rpc(
+                              "admin_set_learner_pro",
+                              {
+                                p_target_email: req.user_email,
+                                p_target_name: req.user_name,
+                                p_is_pro: true,
+                                p_package_name: req.package_name,
+                                p_request_id: req.id,
+                              }
+                            );
+                            error = legacyRes.error;
+                          }
+                        }
+                        if (error) {
+                          onShowToast(
+                            `Gagal mengaktifkan paket: ${error.message}`
+                          );
+                          return;
+                        }
+                        applyLocalSubscriptionUpdate(
+                          {
+                            name: req.user_name,
+                            email: req.user_email,
+                            hasUsedTrial: isTrialReq,
+                          },
+                          "PRO",
+                          todayIso,
+                          dueIso,
+                          req.package_name || "Pro",
+                          req.package_id || null,
+                          cycle,
+                          isTrialReq
+                        );
+                        setPendingProRequests((prev) =>
+                          prev.filter((r) => r.id !== req.id)
+                        );
+                        void loadSupabaseDirectory();
+                        onShowToast(
+                          `✅ Pembayaran diverifikasi! ${req.user_name} resmi aktif ${req.package_name} s/d ${formatIndoDate(dueIso)}.`
+                        );
+                      }}
+                      className="rounded-lg bg-[#10B981] hover:bg-[#059669] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
                     >
-                      Lihat Bukti Pembayaran ↗
-                    </a>
-                  )}
+                      {isItemUnlock
+                        ? "Setujui & Buka Materi"
+                        : isTrialReq
+                        ? "Aktifkan Trial 7 Hari"
+                        : "Setujui & Aktifkan"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (isItemUnlock) {
+                          const { error: rejErr } = await supabase
+                            .from("pro_upgrade_requests")
+                            .update({ status: "rejected" })
+                            .eq("id", req.id);
+                          if (rejErr) {
+                            onShowToast(
+                              `Gagal menolak permintaan: ${rejErr.message}`
+                            );
+                            return;
+                          }
+                          setPendingProRequests((prev) =>
+                            prev.filter((r) => r.id !== req.id)
+                          );
+                          onShowToast(
+                            `Permintaan buka materi "${req.target_item_title || req.package_name}" untuk ${req.user_name} ditolak.`
+                          );
+                          return;
+                        }
+
+                        const { error } = await supabase.rpc(
+                          "admin_set_learner_pro",
+                          {
+                            p_target_email: req.user_email,
+                            p_target_name: req.user_name,
+                            p_is_pro: false,
+                            p_package_name: req.package_name,
+                            p_request_id: req.id,
+                          }
+                        );
+                        if (error) {
+                          onShowToast(
+                            `Gagal menolak permintaan: ${error.message}`
+                          );
+                          return;
+                        }
+                        setPendingProRequests((prev) =>
+                          prev.filter((r) => r.id !== req.id)
+                        );
+                        onShowToast(
+                          `Permintaan paket ${req.package_name} untuk ${req.user_name} ditolak.`
+                        );
+                      }}
+                      className="rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] px-3 py-1.5 text-[11px] font-bold text-[#DC2626] border border-[#FECACA] cursor-pointer"
+                    >
+                      Tolak
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const todayIso = getTodayIsoDate();
-                      const dueIso = addDaysToIsoDate(todayIso, 30);
-                      const { error } = await supabase.rpc("admin_set_learner_pro", {
-                        p_target_email: req.user_email,
-                        p_target_name: req.user_name,
-                        p_is_pro: true,
-                        p_package_name: req.package_name,
-                        p_request_id: req.id,
-                      });
-                      if (error) {
-                        onShowToast(`Gagal mengaktifkan PRO: ${error.message}`);
-                        return;
-                      }
-                      applyLocalSubscriptionUpdate(
-                        { name: req.user_name, email: req.user_email },
-                        "PRO",
-                        todayIso,
-                        dueIso,
-                        req.package_name || "Learner PRO Monthly"
-                      );
-                      setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
-                      void loadSupabaseDirectory();
-                      onShowToast(
-                        `✅ Pembayaran diverifikasi! ${req.user_name} resmi aktif PRO s/d ${formatIndoDate(dueIso)}.`
-                      );
-                    }}
-                    className="rounded-lg bg-[#10B981] hover:bg-[#059669] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
-                  >
-                    Setujui & Aktifkan PRO
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const { error } = await supabase.rpc("admin_set_learner_pro", {
-                        p_target_email: req.user_email,
-                        p_target_name: req.user_name,
-                        p_is_pro: false,
-                        p_package_name: req.package_name,
-                        p_request_id: req.id,
-                      });
-                      if (error) {
-                        onShowToast(`Gagal menolak permintaan: ${error.message}`);
-                        return;
-                      }
-                      setPendingProRequests((prev) => prev.filter((r) => r.id !== req.id));
-                      onShowToast(`Permintaan upgrade PRO untuk ${req.user_name} ditolak.`);
-                    }}
-                    className="rounded-lg bg-[#FEF2F2] hover:bg-[#FEE2E2] px-3 py-1.5 text-[11px] font-bold text-[#DC2626] border border-[#FECACA] cursor-pointer"
-                  >
-                    Tolak
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -2366,8 +2680,21 @@ export function AdminLearnersDirectory({
                                       ) : subInfo.status === "active" ? (
                                         <Zap size={10} fill="currentColor" />
                                       ) : null}
-                                      <span>{subInfo.badgeLabel}</span>
+                                      <span>
+                                        {subInfo.status !== "free" &&
+                                        member.proPackageName
+                                          ? `${member.proPackageName} • ${subInfo.badgeLabel}`
+                                          : subInfo.badgeLabel}
+                                      </span>
                                     </span>
+                                    {member.hasUsedTrial && (
+                                      <span className="ml-1 inline-flex items-center rounded bg-[#F8F9FB] border border-[#EAECEF] px-1.5 py-0.5 text-[9px] font-semibold text-[#64748B]">
+                                        {member.proBillingCycle === "7d_trial" &&
+                                        subInfo.status !== "free"
+                                          ? "Sedang Trial 7H"
+                                          : "Trial 1× terpakai"}
+                                      </span>
+                                    )}
                                     {subInfo.status !== "free" ? (
                                       <div className="text-[10px] leading-tight space-y-0.5 text-[#5E5E5E] tabular-nums">
                                         <p>
@@ -3943,11 +4270,76 @@ export function AdminLearnersDirectory({
                 )}
               </div>
 
+              {/* Paid Package Selection */}
+              {(() => {
+                const paidPackages = getNormalizedProPackages(
+                  learnerProConfig
+                ).filter((p) => p.tierKind !== "free");
+                if (paidPackages.length === 0) return null;
+                return (
+                  <div>
+                    <p className="text-xs font-semibold text-[#121215] mb-1.5">
+                      Pilih Paket Langganan (Basic / Pro)
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {paidPackages.map((pkg) => {
+                        const isChosen =
+                          renewPackageId === pkg.id ||
+                          renewPackageName.toLowerCase() ===
+                            pkg.name.toLowerCase();
+                        const monthlyIdr = Number(pkg.monthlyPriceIdr ?? 0);
+                        const trialPrice = computeTrial7DaysPriceIdr(
+                          monthlyIdr,
+                          pkg.trial7DaysPriceIdr
+                        );
+                        return (
+                          <button
+                            key={pkg.id}
+                            type="button"
+                            onClick={() => {
+                              setRenewPackageId(pkg.id);
+                              setRenewPackageName(pkg.name);
+                            }}
+                            className={`rounded-xl border p-2.5 text-left transition-colors cursor-pointer ${
+                              isChosen
+                                ? "bg-[#EEF2FF] border-[#4F39F6] ring-1 ring-[#4F39F6]/25"
+                                : "bg-[#FFFFFF] border-[#EAECEF] hover:border-[#4F39F6]/40"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="text-xs font-bold text-[#121215]">
+                                {pkg.name}
+                              </span>
+                              <span className="text-[10px] font-bold text-[#4F39F6] tabular-nums">
+                                {formatIdr(monthlyIdr)}/30h
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-[#64748B] mt-0.5">
+                              {pkg.moduleAccessMode === "limited"
+                                ? `Maks ${pkg.maxModulesPerCourse} modul/kursus • `
+                                : "Semua modul penuh • "}
+                              Trial 7h: {formatIdr(trialPrice)}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Quick Extension Presets */}
               <div>
-                <p className="text-xs font-semibold text-[#121215] mb-1">
-                  Pilihan Cepat Perpanjangan
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                  <p className="text-xs font-semibold text-[#121215]">
+                    Pilihan Cepat Durasi
+                  </p>
+                  {renewModalMember.hasUsedTrial && (
+                    <span className="inline-flex items-center rounded-full bg-[#FEF3C7] border border-[#F59E0B]/40 px-2 py-0.5 text-[10px] font-bold text-[#92400E]">
+                      Trial 7 hari sudah pernah dipakai akun ini
+                    </span>
+                  )}
+                </div>
                 <p className="text-[11px] text-[#64748B] mb-2">
                   {hasActiveFutureDue && currentSub?.dueDateIso
                     ? `Ditambahkan otomatis dari jatuh tempo aktif (${formatIndoDate(
@@ -3957,12 +4349,19 @@ export function AdminLearnersDirectory({
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { label: "+30 Hari", days: 30, pkg: "Learner PRO Monthly" },
-                    { label: "+90 Hari", days: 90, pkg: "Learner PRO Quarterly" },
-                    { label: "+180 Hari", days: 180, pkg: "Learner PRO 6 Months" },
-                    { label: "+1 Tahun", days: 365, pkg: "Learner PRO Yearly" },
+                    {
+                      label: "+7 Hari (Trial 1×)",
+                      days: 7,
+                      cycle: "7d_trial" as const,
+                    },
+                    { label: "+30 Hari", days: 30, cycle: "30d" as const },
+                    { label: "+90 Hari", days: 90, cycle: "30d" as const },
+                    { label: "+1 Tahun", days: 365, cycle: "30d" as const },
                   ].map((preset) => {
-                    const targetDue = addDaysToIsoDate(basePresetAnchor, preset.days);
+                    const targetDue = addDaysToIsoDate(
+                      basePresetAnchor,
+                      preset.days
+                    );
                     const isSelectedPreset = renewDueDate === targetDue;
                     return (
                       <button
@@ -3973,11 +4372,14 @@ export function AdminLearnersDirectory({
                             setRenewStartDate(todayIso);
                           }
                           setRenewDueDate(targetDue);
-                          setRenewPackageName(preset.pkg);
+                          setRenewBillingCycle(preset.cycle);
                         }}
                         className={`rounded-lg px-2.5 py-2 text-xs font-bold border transition-colors cursor-pointer ${
                           isSelectedPreset
                             ? "bg-[#4F39F6] text-white border-[#4F39F6]"
+                            : preset.cycle === "7d_trial" &&
+                              renewModalMember.hasUsedTrial
+                            ? "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A]"
                             : "bg-[#FFFFFF] text-[#121215] border-[#EAECEF] hover:border-[#4F39F6] hover:text-[#4F39F6]"
                         }`}
                       >
@@ -4037,7 +4439,7 @@ export function AdminLearnersDirectory({
                   htmlFor="renew-pro-package-name"
                   className="block text-xs font-semibold text-[#121215] mb-1"
                 >
-                  Nama Paket PRO
+                  Nama Paket Aktif
                 </label>
                 <input
                   id="renew-pro-package-name"
@@ -4045,7 +4447,7 @@ export function AdminLearnersDirectory({
                   required
                   value={renewPackageName}
                   onChange={(e) => setRenewPackageName(e.target.value)}
-                  placeholder="Contoh: Learner PRO Monthly"
+                  placeholder="Contoh: Basic atau Pro"
                   className="w-full rounded-lg bg-[#F8F9FB] px-3 py-2 text-xs text-[#121215] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] focus:outline-none"
                 />
               </div>

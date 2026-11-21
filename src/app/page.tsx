@@ -102,6 +102,12 @@ function RuangSosmedStudioInner() {
     explorerItems,
     ungradedQuizzes: quizzes,
     learnerIsPro,
+    learnerAccess,
+    learnerPackageId,
+    learnerPackageName,
+    learnerHasUsedTrial,
+    adminPreviewTierOverride,
+    setAdminPreviewTier,
     setLearnerProStatus,
     submitProUpgradeRequest,
     registerLearnerProfile,
@@ -1613,17 +1619,27 @@ function RuangSosmedStudioInner() {
         open={upgradeModalOpen}
         onClose={() => setUpgradeModalOpen(false)}
         isProActive={learnerIsPro}
+        hasUsedTrial={learnerHasUsedTrial}
+        activePackageId={learnerPackageId || learnerAccess.activePackage?.id}
+        activePackageName={learnerPackageName || learnerAccess.activePackage?.name}
+        activeTierKind={learnerAccess.tierKind}
         canTestFreeToggle={isCurrentUserAdmin}
+        previewTier={adminPreviewTierOverride}
+        onSelectPreviewTier={(tier) => setAdminPreviewTier(tier)}
         initialStep={upgradeModalStep}
         defaultBuyerName={currentUser?.name || ""}
         defaultBuyerEmail={currentUser?.email || ""}
         onConfirmUpgrade={async (details) => {
           const res = await submitProUpgradeRequest({
-            packageId: details?.packageId || "pro-monthly",
-            packageName: details?.packageName || "Learner PRO Bulanan",
+            packageId: details?.packageId || "pkg-pro",
+            packageName: details?.packageName || "Pro",
             priceLabel: details?.priceLabel
               ? `${details.priceLabel} ${details.periodLabel || ""}`.trim()
-              : "Rp 149.000 / bulan",
+              : "Rp 150.000 / 30 hari",
+            billingCycle: details?.billingCycle || "30d",
+            durationDays:
+              details?.durationDays ??
+              (details?.billingCycle === "7d_trial" ? 7 : 30),
             buyerName: details?.buyerName || currentUser?.name || "Learner",
             buyerContact: details?.buyerEmail || currentUser?.email || "",
             paymentMethod: details?.paymentMethod || "qris",

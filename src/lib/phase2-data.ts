@@ -35,6 +35,8 @@ export interface ExplorerContentItem {
   description: string;
   isFavorite?: boolean;
   isPro?: boolean;
+  unlockPriceIdr?: number;
+  unlockPointsCost?: number;
   cohort?: string;
   thumbnailUrl?: string;
   isArchived?: boolean;

@@ -30,16 +30,27 @@ import {
   Home,
   BookOpen,
   Compass,
+  Coins,
+  Layers,
+  Tag,
+  Lock,
 } from "lucide-react";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
-  DEFAULT_LEARNER_PRO_FEATURES,
   DEFAULT_MAINTENANCE_CONFIG,
   DEFAULT_LEARNER_PAGES_CONFIG,
+  PACKAGE_FEATURE_DEFINITIONS,
+  ALL_FALSE_ENTITLEMENTS,
   getNormalizedProPackages,
+  createDefaultTierPackages,
+  buildPackageBenefitLines,
+  computeTrial7DaysPriceIdr,
+  formatIdr,
   type LearnerProPlanConfig,
   type LearnerProPackageItem,
+  type PackageFeatureKey,
+  type ModuleAccessMode,
   type MaintenanceConfig,
   type LearnerPagesVisibilityConfig,
 } from "@/context/RuangSosmedStore";
@@ -331,10 +342,13 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     draft: LearnerProPlanConfig,
     pkgs: LearnerProPackageItem[]
   ): LearnerProPlanConfig => {
-    const primary = pkgs.find((p) => p.highlighted) || pkgs[0];
-    if (!primary) return { ...draft, packages: pkgs };
+    const paidPkgs = pkgs.filter((p) => !p.isFreeTier && p.tierKind !== "free");
+    const primary =
+      paidPkgs.find((p) => p.highlighted) || paidPkgs[0] || pkgs[0];
+    if (!primary) return { ...draft, packagesSchemaVersion: 2, packages: pkgs };
     return {
       ...draft,
+      packagesSchemaVersion: 2,
       planName: primary.name,
       badgeText: primary.badge,
       priceLabel: primary.priceLabel,
@@ -355,7 +369,7 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     updateMaintenanceConfig(maintDraft);
     updateLearnerPagesConfig(pagesDraft);
     onShowToast(
-      "Pengaturan paket, QRIS, Halaman Siswa (Wiki & Favorites), Under Construction (404) & studio berhasil disimpan."
+      "Pengaturan paket (FREE / Basic / Pro), QRIS, Halaman Siswa, Under Construction (404) & studio berhasil disimpan."
     );
   };
 
@@ -387,11 +401,48 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     if (!selectedPkg) return;
     setProDraft((prev) => {
       const currentPkgs = getNormalizedProPackages(prev);
-      const nextPkgs = currentPkgs.map((p) =>
-        p.id === selectedPkg.id ? { ...p, ...patch } : p
-      );
+      const nextPkgs = currentPkgs.map((p) => {
+        if (p.id !== selectedPkg.id) return p;
+        const merged: LearnerProPackageItem = { ...p, ...patch };
+        if (
+          patch.entitlements !== undefined ||
+          patch.featureLabels !== undefined ||
+          patch.extraBenefits !== undefined
+        ) {
+          merged.features = buildPackageBenefitLines(merged);
+        }
+        return merged;
+      });
       return syncPrimaryFields(prev, nextPkgs);
     });
+  };
+
+  const handleTogglePkgEntitlement = (key: PackageFeatureKey) => {
+    if (!selectedPkg) return;
+    const currentEnt = {
+      ...ALL_FALSE_ENTITLEMENTS,
+      ...(selectedPkg.entitlements || {}),
+    };
+    const nextVal = !currentEnt[key];
+    const nextEnt = { ...currentEnt, [key]: nextVal };
+    const patch: Partial<LearnerProPackageItem> = { entitlements: nextEnt };
+    if (key === "proContent") {
+      if (nextVal && selectedPkg.moduleAccessMode === "free_only") {
+        patch.moduleAccessMode = selectedPkg.isFreeTier ? "unlimited" : "limited";
+      } else if (!nextVal) {
+        patch.moduleAccessMode = "free_only";
+      }
+    }
+    updateSelectedPackage(patch);
+  };
+
+  const handleReset3TierPresets = () => {
+    const presets = createDefaultTierPackages();
+    setProDraft((prev) => syncPrimaryFields(prev, presets));
+    setSelectedPkgId(presets[1]?.id || presets[0]?.id || "pkg-basic");
+    onShowToast(
+      "Preset 3 paket (FREE, Basic, Pro) berhasil dipulihkan. Klik Simpan Perubahan untuk menerapkan."
+    );
   };
 
   const handleSetPrimaryPackage = (pkgId: string) => {
@@ -399,7 +450,7 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
       const currentPkgs = getNormalizedProPackages(prev);
       const nextPkgs = currentPkgs.map((p) => ({
         ...p,
-        highlighted: p.id === pkgId,
+        highlighted: p.id === pkgId && !p.isFreeTier,
       }));
       return syncPrimaryFields(prev, nextPkgs);
     });
@@ -408,26 +459,48 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
 
   const handleAddPackage = () => {
     const newId = `pkg-${Date.now()}`;
-    const nextPkg: LearnerProPackageItem = {
+    const basePkg: LearnerProPackageItem = {
       id: newId,
-      name: `Paket PRO ${packagesList.length + 1}`,
+      name: `Paket Custom ${packagesList.length}`,
       badge: "BEST VALUE",
-      priceLabel: "Rp 299.000",
-      periodLabel: "/ 3 bulan",
+      priceLabel: "Rp 199.000",
+      periodLabel: "/ bulan",
+      monthlyPriceIdr: 199000,
+      enable7DayTrial: true,
+      trial7DaysPriceIdr: null,
+      tierKind: "custom",
+      isFreeTier: false,
       description:
         "Akses penuh seluruh materi lanjutan, resource template, dan mentoring prioritas.",
       ctaButtonLabel: "Pilih Paket Ini",
-      featuresHeading: "Benefit Paket Ini",
-      features: [...DEFAULT_LEARNER_PRO_FEATURES],
+      featuresHeading: "Fitur & Benefit Paket",
+      entitlements: {
+        proContent: true,
+        downloads: true,
+        wiki: true,
+        certificate: true,
+        assignments: true,
+        discussion: true,
+        notesFavorites: true,
+      },
+      featureLabels: {},
+      extraBenefits: [],
+      moduleAccessMode: "unlimited",
+      maxModulesPerCourse: 999,
+      allowPointsUnlock: false,
+      defaultUnlockPointsCost: 50,
+      allowPerItemPurchase: false,
+      defaultUnlockPriceIdr: 15000,
+      features: [],
       highlighted: false,
       qrCodeUrl: "",
     };
-    setProDraft((prev) => ({
-      ...prev,
-      packages: [...getNormalizedProPackages(prev), nextPkg],
-    }));
+    basePkg.features = buildPackageBenefitLines(basePkg);
+    setProDraft((prev) =>
+      syncPrimaryFields(prev, [...getNormalizedProPackages(prev), basePkg])
+    );
     setSelectedPkgId(newId);
-    onShowToast(`Paket baru "${nextPkg.name}" ditambahkan.`);
+    onShowToast(`Paket baru "${basePkg.name}" ditambahkan.`);
   };
 
   const handleDuplicatePackage = () => {
@@ -438,24 +511,33 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
       id: newId,
       name: `${selectedPkg.name} (Salinan)`,
       highlighted: false,
+      isFreeTier: false,
+      tierKind: selectedPkg.isFreeTier ? "custom" : selectedPkg.tierKind,
       features: [...(selectedPkg.features || [])],
+      extraBenefits: [...(selectedPkg.extraBenefits || [])],
     };
-    setProDraft((prev) => ({
-      ...prev,
-      packages: [...getNormalizedProPackages(prev), duplicated],
-    }));
+    setProDraft((prev) =>
+      syncPrimaryFields(prev, [...getNormalizedProPackages(prev), duplicated])
+    );
     setSelectedPkgId(newId);
     onShowToast(`Paket "${selectedPkg.name}" berhasil diduplikasi.`);
   };
 
   const handleDeletePackage = (pkgId: string) => {
-    if (packagesList.length <= 1) {
-      onShowToast("Minimal harus terdapat 1 paket upgrade aktif.");
+    const target = packagesList.find((p) => p.id === pkgId);
+    if (target?.isFreeTier) {
+      onShowToast("Paket dasar FREE tidak dapat dihapus karena dipakai member baru.");
+      return;
+    }
+    const paidCount = packagesList.filter((p) => !p.isFreeTier).length;
+    if (paidCount <= 1) {
+      onShowToast("Minimal harus terdapat 1 paket berbayar aktif selain FREE.");
       return;
     }
     const remaining = packagesList.filter((p) => p.id !== pkgId);
-    if (!remaining.some((p) => p.highlighted) && remaining[0]) {
-      remaining[0] = { ...remaining[0], highlighted: true };
+    if (!remaining.some((p) => !p.isFreeTier && p.highlighted)) {
+      const firstPaid = remaining.find((p) => !p.isFreeTier);
+      if (firstPaid) firstPaid.highlighted = true;
     }
     setProDraft((prev) => syncPrimaryFields(prev, remaining));
     if (selectedPkgId === pkgId && remaining[0]) {
@@ -511,27 +593,29 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     }
   };
 
-  const handleUpdateFeatureItem = (index: number, value: string) => {
+  const handleUpdateExtraBenefitItem = (index: number, value: string) => {
     if (!selectedPkg) return;
-    const next = [...(selectedPkg.features || [])];
+    const next = [...(selectedPkg.extraBenefits || [])];
     next[index] = value;
-    updateSelectedPackage({ features: next });
+    updateSelectedPackage({ extraBenefits: next });
   };
 
-  const handleAddFeatureItem = () => {
+  const handleAddExtraBenefitItem = () => {
     if (!selectedPkg) return;
     updateSelectedPackage({
-      features: [
-        ...(selectedPkg.features || []),
-        "Fitur & benefit baru Learner PRO",
+      extraBenefits: [
+        ...(selectedPkg.extraBenefits || []),
+        "Bonus eksklusif tambahan untuk member paket ini",
       ],
     });
   };
 
-  const handleRemoveFeatureItem = (index: number) => {
+  const handleRemoveExtraBenefitItem = (index: number) => {
     if (!selectedPkg) return;
     updateSelectedPackage({
-      features: (selectedPkg.features || []).filter((_, i) => i !== index),
+      extraBenefits: (selectedPkg.extraBenefits || []).filter(
+        (_, i) => i !== index
+      ),
     });
   };
 
@@ -779,363 +863,822 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
           </div>
 
           {/* SECTION 1: KELOLA PAKET & BENEFIT */}
-          {activeSection === "pro-packages" && selectedPkg && (
-            <div className="space-y-5">
-              {/* Bar Daftar Paket */}
-              <div className="space-y-1.5">
-                <div className="px-3 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Daftar Paket Upgrade ({packagesList.length})
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDuplicatePackage}
-                      className="inline-flex items-center gap-1 rounded-xl bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 border border-slate-200 cursor-pointer"
-                    >
-                      <Copy size={12} />
-                      <span>Duplikat Paket</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAddPackage}
-                      className="inline-flex items-center gap-1 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-3 py-1.5 text-xs font-semibold text-white cursor-pointer"
-                    >
-                      <Plus size={13} />
-                      <span>Tambah Paket Baru</span>
-                    </button>
+          {activeSection === "pro-packages" && selectedPkg && (() => {
+            const activeEnt = {
+              ...ALL_FALSE_ENTITLEMENTS,
+              ...(selectedPkg.entitlements || {}),
+            };
+            const enabledFeatureCount = PACKAGE_FEATURE_DEFINITIONS.filter(
+              (f) => activeEnt[f.key]
+            ).length;
+            const monthlyNumeric = Math.max(
+              0,
+              Number(selectedPkg.monthlyPriceIdr ?? 0)
+            );
+            const autoTrialPrice = computeTrial7DaysPriceIdr(
+              monthlyNumeric,
+              selectedPkg.trial7DaysPriceIdr
+            );
+            const modMode: ModuleAccessMode =
+              selectedPkg.moduleAccessMode ||
+              (selectedPkg.isFreeTier
+                ? "free_only"
+                : selectedPkg.tierKind === "basic"
+                ? "limited"
+                : "unlimited");
+
+            return (
+              <div className="space-y-5">
+                {/* Bar Daftar Paket */}
+                <div className="space-y-1.5">
+                  <div className="px-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Daftar Paket Membership ({packagesList.length})
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleReset3TierPresets}
+                        className="inline-flex items-center gap-1 rounded-xl bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 cursor-pointer"
+                      >
+                        <RotateCcw size={12} />
+                        <span>Reset Preset FREE / Basic / Pro</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDuplicatePackage}
+                        className="inline-flex items-center gap-1 rounded-xl bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 border border-slate-200 cursor-pointer"
+                      >
+                        <Copy size={12} />
+                        <span>Duplikat Paket</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddPackage}
+                        className="inline-flex items-center gap-1 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-3 py-1.5 text-xs font-semibold text-white cursor-pointer"
+                      >
+                        <Plus size={13} />
+                        <span>Tambah Paket Baru</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white border border-slate-200/80 p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
+                    {packagesList.map((pkg) => {
+                      const isSelectedPkg = pkg.id === selectedPkg.id;
+                      const pkgEnt = {
+                        ...ALL_FALSE_ENTITLEMENTS,
+                        ...(pkg.entitlements || {}),
+                      };
+                      const onCount = PACKAGE_FEATURE_DEFINITIONS.filter(
+                        (f) => pkgEnt[f.key]
+                      ).length;
+                      const pkgTrialIdr = computeTrial7DaysPriceIdr(
+                        Number(pkg.monthlyPriceIdr ?? 0),
+                        pkg.trial7DaysPriceIdr
+                      );
+                      const modBadge =
+                        pkg.moduleAccessMode === "unlimited"
+                          ? "Unlimited Modul"
+                          : pkg.moduleAccessMode === "limited"
+                          ? `Maks. ${pkg.maxModulesPerCourse || 6} modul/materi`
+                          : "Hanya Bab Gratis";
+
+                      return (
+                        <div
+                          key={pkg.id}
+                          onClick={() => setSelectedPkgId(pkg.id)}
+                          className={`group rounded-xl p-3.5 border transition-all cursor-pointer flex items-start justify-between gap-2 ${
+                            isSelectedPkg
+                              ? "bg-indigo-50/70 border-[#4F39F6] ring-1 ring-[#4F39F6]"
+                              : "bg-slate-50/70 border-slate-200 hover:bg-slate-100/70"
+                          }`}
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-900 truncate">
+                                {pkg.name || "Paket Tanpa Nama"}
+                              </span>
+                              {pkg.isFreeTier && (
+                                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 shrink-0">
+                                  Gratis Dasar
+                                </span>
+                              )}
+                              {pkg.tierKind === "basic" && (
+                                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800 shrink-0">
+                                  Basic
+                                </span>
+                              )}
+                              {pkg.highlighted && !pkg.isFreeTier && (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 shrink-0">
+                                  Utama
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-sm font-extrabold text-[#4F39F6]">
+                              {pkg.isFreeTier ? "Gratis" : pkg.priceLabel}{" "}
+                              <span className="text-[11px] font-medium text-slate-500">
+                                {pkg.isFreeTier ? "Selamanya" : pkg.periodLabel}
+                              </span>
+                            </p>
+
+                            {!pkg.isFreeTier && pkg.enable7DayTrial !== false && pkgTrialIdr > 0 && (
+                              <p className="text-[11px] font-semibold text-emerald-700">
+                                Trial 7 hr (1×): {formatIdr(pkgTrialIdr)}
+                              </p>
+                            )}
+
+                            <p className="text-[11px] text-slate-500">
+                              {onCount}/7 fitur ON • {modBadge}
+                            </p>
+                          </div>
+
+                          {!pkg.isFreeTier && packagesList.filter((p) => !p.isFreeTier).length > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeletePackage(pkg.id);
+                              }}
+                              title="Hapus paket ini"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white cursor-pointer shrink-0"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div className="rounded-2xl bg-white border border-slate-200/80 p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
-                  {packagesList.map((pkg) => {
-                    const isSelectedPkg = pkg.id === selectedPkg.id;
-                    return (
-                      <div
-                        key={pkg.id}
-                        onClick={() => setSelectedPkgId(pkg.id)}
-                        className={`group rounded-xl p-3.5 border transition-all cursor-pointer flex items-start justify-between gap-2 ${
-                          isSelectedPkg
-                            ? "bg-indigo-50/70 border-[#4F39F6] ring-1 ring-[#4F39F6]"
-                            : "bg-slate-50/70 border-slate-200 hover:bg-slate-100/70"
-                        }`}
-                      >
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold text-slate-900 truncate">
-                              {pkg.name || "Paket Tanpa Nama"}
-                            </span>
-                            {pkg.highlighted && (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 shrink-0">
-                                Utama
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm font-extrabold text-[#4F39F6]">
-                            {pkg.priceLabel}{" "}
-                            <span className="text-[11px] font-medium text-slate-500">
-                              {pkg.periodLabel}
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-slate-500">
-                            {(pkg.features || []).length} benefit •{" "}
-                            {pkg.qrCodeUrl ? "QRIS Khusus" : "QRIS Global"}
-                          </p>
-                        </div>
-
-                        {packagesList.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeletePackage(pkg.id);
-                            }}
-                            title="Hapus paket ini"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white cursor-pointer shrink-0"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Detail Paket Terpilih */}
-              <div className="space-y-1.5">
-                <div className="px-3 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                    Detail Paket: {selectedPkg.name}
-                  </p>
-                  {!selectedPkg.highlighted && (
-                    <button
-                      type="button"
-                      onClick={() => handleSetPrimaryPackage(selectedPkg.id)}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:underline cursor-pointer"
-                    >
-                      <Star size={12} />
-                      <span>Jadikan Paket Utama (Default)</span>
-                    </button>
-                  )}
-                </div>
-
-                <div className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
-                  <IosGroupedRow label="Nama Paket">
-                    <input
-                      type="text"
-                      value={selectedPkg.name || ""}
-                      onChange={(e) =>
-                        updateSelectedPackage({ name: e.target.value })
-                      }
-                      className={`${IOS_INPUT_CLASS} font-semibold`}
-                    />
-                  </IosGroupedRow>
-
-                  <IosGroupedRow
-                    label="Harga Paket"
-                    hint="Ditampilkan pada pilihan paket & halaman bayar"
-                  >
-                    <input
-                      type="text"
-                      value={selectedPkg.priceLabel || ""}
-                      onChange={(e) =>
-                        updateSelectedPackage({ priceLabel: e.target.value })
-                      }
-                      placeholder="Rp 149.000"
-                      className={`${IOS_INPUT_CLASS} font-bold`}
-                    />
-                  </IosGroupedRow>
-
-                  <IosGroupedRow label="Periode / Durasi">
-                    <input
-                      type="text"
-                      value={selectedPkg.periodLabel || ""}
-                      onChange={(e) =>
-                        updateSelectedPackage({ periodLabel: e.target.value })
-                      }
-                      placeholder="/ bulan"
-                      className={IOS_INPUT_CLASS}
-                    />
-                  </IosGroupedRow>
-
-                  <IosGroupedRow label="Badge Paket">
-                    <input
-                      type="text"
-                      value={selectedPkg.badge || ""}
-                      onChange={(e) =>
-                        updateSelectedPackage({ badge: e.target.value })
-                      }
-                      className={IOS_INPUT_CLASS}
-                    />
-                  </IosGroupedRow>
-
-                  <IosGroupedRow label="Deskripsi / Keterangan Paket" alignTop>
-                    <textarea
-                      rows={3}
-                      value={selectedPkg.description || ""}
-                      onChange={(e) =>
-                        updateSelectedPackage({ description: e.target.value })
-                      }
-                      className={IOS_INPUT_CLASS}
-                    />
-                  </IosGroupedRow>
-
-                  <IosGroupedRow
-                    label="Teks Tombol Pilih Paket"
-                    hint="Mengarah ke halaman pembayaran QRIS"
-                  >
-                    <input
-                      type="text"
-                      value={selectedPkg.ctaButtonLabel || ""}
-                      onChange={(e) =>
-                        updateSelectedPackage({
-                          ctaButtonLabel: e.target.value,
-                        })
-                      }
-                      className={`${IOS_INPUT_CLASS} font-semibold`}
-                    />
-                  </IosGroupedRow>
-
-                  <IosGroupedRow
-                    label="Paket Utama (Default)"
-                    hint="Dipilih otomatis saat modal upgrade dibuka"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs text-slate-600">
-                        {selectedPkg.highlighted
-                          ? "Ya, paket ini menjadi paket utama (PRO Pass)"
-                          : "Bukan paket utama"}
-                      </span>
+                {/* Detail Paket Terpilih */}
+                <div className="space-y-1.5">
+                  <div className="px-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Detail Paket: {selectedPkg.name}
+                    </p>
+                    {!selectedPkg.isFreeTier && !selectedPkg.highlighted && (
                       <button
                         type="button"
                         onClick={() => handleSetPrimaryPackage(selectedPkg.id)}
-                        disabled={selectedPkg.highlighted}
-                        className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
-                          selectedPkg.highlighted
-                            ? "bg-amber-100 text-amber-800 cursor-default"
-                            : "bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 cursor-pointer"
-                        }`}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:underline cursor-pointer"
                       >
-                        {selectedPkg.highlighted
-                          ? "Paket Utama Aktif"
-                          : "Jadikan Utama"}
+                        <Star size={12} />
+                        <span>Jadikan Paket Utama (Default)</span>
                       </button>
+                    )}
+                  </div>
+
+                  {selectedPkg.isFreeTier && (
+                    <div className="rounded-2xl bg-sky-50 border border-sky-200 px-4 py-3 text-xs text-sky-900">
+                      <strong>Paket Dasar FREE</strong> otomatis aktif untuk semua member baru sebelum berlangganan Basic atau Pro. Aktifkan/matikan fitur di bawah sesuai kebijakan FREE tier Anda.
                     </div>
-                  </IosGroupedRow>
+                  )}
 
-                  <IosGroupedRow
-                    label="QRIS Khusus Paket (Opsional)"
-                    hint="Kosongkan untuk memakai QRIS Global"
-                    alignTop
-                  >
-                    <div className="space-y-2.5">
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        {selectedPkg.qrCodeUrl && (
-                          <div className="relative inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1.5">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={selectedPkg.qrCodeUrl}
-                              alt={`QRIS ${selectedPkg.name}`}
-                              className="h-20 w-20 object-contain rounded-lg"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateSelectedPackage({ qrCodeUrl: "" })
-                              }
-                              title="Hapus QRIS khusus paket"
-                              className="absolute -top-2 -right-2 p-0.5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-rose-600 cursor-pointer"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        )}
-
-                        <input
-                          key={`pkg-qris-${selectedPkg.id}`}
-                          ref={pkgQrisInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handlePkgQrisUpload}
-                          className="hidden"
-                        />
-
-                        <button
-                          type="button"
-                          onClick={() => pkgQrisInputRef.current?.click()}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 px-3 py-2 text-xs font-semibold text-white cursor-pointer"
-                        >
-                          <Upload size={12} />
-                          <span>
-                            {selectedPkg.qrCodeUrl
-                              ? "Ganti QRIS Paket"
-                              : "Upload QRIS Paket"}
-                          </span>
-                        </button>
-                      </div>
-
+                  <div className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
+                    <IosGroupedRow label="Nama Paket">
                       <input
                         type="text"
-                        value={selectedPkg.qrCodeUrl || ""}
+                        value={selectedPkg.name || ""}
                         onChange={(e) =>
-                          updateSelectedPackage({ qrCodeUrl: e.target.value })
+                          updateSelectedPackage({ name: e.target.value })
                         }
-                        placeholder="Atau URL QRIS khusus paket ini (kosong = pakai QRIS Global)"
+                        className={`${IOS_INPUT_CLASS} font-semibold`}
+                      />
+                    </IosGroupedRow>
+
+                    {!selectedPkg.isFreeTier && (
+                      <>
+                        <IosGroupedRow
+                          label="Harga Bulanan (30 Hari)"
+                          hint="Masukkan angka dalam Rupiah; harga Trial 7 hari otomatis dihitung ~1/4 bulanan"
+                          alignTop
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-slate-500">Rp</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1000}
+                                value={monthlyNumeric}
+                                onChange={(e) => {
+                                  const nextVal = Math.max(
+                                    0,
+                                    Math.round(Number(e.target.value) || 0)
+                                  );
+                                  updateSelectedPackage({
+                                    monthlyPriceIdr: nextVal,
+                                    priceLabel: formatIdr(nextVal),
+                                    periodLabel: selectedPkg.periodLabel || "/ bulan",
+                                  });
+                                }}
+                                placeholder="150000"
+                                className={`${IOS_INPUT_CLASS} font-bold max-w-[200px]`}
+                              />
+                              <span className="text-xs font-semibold text-slate-600">
+                                ({formatIdr(monthlyNumeric)} / 30 hari)
+                              </span>
+                            </div>
+
+                            {selectedPkg.enable7DayTrial !== false && (
+                              <div className="rounded-xl bg-emerald-50 border border-emerald-200/90 px-3 py-2 text-[11px] text-emerald-900 flex flex-wrap items-center justify-between gap-2">
+                                <span>
+                                  ⚡ Harga Trial 7 Hari (1× pakai) menyesuaikan otomatis (~1/4 bulan):{" "}
+                                  <strong className="text-emerald-700">
+                                    {formatIdr(autoTrialPrice)} / 7 hari
+                                  </strong>
+                                </span>
+                                <span className="text-[10px] font-semibold text-emerald-700">
+                                  Khusus member baru
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </IosGroupedRow>
+
+                        <IosGroupedRow
+                          label="Percobaan 7 Hari (1× Pakai)"
+                          hint="Hanya muncul sekali untuk member baru; setelah dipakai pilihan aktif tinggal 30 hari"
+                          alignTop
+                        >
+                          <div className="space-y-2.5">
+                            <label className="inline-flex items-center gap-2.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedPkg.enable7DayTrial !== false}
+                                onChange={(e) =>
+                                  updateSelectedPackage({
+                                    enable7DayTrial: e.target.checked,
+                                  })
+                                }
+                                className="h-4 w-4 rounded border-slate-300 text-[#4F39F6] focus:ring-[#4F39F6]"
+                              />
+                              <span className="text-xs font-semibold text-slate-800">
+                                Aktifkan pilihan langganan Trial 7 Hari (1× pakai per akun)
+                              </span>
+                            </label>
+
+                            {selectedPkg.enable7DayTrial !== false && (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] text-slate-500">
+                                  Override Harga 7 Hari (Opsional): Rp
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1000}
+                                  value={
+                                    selectedPkg.trial7DaysPriceIdr ?? ""
+                                  }
+                                  onChange={(e) => {
+                                    const raw = e.target.value.trim();
+                                    updateSelectedPackage({
+                                      trial7DaysPriceIdr:
+                                        raw === ""
+                                          ? null
+                                          : Math.max(0, Math.round(Number(raw) || 0)),
+                                    });
+                                  }}
+                                  placeholder={`Auto (${formatIdr(computeTrial7DaysPriceIdr(monthlyNumeric, null))})`}
+                                  className={`${IOS_INPUT_CLASS} max-w-[200px]`}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </IosGroupedRow>
+                      </>
+                    )}
+
+                    <IosGroupedRow label="Badge Paket">
+                      <input
+                        type="text"
+                        value={selectedPkg.badge || ""}
+                        onChange={(e) =>
+                          updateSelectedPackage({ badge: e.target.value })
+                        }
                         className={IOS_INPUT_CLASS}
                       />
-                    </div>
-                  </IosGroupedRow>
+                    </IosGroupedRow>
+
+                    <IosGroupedRow label="Deskripsi / Keterangan Paket" alignTop>
+                      <textarea
+                        rows={2}
+                        value={selectedPkg.description || ""}
+                        onChange={(e) =>
+                          updateSelectedPackage({ description: e.target.value })
+                        }
+                        className={IOS_INPUT_CLASS}
+                      />
+                    </IosGroupedRow>
+
+                    <IosGroupedRow
+                      label="Teks Tombol Pilih Paket"
+                      hint="Teks tombol pada modal pilihan paket siswa"
+                    >
+                      <input
+                        type="text"
+                        value={selectedPkg.ctaButtonLabel || ""}
+                        onChange={(e) =>
+                          updateSelectedPackage({
+                            ctaButtonLabel: e.target.value,
+                          })
+                        }
+                        className={`${IOS_INPUT_CLASS} font-semibold`}
+                      />
+                    </IosGroupedRow>
+
+                    {!selectedPkg.isFreeTier && (
+                      <>
+                        <IosGroupedRow
+                          label="Paket Utama (Default)"
+                          hint="Dipilih otomatis saat modal upgrade dibuka"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-slate-600">
+                              {selectedPkg.highlighted
+                                ? "Ya, paket ini menjadi paket utama (Pro Pass)"
+                                : "Bukan paket utama"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleSetPrimaryPackage(selectedPkg.id)}
+                              disabled={selectedPkg.highlighted}
+                              className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                selectedPkg.highlighted
+                                  ? "bg-amber-100 text-amber-800 cursor-default"
+                                  : "bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 cursor-pointer"
+                              }`}
+                            >
+                              {selectedPkg.highlighted
+                                ? "Paket Utama Aktif"
+                                : "Jadikan Utama"}
+                            </button>
+                          </div>
+                        </IosGroupedRow>
+
+                        <IosGroupedRow
+                          label="QRIS Khusus Paket (Opsional)"
+                          hint="Kosongkan untuk memakai QRIS Global"
+                          alignTop
+                        >
+                          <div className="space-y-2.5">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              {selectedPkg.qrCodeUrl && (
+                                <div className="relative inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1.5">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={selectedPkg.qrCodeUrl}
+                                    alt={`QRIS ${selectedPkg.name}`}
+                                    className="h-20 w-20 object-contain rounded-lg"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateSelectedPackage({ qrCodeUrl: "" })
+                                    }
+                                    title="Hapus QRIS khusus paket"
+                                    className="absolute -top-2 -right-2 p-0.5 rounded-full bg-white border border-slate-200 text-slate-500 hover:text-rose-600 cursor-pointer"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              )}
+
+                              <input
+                                key={`pkg-qris-${selectedPkg.id}`}
+                                ref={pkgQrisInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handlePkgQrisUpload}
+                                className="hidden"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => pkgQrisInputRef.current?.click()}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 px-3 py-2 text-xs font-semibold text-white cursor-pointer"
+                              >
+                                <Upload size={12} />
+                                <span>
+                                  {selectedPkg.qrCodeUrl
+                                    ? "Ganti QRIS Paket"
+                                    : "Upload QRIS Paket"}
+                                </span>
+                              </button>
+                            </div>
+
+                            <input
+                              type="text"
+                              value={selectedPkg.qrCodeUrl || ""}
+                              onChange={(e) =>
+                                updateSelectedPackage({ qrCodeUrl: e.target.value })
+                              }
+                              placeholder="Atau URL QRIS khusus paket ini (kosong = pakai QRIS Global)"
+                              className={IOS_INPUT_CLASS}
+                            />
+                          </div>
+                        </IosGroupedRow>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Benefit Khusus Paket Terpilih */}
-              <div className="space-y-1.5">
-                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Daftar Benefit untuk &ldquo;{selectedPkg.name}&rdquo; (
-                  {(selectedPkg.features || []).length})
-                </p>
+                {/* Aturan Akses Modul per Materi (Khusus Basic / Pembatasan Bab + Poin / Harga Satuan) */}
+                <div className="space-y-1.5">
+                  <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Aturan Pembatasan Modul &amp; Cara Buka Lanjutan ({selectedPkg.name})
+                  </p>
+                  <div className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
+                    <IosGroupedRow
+                      label="Mode Akses Modul"
+                      hint="Misal Basic hanya buka 6 dari 10 modul per materi"
+                      alignTop
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {[
+                          {
+                            id: "free_only" as ModuleAccessMode,
+                            title: "Hanya Bab Gratis",
+                            desc: "Modul PRO terkunci",
+                            icon: Lock,
+                          },
+                          {
+                            id: "limited" as ModuleAccessMode,
+                            title: "Batasi Jumlah Modul",
+                            desc: "Contoh: Maks 6 modul",
+                            icon: Layers,
+                          },
+                          {
+                            id: "unlimited" as ModuleAccessMode,
+                            title: "Semua Modul Unlimited",
+                            desc: "Tanpa batas modul",
+                            icon: Zap,
+                          },
+                        ].map((opt) => {
+                          const Icon = opt.icon;
+                          const isSelectedMode = modMode === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                const patch: Partial<LearnerProPackageItem> = {
+                                  moduleAccessMode: opt.id,
+                                };
+                                if (opt.id !== "free_only") {
+                                  patch.entitlements = {
+                                    ...activeEnt,
+                                    proContent: true,
+                                  };
+                                  if (opt.id === "limited" && !selectedPkg.maxModulesPerCourse) {
+                                    patch.maxModulesPerCourse = 6;
+                                  }
+                                }
+                                updateSelectedPackage(patch);
+                              }}
+                              className={`flex items-start gap-2 rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
+                                isSelectedMode
+                                  ? "bg-indigo-50 border-[#4F39F6] text-[#4F39F6]"
+                                  : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                              }`}
+                            >
+                              <Icon size={14} className="mt-0.5 shrink-0" />
+                              <div>
+                                <p className="text-xs font-bold leading-tight">
+                                  {opt.title}
+                                </p>
+                                <p className="text-[10px] opacity-80 mt-0.5">
+                                  {opt.desc}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </IosGroupedRow>
 
-                <div className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
-                  <IosGroupedRow label="Judul Daftar Benefit">
-                    <input
-                      type="text"
-                      value={selectedPkg.featuresHeading || ""}
-                      onChange={(e) =>
-                        updateSelectedPackage({
-                          featuresHeading: e.target.value,
-                        })
-                      }
-                      className={IOS_INPUT_CLASS}
-                    />
-                  </IosGroupedRow>
+                    {modMode === "limited" && (
+                      <IosGroupedRow
+                        label="Maks. Modul Terbuka / Materi"
+                        hint="Contoh: isi 6 agar dari 10 modul hanya modul 1–6 terbuka; modul 7–10 terkunci"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={selectedPkg.maxModulesPerCourse ?? 6}
+                            onChange={(e) =>
+                              updateSelectedPackage({
+                                maxModulesPerCourse: Math.max(
+                                  1,
+                                  Math.round(Number(e.target.value) || 6)
+                                ),
+                              })
+                            }
+                            className={`${IOS_INPUT_CLASS} max-w-[120px] font-bold`}
+                          />
+                          <span className="text-xs text-slate-600">
+                            modul pertama terbuka per kelas
+                          </span>
+                        </div>
+                      </IosGroupedRow>
+                    )}
 
-                  <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 bg-slate-50/50">
-                    <span className="text-xs font-medium text-slate-600">
-                      {(selectedPkg.features || []).length} keuntungan pada
-                      paket ini
-                    </span>
+                    {modMode !== "unlimited" && (
+                      <>
+                        <IosGroupedRow
+                          label="Buka dengan Potong Poin"
+                          hint="Siswa bisa menukar poin bintang untuk membuka modul terkunci"
+                          alignTop
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <label className="inline-flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(selectedPkg.allowPointsUnlock)}
+                                onChange={(e) =>
+                                  updateSelectedPackage({
+                                    allowPointsUnlock: e.target.checked,
+                                  })
+                                }
+                                className="h-4 w-4 rounded border-slate-300 text-[#4F39F6]"
+                              />
+                              <span className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1">
+                                <Coins size={13} className="text-amber-500" />
+                                Izinkan Buka Modul Lanjutan Pakai Poin
+                              </span>
+                            </label>
+
+                            {selectedPkg.allowPointsUnlock && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-slate-500">
+                                  Biaya Default:
+                                </span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={selectedPkg.defaultUnlockPointsCost ?? 50}
+                                  onChange={(e) =>
+                                    updateSelectedPackage({
+                                      defaultUnlockPointsCost: Math.max(
+                                        1,
+                                        Math.round(Number(e.target.value) || 50)
+                                      ),
+                                    })
+                                  }
+                                  className={`${IOS_INPUT_CLASS} max-w-[95px] font-bold`}
+                                />
+                                <span className="text-xs font-bold text-amber-700">
+                                  pts / modul
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </IosGroupedRow>
+
+                        <IosGroupedRow
+                          label="Bayar Harga per Materi"
+                          hint="Siswa bisa membeli satuan modul/materi lanjutan tanpa upgrade paket penuh"
+                          alignTop
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <label className="inline-flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(selectedPkg.allowPerItemPurchase)}
+                                onChange={(e) =>
+                                  updateSelectedPackage({
+                                    allowPerItemPurchase: e.target.checked,
+                                  })
+                                }
+                                className="h-4 w-4 rounded border-slate-300 text-[#4F39F6]"
+                              />
+                              <span className="text-xs font-semibold text-slate-800 inline-flex items-center gap-1">
+                                <Tag size={13} className="text-emerald-600" />
+                                Izinkan Beli Satuan per Materi/Modul
+                              </span>
+                            </label>
+
+                            {selectedPkg.allowPerItemPurchase && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-slate-500">
+                                  Harga Default: Rp
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1000}
+                                  value={selectedPkg.defaultUnlockPriceIdr ?? 15000}
+                                  onChange={(e) =>
+                                    updateSelectedPackage({
+                                      defaultUnlockPriceIdr: Math.max(
+                                        0,
+                                        Math.round(Number(e.target.value) || 0)
+                                      ),
+                                    })
+                                  }
+                                  className={`${IOS_INPUT_CLASS} max-w-[130px] font-bold`}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </IosGroupedRow>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Matriks Fitur Aplikasi ON/OFF (7 Core Real App Capabilities) */}
+                <div className="space-y-1.5">
+                  <div className="px-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      Fitur Aplikasi Aktif (ON / OFF) untuk &ldquo;{selectedPkg.name}&rdquo; ({enabledFeatureCount}/7 Aktif)
+                    </p>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() =>
                           updateSelectedPackage({
-                            features: [...DEFAULT_LEARNER_PRO_FEATURES],
+                            entitlements: {
+                              proContent: true,
+                              downloads: true,
+                              wiki: true,
+                              certificate: true,
+                              assignments: true,
+                              discussion: true,
+                              notesFavorites: true,
+                            },
+                            moduleAccessMode: "unlimited",
                           })
                         }
-                        className="inline-flex items-center gap-1 rounded-xl bg-white hover:bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 border border-slate-200 cursor-pointer"
+                        className="rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 text-[11px] font-bold text-emerald-700 cursor-pointer"
                       >
-                        <RotateCcw size={12} />
-                        <span>Reset 7 Default</span>
+                        Nyalakan Semua (7/7)
                       </button>
                       <button
                         type="button"
-                        onClick={handleAddFeatureItem}
-                        className="inline-flex items-center gap-1 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-3 py-1.5 text-xs font-semibold text-white cursor-pointer"
+                        onClick={() =>
+                          updateSelectedPackage({
+                            entitlements: { ...ALL_FALSE_ENTITLEMENTS },
+                            moduleAccessMode: "free_only",
+                          })
+                        }
+                        className="rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-600 cursor-pointer"
                       >
-                        <Plus size={13} />
-                        <span>Tambah Benefit ke Paket Ini</span>
+                        Matikan Semua (0/7)
                       </button>
                     </div>
                   </div>
 
-                  {(selectedPkg.features || []).length === 0 ? (
-                    <div className="p-6 text-center text-xs text-slate-400">
-                      Belum ada benefit untuk paket ini. Klik &ldquo;Tambah
-                      Benefit ke Paket Ini&rdquo;.
+                  <div className="rounded-2xl bg-white border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
+                    <IosGroupedRow label="Judul Daftar Benefit">
+                      <input
+                        type="text"
+                        value={selectedPkg.featuresHeading || ""}
+                        onChange={(e) =>
+                          updateSelectedPackage({
+                            featuresHeading: e.target.value,
+                          })
+                        }
+                        className={IOS_INPUT_CLASS}
+                      />
+                    </IosGroupedRow>
+
+                    {PACKAGE_FEATURE_DEFINITIONS.map((def, idx) => {
+                      const isEnabled = Boolean(activeEnt[def.key]);
+                      const customText =
+                        selectedPkg.featureLabels?.[def.key] ??
+                        def.defaultBenefitText;
+
+                      return (
+                        <div
+                          key={`${selectedPkg.id}-ent-${def.key}`}
+                          className={`px-4 py-3.5 transition-colors space-y-2 ${
+                            isEnabled ? "bg-white" : "bg-slate-50/70"
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0 flex-1">
+                              <span
+                                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
+                                  isEnabled
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-slate-200 text-slate-500"
+                                }`}
+                              >
+                                {idx + 1}
+                              </span>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs font-bold text-slate-900">
+                                    {def.label}
+                                  </p>
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                                      isEnabled
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : "bg-slate-200 text-slate-600"
+                                    }`}
+                                  >
+                                    {isEnabled ? "ON" : "OFF"}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  {def.description}
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isEnabled}
+                              aria-label={`Toggle ${def.label}`}
+                              onClick={() => handleTogglePkgEntitlement(def.key)}
+                              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                                isEnabled ? "bg-emerald-500" : "bg-slate-300"
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                  isEnabled ? "translate-x-6" : "translate-x-1"
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          <div className="pl-9">
+                            <input
+                              type="text"
+                              value={customText}
+                              onChange={(e) =>
+                                updateSelectedPackage({
+                                  featureLabels: {
+                                    ...(selectedPkg.featureLabels || {}),
+                                    [def.key]: e.target.value,
+                                  },
+                                })
+                              }
+                              placeholder={def.defaultBenefitText}
+                              className={`${IOS_INPUT_CLASS} text-[11px] ${
+                                isEnabled ? "" : "opacity-60"
+                              }`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Benefit Bonus Tambahan (Opsional) */}
+                    <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 bg-slate-50/70">
+                      <span className="text-xs font-medium text-slate-600">
+                        Benefit Teks Bonus Tambahan ({(selectedPkg.extraBenefits || []).length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleAddExtraBenefitItem}
+                        className="inline-flex items-center gap-1 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-3 py-1.5 text-xs font-semibold text-white cursor-pointer"
+                      >
+                        <Plus size={13} />
+                        <span>Tambah Teks Bonus</span>
+                      </button>
                     </div>
-                  ) : (
-                    (selectedPkg.features || []).map((feat, idx) => (
+
+                    {(selectedPkg.extraBenefits || []).map((feat, idx) => (
                       <div
-                        key={`${selectedPkg.id}-feat-${idx}`}
+                        key={`${selectedPkg.id}-extra-${idx}`}
                         className="px-4 py-2.5 flex items-center gap-2.5"
                       >
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[11px] font-bold text-slate-600">
-                          {idx + 1}
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-[11px] font-bold text-[#4F39F6]">
+                          +
                         </span>
                         <input
                           type="text"
                           value={feat || ""}
                           onChange={(e) =>
-                            handleUpdateFeatureItem(idx, e.target.value)
+                            handleUpdateExtraBenefitItem(idx, e.target.value)
                           }
                           className={IOS_INPUT_CLASS}
                         />
                         <button
                           type="button"
-                          onClick={() => handleRemoveFeatureItem(idx)}
-                          title="Hapus benefit"
+                          onClick={() => handleRemoveExtraBenefitItem(idx)}
+                          title="Hapus teks bonus"
                           className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
                         >
                           <Trash2 size={14} />
                         </button>
                       </div>
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* SECTION 2: PENGATURAN MODAL & BANNER */}
           {activeSection === "pro-modal-banner" && (

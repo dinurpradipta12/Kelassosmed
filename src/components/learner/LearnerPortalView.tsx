@@ -42,13 +42,25 @@ import { LearnerCourseOverview } from "@/components/learner/LearnerCourseOvervie
 import { ActiveLearningClassroom } from "@/components/learner/ActiveLearningClassroom";
 import { LearnerQuizRunner } from "@/components/learner/LearnerQuizRunner";
 import { UserProfileScreen } from "@/components/profile/UserProfileScreen";
-import { type LearnerAssignedItem } from "@/lib/phase5-data";
+import {
+  type LearnerAssignedItem,
+  type CourseChapterItem,
+} from "@/lib/phase5-data";
 import { ContentBadge } from "@/components/ui/ContentBadge";
 import { ThemeSwitchDockButton } from "@/components/theme/ThemeCustomizerModal";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
+  evaluateChapterAccess,
+  evaluateCourseCardAccess,
+  computeTrial7DaysPriceIdr,
+  formatIdr,
+  getNormalizedProPackages,
 } from "@/context/RuangSosmedStore";
+import {
+  UnlockModuleModal,
+  type UnlockModuleTarget,
+} from "@/components/learner/UnlockModuleModal";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import {
   OfficialCertificateModal,
@@ -304,6 +316,8 @@ export function LearnerPortalView({
     wikiResources,
     certificateUnlocked,
     learnerIsPro,
+    learnerAccess,
+    learnerHasUsedTrial,
     learnerProConfig,
     learnerPagesConfig,
     markLearnerChapterComplete,
@@ -312,6 +326,13 @@ export function LearnerPortalView({
     redeemFolderAccessCode,
     resolveUserAvatar,
   } = useRuangSosmedStore();
+
+  const canWiki = learnerAccess.canWiki;
+  const canNotesFavorites = learnerAccess.canNotesFavorites;
+  const canDownloads = learnerAccess.canDownloads;
+  const canCertificate = learnerAccess.canCertificate;
+  const activeTierLabel =
+    learnerAccess.activePackage?.name || (learnerIsPro ? "Pro" : "Free");
 
   const [folderCodeInput, setFolderCodeInput] = useState("");
   const [joinCodeModalOpen, setJoinCodeModalOpen] = useState(false);
@@ -490,13 +511,32 @@ export function LearnerPortalView({
     [userEmail, userName, usernameLower]
   );
 
+  const sharedAllProjectKeys = React.useMemo(
+    () =>
+      new Set(
+        (cohortProjects || [])
+          .filter((p) => p.shareWithAllLearners)
+          .map((p) => p.name.trim().toLowerCase())
+          .filter(Boolean)
+      ),
+    [cohortProjects]
+  );
+
+  const isInSharedAllProject = React.useCallback(
+    (cohort?: string | null) =>
+      Boolean(cohort && sharedAllProjectKeys.has(cohort.trim().toLowerCase())),
+    [sharedAllProjectKeys]
+  );
+
   const assignedFolderItems = React.useMemo(
     () =>
       explorerItems.filter(
         (e) =>
-          e.type === "Folder" && matchesCurrentLearner(e.assignedLearners)
+          e.type === "Folder" &&
+          (matchesCurrentLearner(e.assignedLearners) ||
+            isInSharedAllProject(e.cohort))
       ),
-    [explorerItems, matchesCurrentLearner]
+    [explorerItems, matchesCurrentLearner, isInSharedAllProject]
   );
 
   const assignedFolderNames = React.useMemo(
@@ -512,8 +552,8 @@ export function LearnerPortalView({
   const showWikiPage = learnerPagesConfig?.showWikiPage ?? true;
   const showFavoritesPage = learnerPagesConfig?.showFavoritesPage ?? true;
 
-  // Pastikan daftar materi di Learner Portal hanya menampilkan materi yang di-assign oleh Admin
-  // (baik di-assign langsung maupun via Folder Series yang dibagikan ke user)
+  // Pastikan daftar materi di Learner Portal menampilkan materi yang di-assign oleh Admin
+  // (baik di-assign langsung, via Folder Series, maupun Project bertipe "Bagikan ke Semua Member")
   const assignedItems: LearnerAssignedItem[] = React.useMemo(() => {
     const validExplorer = explorerItems.filter(
       (e) => e.type !== "Folder" && (showWikiPage || e.type !== "Wiki")
@@ -522,6 +562,9 @@ export function LearnerPortalView({
 
     const filteredExplorer = validExplorer.filter((exp) => {
       if (matchesCurrentLearner(exp.assignedLearners)) {
+        return true;
+      }
+      if (isInSharedAllProject(exp.cohort)) {
         return true;
       }
       const folderKey = (exp.folderName || "").trim().toLowerCase();
@@ -555,6 +598,10 @@ export function LearnerPortalView({
         id: matched?.id || exp.id,
         title: exp.title,
         type: mappedType,
+        isPro: typeof exp.isPro === "boolean" ? exp.isPro : matched?.isPro,
+        unlockPriceIdr: exp.unlockPriceIdr ?? matched?.unlockPriceIdr,
+        unlockPointsCost: exp.unlockPointsCost ?? matched?.unlockPointsCost,
+        cohort: exp.cohort || matched?.cohort,
         urgencyBadge:
           matched?.urgencyBadge ||
           (exp.urgency === "Urgent" ? "Urgent" : "Due in 3 days"),
@@ -595,6 +642,7 @@ export function LearnerPortalView({
     courseCurriculums,
     getCourseCurriculum,
     matchesCurrentLearner,
+    isInSharedAllProject,
     assignedFolderNames,
     showWikiPage,
   ]);
@@ -863,6 +911,8 @@ export function LearnerPortalView({
   const [courseFavorite, setCourseFavorite] = useState(true);
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [rewardsModalOpen, setRewardsModalOpen] = useState(false);
+  const [unlockModalTarget, setUnlockModalTarget] =
+    useState<UnlockModuleTarget | null>(null);
 
   // Celebration Popup when points are awarded by Admin
   const [awardedPointsPopup, setAwardedPointsPopup] = useState<{
@@ -1296,10 +1346,64 @@ export function LearnerPortalView({
     return item.type === "Assignment";
   };
 
+  const getCardAccessDecision = (item: LearnerAssignedItem) =>
+    evaluateCourseCardAccess({
+      item: {
+        title: item.title,
+        type: item.type,
+        isPro: isProItem(item),
+        unlockPointsCost: item.unlockPointsCost,
+        unlockPriceIdr: item.unlockPriceIdr,
+      },
+      access: learnerAccess,
+    });
+
+  const isChapterPlayable = (
+    courseTitle: string,
+    flatChs: CourseChapterItem[],
+    ch: CourseChapterItem
+  ) => {
+    const exp = explorerItems.find(
+      (e) =>
+        e.type !== "Folder" &&
+        e.title.trim().toLowerCase() === courseTitle.trim().toLowerCase()
+    );
+    return evaluateChapterAccess({
+      courseTitle,
+      courseIsPro: exp?.isPro,
+      courseUnlockPointsCost: exp?.unlockPointsCost,
+      courseUnlockPriceIdr: exp?.unlockPriceIdr,
+      flatVisibleChapters: flatChs,
+      chapter: ch,
+      access: learnerAccess,
+    }).unlocked;
+  };
+
   const handleOpenAssignedCard = (item: LearnerAssignedItem) => {
-    if (isProItem(item) && !learnerIsPro) {
+    const decision = getCardAccessDecision(item);
+    if (!decision.unlocked) {
+      if (decision.canUnlockWithPoints || decision.canBuyPerMaterial) {
+        setUnlockModalTarget({
+          courseTitle: item.title,
+          chapterId: null,
+          chapterTitle: item.title,
+          reason:
+            decision.reason === "assignment_locked"
+              ? "Tugas & Review Mentor terkunci pada paket aktif Anda."
+              : "Materi berstatus PRO ini terkunci pada paket aktif Anda.",
+          canUnlockWithPoints: decision.canUnlockWithPoints,
+          pointsCost: decision.pointsCost,
+          canBuyPerMaterial: decision.canBuyPerMaterial,
+          priceIdr: decision.priceIdr,
+        });
+        return;
+      }
       onShowToast(
-        `🔒 "${item.title}" termasuk fitur Learner PRO. Silakan upgrade untuk membuka akses.`
+        decision.reason === "wiki_locked"
+          ? `🔒 "${item.title}" termasuk fitur Wiki & SOP yang terkunci di paket ${activeTierLabel}. Silakan upgrade paket.`
+          : decision.reason === "assignment_locked"
+          ? `🔒 "${item.title}" membutuhkan fitur Tugas & Review Mentor pada paket berbayar.`
+          : `🔒 "${item.title}" termasuk materi PRO. Silakan upgrade paket untuk membuka akses.`
       );
       onOpenUpgradeModal?.();
       return;
@@ -1598,103 +1702,135 @@ export function LearnerPortalView({
     );
   };
 
-  const renderProUpgradeCard = () => (
-    <div className="w-full overflow-hidden rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_6px_24px_rgba(16,15,17,0.06)]">
-      {/* Top Amber Gradient Header + Clean Full-Width Price Box */}
-      <div
-        className="p-4 relative space-y-3 pro-amber-gradient-header"
-        style={{
-          background:
-            "linear-gradient(135deg, #FEF3C7 0%, #FDE68A 48%, #F59E0B 100%)",
-        }}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-0.5 text-[10px] font-bold text-[#92400E] shadow-2xs">
-            <Zap size={11} className="text-[#D97706]" fill="currentColor" />
-            <span>{activeProCfg.bannerBadge}</span>
-          </span>
+  const renderProUpgradeCard = () => {
+    const normalizedPkgs = getNormalizedProPackages(activeProCfg);
+    const paidPkgs = normalizedPkgs.filter((p) => p.tierKind !== "free");
+    const promoPkg =
+      paidPkgs.find((p) => p.tierKind === "pro" || p.highlighted) ||
+      paidPkgs[0];
+    const canOfferTrial =
+      !learnerHasUsedTrial && promoPkg?.enable7DayTrial !== false;
+    const promoMonthlyIdr = Number(promoPkg?.monthlyPriceIdr ?? 150000);
+    const promoPriceDisplay = promoPkg
+      ? canOfferTrial
+        ? formatIdr(
+            computeTrial7DaysPriceIdr(
+              promoMonthlyIdr,
+              promoPkg.trial7DaysPriceIdr
+            )
+          )
+        : formatIdr(promoMonthlyIdr)
+      : activeProCfg.priceLabel;
+    const promoPeriodDisplay = canOfferTrial
+      ? "/ 7 hari trial (1×)"
+      : promoPkg
+      ? "/ 30 hari"
+      : activeProCfg.bannerPeriodLabel;
+    const promoFeatures =
+      promoPkg?.features && promoPkg.features.length > 0
+        ? promoPkg.features
+        : activeProCfg.features || [];
 
-          <button
-            type="button"
-            onClick={() => setProPushOpen(false)}
-            aria-label="Tutup penawaran Learner PRO"
-            aria-expanded={showProPushPanel}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/85 hover:bg-white text-[#121215] transition-colors cursor-pointer shrink-0 shadow-2xs"
-          >
-            <X size={14} />
-          </button>
-        </div>
+    return (
+      <div className="w-full overflow-hidden rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-[0_6px_24px_rgba(16,15,17,0.06)]">
+        {/* Top Amber Gradient Header + Clean Full-Width Price Box */}
+        <div
+          className="p-4 relative space-y-3 pro-amber-gradient-header"
+          style={{
+            background:
+              "linear-gradient(135deg, #FEF3C7 0%, #FDE68A 48%, #F59E0B 100%)",
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-0.5 text-[10px] font-bold text-[#92400E] shadow-2xs">
+              <Zap size={11} className="text-[#D97706]" fill="currentColor" />
+              <span>{activeProCfg.bannerBadge}</span>
+            </span>
 
-        <h2 className="text-[15px] font-extrabold text-[#121215] leading-snug">
-          {activeProCfg.bannerHeading}
-        </h2>
-
-        {/* Single-Baseline Price Card (Zero Button Inside) */}
-        <div className="rounded-xl bg-white/95 px-3.5 py-2.5 border border-[#F59E0B]/30 shadow-2xs flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#92400E]">
-              Learner Pass
-            </p>
-            <div className="flex items-baseline gap-1 mt-0.5 whitespace-nowrap">
-              <span className="text-lg font-black tracking-tight text-[#121215] tabular-nums">
-                {activeProCfg.priceLabel}
-              </span>
-              <span className="text-[11px] font-semibold text-[#78350F]">
-                {activeProCfg.bannerPeriodLabel}
-              </span>
-            </div>
+            <button
+              type="button"
+              onClick={() => setProPushOpen(false)}
+              aria-label="Tutup penawaran Learner PRO"
+              aria-expanded={showProPushPanel}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/85 hover:bg-white text-[#121215] transition-colors cursor-pointer shrink-0 shadow-2xs"
+            >
+              <X size={14} />
+            </button>
           </div>
 
-          <span className="shrink-0 rounded-full bg-[#FEF3C7] border border-[#F59E0B]/35 px-2.5 py-1 text-[10px] font-bold text-[#92400E]">
-            Akses Penuh
-          </span>
+          <h2 className="text-[15px] font-extrabold text-[#121215] leading-snug">
+            {activeProCfg.bannerHeading}
+          </h2>
+
+          {/* Single-Baseline Price Card (Zero Button Inside) */}
+          <div className="rounded-xl bg-white/95 px-3.5 py-2.5 border border-[#F59E0B]/30 shadow-2xs flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#92400E]">
+                {promoPkg?.name || "Learner Pass"} • Free / Basic / Pro
+              </p>
+              <div className="flex items-baseline gap-1 mt-0.5 whitespace-nowrap">
+                <span className="text-lg font-black tracking-tight text-[#121215] tabular-nums">
+                  {promoPriceDisplay}
+                </span>
+                <span className="text-[11px] font-semibold text-[#78350F]">
+                  {promoPeriodDisplay}
+                </span>
+              </div>
+            </div>
+
+            <span className="shrink-0 rounded-full bg-[#FEF3C7] border border-[#F59E0B]/35 px-2.5 py-1 text-[10px] font-bold text-[#92400E]">
+              {canOfferTrial ? "Trial 1×" : "Bulanan"}
+            </span>
+          </div>
+        </div>
+
+        {/* Clean Checklist + Single Primary CTA Footer */}
+        <div className="p-4 bg-[#FFFFFF] space-y-3.5">
+          <div className="space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
+              {promoFeatures.length} Benefit Paket {promoPkg?.name || "Pro"}:
+            </p>
+            <ul className="divide-y divide-[#F1F5F9]">
+              {promoFeatures.map((feature, idx) => (
+                <li
+                  key={`${idx}-${feature}`}
+                  className="flex items-start gap-2 py-2 first:pt-0.5 last:pb-0.5 text-xs font-medium text-[#1E293B]"
+                >
+                  <CheckCircle2
+                    size={14}
+                    className="shrink-0 mt-0.5 text-[#10B981]"
+                  />
+                  <span className="leading-snug">{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Single Primary CTA */}
+          <div className="pt-2 border-t border-[#EAECEF] space-y-2">
+            <button
+              type="button"
+              onClick={() =>
+                onStartUpgradePayment
+                  ? onStartUpgradePayment()
+                  : onOpenUpgradeModal?.()
+              }
+              className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] py-2.5 px-4 text-xs font-bold text-white shadow-[0_2px_8px_rgba(79,57,246,0.28)] transition-all cursor-pointer"
+            >
+              <Zap size={13} className="text-[#FDE68A]" fill="currentColor" />
+              <span>{activeProCfg.bannerCtaLabel || "Pilih Paket & Upgrade"}</span>
+            </button>
+
+            <p className="text-center text-[10px] font-medium text-[#64748B]">
+              {canOfferTrial
+                ? "Tersedia percobaan 7 hari (1× member baru) & paket 30 hari"
+                : "Bandingkan fitur Free, Basic, dan Pro secara lengkap"}
+            </p>
+          </div>
         </div>
       </div>
-
-      {/* Clean Checklist + Single Primary CTA Footer */}
-      <div className="p-4 bg-[#FFFFFF] space-y-3.5">
-        <div className="space-y-2">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
-            {(activeProCfg.features || []).length} Benefit Eksklusif:
-          </p>
-          <ul className="divide-y divide-[#F1F5F9]">
-            {(activeProCfg.features || []).map((feature, idx) => (
-              <li
-                key={`${idx}-${feature}`}
-                className="flex items-start gap-2 py-2 first:pt-0.5 last:pb-0.5 text-xs font-medium text-[#1E293B]"
-              >
-                <CheckCircle2
-                  size={14}
-                  className="shrink-0 mt-0.5 text-[#10B981]"
-                />
-                <span className="leading-snug">{feature}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Single Primary CTA */}
-        <div className="pt-2 border-t border-[#EAECEF] space-y-2">
-          <button
-            type="button"
-            onClick={() =>
-              onStartUpgradePayment
-                ? onStartUpgradePayment()
-                : onOpenUpgradeModal?.()
-            }
-            className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] py-2.5 px-4 text-xs font-bold text-white shadow-[0_2px_8px_rgba(79,57,246,0.28)] transition-all cursor-pointer"
-          >
-            <Zap size={13} className="text-[#FDE68A]" fill="currentColor" />
-            <span>{activeProCfg.bannerCtaLabel || "Upgrade ke Learner PRO"}</span>
-          </button>
-
-          <p className="text-center text-[10px] font-medium text-[#64748B]">
-            Aktivasi instan • Buka semua modul &amp; sertifikat HD
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] text-[#121215]">
@@ -1723,9 +1859,9 @@ export function LearnerPortalView({
           isFavorite={courseFavorite}
           showFavoriteButton={showFavoritesPage}
           onToggleFavorite={() => {
-            if (!learnerIsPro) {
+            if (!canNotesFavorites) {
               onShowToast(
-                "🔒 Fitur Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
+                `🔒 Fitur Simpan Favorit terkunci pada paket ${activeTierLabel}. Silakan upgrade paket.`
               );
               onOpenUpgradeModal?.();
               return;
@@ -1748,11 +1884,18 @@ export function LearnerPortalView({
             let chosenId = chapterId;
             if (!chosenId) {
               const nextUncompleted = flatChs.find(
-                (c) => !c.completed && !c.locked && !(c.isPro && !learnerIsPro)
+                (c) =>
+                  !c.completed &&
+                  !c.locked &&
+                  isChapterPlayable(screenState.courseTitle, flatChs, c)
               );
               chosenId =
                 nextUncompleted?.id ||
-                flatChs.find((c) => !c.locked && !(c.isPro && !learnerIsPro))?.id ||
+                flatChs.find(
+                  (c) =>
+                    !c.locked &&
+                    isChapterPlayable(screenState.courseTitle, flatChs, c)
+                )?.id ||
                 flatChs[0]?.id ||
                 "ch-101";
             }
@@ -1810,6 +1953,41 @@ export function LearnerPortalView({
           onShowToast={onShowToast}
         />
       ) : screenState.screen === "wiki-reader" ? (
+        !canWiki ? (
+          <div className="max-w-xl mx-auto my-12 rounded-2xl bg-[#FFFFFF] p-10 border border-[#EAECEF] shadow-[0_2px_10px_rgba(16,15,17,0.04)] text-center space-y-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#FEF3C7] border border-[#F59E0B]/40 text-[#D97706]">
+              <Lock size={22} />
+            </div>
+            <div className="space-y-1.5">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF3C7] px-2.5 py-0.5 text-[11px] font-bold text-[#92400E]">
+                ⚡ Fitur Paket Berbayar
+              </span>
+              <h2 className="text-base font-bold text-[#121215]">
+                Direktori Wiki &amp; SOP Terkunci di Paket {activeTierLabel}
+              </h2>
+              <p className="text-xs text-[#5E5E5E] leading-relaxed">
+                Upgrade paket Anda untuk membaca panduan SOP, Playbook Agency, dan lampiran template resmi.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setScreenState({ screen: "dashboard" })}
+                className="rounded-lg border border-[#EAECEF] bg-white px-4 py-2 text-xs font-semibold text-[#5E5E5E] hover:text-[#121215] cursor-pointer"
+              >
+                Kembali
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenUpgradeModal?.()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#121215] hover:bg-[#27272A] px-4 py-2 text-xs font-bold text-white cursor-pointer"
+              >
+                <Zap size={13} className="text-[#F59E0B]" fill="currentColor" />
+                <span>Upgrade Paket</span>
+              </button>
+            </div>
+          </div>
+        ) : (
         (() => {
           const needle = screenState.wikiIdOrTitle.trim().toLowerCase();
           const matchedWiki =
@@ -1840,6 +2018,7 @@ export function LearnerPortalView({
             />
           );
         })()
+        )
       ) : activeNavTab === "profile" ? (
         <UserProfileScreen
           mode="learner"
@@ -1879,9 +2058,15 @@ export function LearnerPortalView({
                   </p>
                 </div>
                 {learnerIsPro && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] border border-[#10B981]/30 px-2.5 py-1 text-[11px] font-bold text-[#059669]">
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                      learnerAccess.isUnlimitedPro
+                        ? "bg-[#ECFDF5] border-[#10B981]/30 text-[#059669]"
+                        : "bg-[#EEF2FF] border-[#4F39F6]/30 text-[#4F39F6]"
+                    }`}
+                  >
                     <Zap size={11} fill="currentColor" />
-                    PRO Member
+                    {activeTierLabel}
                   </span>
                 )}
               </div>
@@ -2002,18 +2187,18 @@ export function LearnerPortalView({
                       type="button"
                       onClick={() => setCertModalOpen(true)}
                       className={`flex-1 inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-colors cursor-pointer ${
-                        learnerIsPro
+                        canCertificate
                           ? "bg-[#10B981] hover:bg-[#059669] text-white"
                           : "bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4F39F6] border border-[#4F39F6]/25"
                       }`}
                     >
-                      {learnerIsPro ? (
+                      {canCertificate ? (
                         <Award size={12} className="text-white" />
                       ) : (
                         <Lock size={11} className="text-[#4F39F6]" />
                       )}
                       <span>Sertifikat</span>
-                      {!learnerIsPro && (
+                      {!canCertificate && (
                         <span className="inline-flex items-center rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-1 py-0.2 text-[9px] font-bold text-[#B45309]">
                           PRO
                         </span>
@@ -2037,6 +2222,35 @@ export function LearnerPortalView({
 
           {/* WIKI TAB VIEW (Notion-Style Published Articles + Resource Cards Directory) */}
           {activeNavTab === "wiki" && showWikiPage ? (
+            !canWiki ? (
+              <section
+                aria-label="Wiki Directory Locked"
+                className="rounded-xl bg-[#FFFFFF] p-10 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] text-center space-y-4"
+              >
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#FEF3C7] border border-[#F59E0B]/40 text-[#D97706]">
+                  <Lock size={22} />
+                </div>
+                <div className="space-y-1.5 max-w-md mx-auto">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF3C7] px-2.5 py-0.5 text-[11px] font-bold text-[#92400E]">
+                    ⚡ Fitur Paket Berbayar
+                  </span>
+                  <h2 className="text-base font-bold text-[#121215]">
+                    Direktori Wiki &amp; Playbook SOP Terkunci ({activeTierLabel})
+                  </h2>
+                  <p className="text-xs text-[#5E5E5E] leading-relaxed">
+                    Upgrade ke paket dengan fitur Wiki aktif untuk membaca panduan praktis, SOP agency, dan template resmi Mentor.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onOpenUpgradeModal?.()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#121215] hover:bg-[#27272A] px-5 py-2.5 text-xs font-bold text-white cursor-pointer"
+                >
+                  <Zap size={13} className="text-[#F59E0B]" fill="currentColor" />
+                  <span>Lihat Paket &amp; Upgrade</span>
+                </button>
+              </section>
+            ) : (
             (() => {
               const wikiCategoriesList = Array.from(
                 new Set(
@@ -2145,15 +2359,15 @@ export function LearnerPortalView({
                   {/* Supporting Downloadable Resource Cards Section (only displayed when Mentor adds Resource Cards) */}
                   {wikiResources.length > 0 && (
                     <div className="pt-4 border-t border-[#EAECEF] space-y-4">
-                      {!learnerIsPro && (
+                      {!canDownloads && (
                         <div className="rounded-xl bg-[#FFFBEB] border border-[#FDE68A] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                           <div className="space-y-1">
                             <p className="text-xs font-bold text-[#92400E] flex items-center gap-1.5">
                               <Zap size={13} fill="currentColor" />
-                              Direktori Resource &amp; Template File Khusus Member Learner PRO
+                              Unduh File Template &amp; Resource Khusus Paket Berbayar
                             </p>
                             <p className="text-xs text-[#B45309]">
-                              Upgrade ke Learner PRO untuk mengunduh Kalender Konten Notion, 120 Hook Script, dan SOP Meta Ads resmi.
+                              Upgrade ke paket dengan akses Download aktif untuk mengunduh Kalender Konten Notion, 120 Hook Script, dan SOP Meta Ads resmi.
                             </p>
                           </div>
                           <button
@@ -2162,7 +2376,7 @@ export function LearnerPortalView({
                             className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[#121215] hover:bg-[#27272A] px-4 py-2 text-xs font-bold text-white cursor-pointer"
                           >
                             <Zap size={12} className="text-[#F59E0B]" fill="currentColor" />
-                            <span>Upgrade ke PRO</span>
+                            <span>Upgrade Paket</span>
                           </button>
                         </div>
                       )}
@@ -2304,7 +2518,7 @@ export function LearnerPortalView({
                                       {card.category}
                                     </span>
                                   </div>
-                                  {!learnerIsPro && (
+                                  {!canDownloads && (
                                     <span className="inline-flex items-center gap-1 rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-2 py-0.5 text-[10px] font-bold text-[#92400E]">
                                       <Lock size={10} />
                                       PRO
@@ -2323,9 +2537,9 @@ export function LearnerPortalView({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (!learnerIsPro) {
+                                    if (!canDownloads) {
                                       onShowToast(
-                                        `🔒 "${card.title}" khusus member Learner PRO. Silakan upgrade untuk mengunduh.`
+                                        `🔒 "${card.title}" membutuhkan fitur Download File pada paket Anda. Silakan upgrade paket.`
                                       );
                                       onOpenUpgradeModal?.();
                                       return;
@@ -2334,7 +2548,7 @@ export function LearnerPortalView({
                                   }}
                                   className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#4F39F6] hover:text-white px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
                                 >
-                                  {!learnerIsPro ? (
+                                  {!canDownloads ? (
                                     <Lock size={13} className="text-[#D97706]" />
                                   ) : card.actionType === "download" ? (
                                     <Download size={13} />
@@ -2342,8 +2556,8 @@ export function LearnerPortalView({
                                     <ExternalLink size={13} />
                                   )}
                                   <span>
-                                    {!learnerIsPro
-                                      ? `Unlock ${card.actionLabel} (PRO)`
+                                    {!canDownloads
+                                      ? `Unlock ${card.actionLabel}`
                                       : card.actionLabel}
                                   </span>
                                 </button>
@@ -2357,7 +2571,8 @@ export function LearnerPortalView({
                 </section>
               );
             })()
-          ) : activeNavTab === "favorites" && showFavoritesPage && !learnerIsPro ? (
+            )
+          ) : activeNavTab === "favorites" && showFavoritesPage && !canNotesFavorites ? (
             /* FAVORITES TAB LOCKED WHEN FREE TIER */
             <section
               aria-label="Learner PRO Favorites Lock"
@@ -2432,10 +2647,12 @@ export function LearnerPortalView({
                               (c) =>
                                 !c.completed &&
                                 !c.locked &&
-                                !(c.isPro && !learnerIsPro)
+                                isChapterPlayable(courseTitle, flatChs, c)
                             ) ||
                             flatChs.find(
-                              (c) => !c.locked && !(c.isPro && !learnerIsPro)
+                              (c) =>
+                                !c.locked &&
+                                isChapterPlayable(courseTitle, flatChs, c)
                             ) ||
                             flatChs[0];
                           setScreenState({
@@ -2882,8 +3099,8 @@ export function LearnerPortalView({
                       ) : myLearningViewMode === "list" ? (
                         <div className="space-y-3.5">
                           {myLearningItems.map((item) => {
-                            const lockedByPro =
-                              isProItem(item) && !learnerIsPro;
+                            const cardAccess = getCardAccessDecision(item);
+                            const lockedByPro = !cardAccess.unlocked;
                             const pct = lockedByPro ? 0 : item.progressPercent;
                             const statusLabel =
                               pct >= 100
@@ -3013,8 +3230,8 @@ export function LearnerPortalView({
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {myLearningItems.map((item) => {
-                            const lockedByPro =
-                              isProItem(item) && !learnerIsPro;
+                            const cardAccess = getCardAccessDecision(item);
+                            const lockedByPro = !cardAccess.unlocked;
                             const pct = lockedByPro ? 0 : item.progressPercent;
                             return (
                               <article
@@ -3131,12 +3348,18 @@ export function LearnerPortalView({
                             </p>
                             <div className="mt-1.5">
                               {learnerIsPro ? (
-                                <span className="inline-flex items-center gap-1 rounded-md bg-[#ECFDF5] border border-[#A7F3D0] px-2 py-0.5 text-[10px] font-bold text-[#059669]">
-                                  <Zap size={10} /> PRO Member
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold ${
+                                    learnerAccess.isUnlimitedPro
+                                      ? "bg-[#ECFDF5] border-[#A7F3D0] text-[#059669]"
+                                      : "bg-[#EEF2FF] border-[#C7D2FE] text-[#4F39F6]"
+                                  }`}
+                                >
+                                  <Zap size={10} /> {activeTierLabel}
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-2 py-0.5 text-[10px] font-semibold text-[#5E5E5E]">
-                                  Free Plan
+                                  {activeTierLabel}
                                 </span>
                               )}
                             </div>
@@ -3185,12 +3408,12 @@ export function LearnerPortalView({
                             type="button"
                             onClick={() => setCertModalOpen(true)}
                             className={`inline-flex items-center justify-center gap-1 rounded-xl px-2.5 py-2 text-xs font-bold transition-colors cursor-pointer ${
-                              learnerIsPro
+                              canCertificate
                                 ? "bg-[#10B981] hover:bg-[#059669] text-white"
                                 : "bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4F39F6] border border-[#4F39F6]/25"
                             }`}
                           >
-                            {learnerIsPro ? (
+                            {canCertificate ? (
                               <Award size={12} className="text-white shrink-0" />
                             ) : (
                               <Lock
@@ -3199,7 +3422,7 @@ export function LearnerPortalView({
                               />
                             )}
                             <span>Sertifikat</span>
-                            {!learnerIsPro && (
+                            {!canCertificate && (
                               <span className="inline-flex items-center rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-1 py-0.2 text-[9px] font-bold text-[#B45309]">
                                 PRO
                               </span>
@@ -3768,7 +3991,8 @@ export function LearnerPortalView({
                           );
                         }
 
-                        const lockedByPro = isProItem(item) && !learnerIsPro;
+                        const cardAccess = getCardAccessDecision(item);
+                        const lockedByPro = !cardAccess.unlocked;
                         const pct = lockedByPro ? 0 : item.progressPercent;
                         return (
                           <article
@@ -3846,9 +4070,9 @@ export function LearnerPortalView({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (!learnerIsPro) {
+                                    if (!canNotesFavorites) {
                                       onShowToast(
-                                        "🔒 Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
+                                        `🔒 Simpan Favorit terkunci pada paket ${activeTierLabel}. Silakan upgrade paket.`
                                       );
                                       onOpenUpgradeModal?.();
                                       return;
@@ -3861,12 +4085,12 @@ export function LearnerPortalView({
                                   <Heart
                                     size={13}
                                     className={
-                                      item.isFavorite && learnerIsPro
+                                      item.isFavorite && canNotesFavorites
                                         ? "text-[#EC4899]"
                                         : ""
                                     }
                                     fill={
-                                      item.isFavorite && learnerIsPro
+                                      item.isFavorite && canNotesFavorites
                                         ? "#EC4899"
                                         : "transparent"
                                     }
@@ -3920,7 +4144,8 @@ export function LearnerPortalView({
                       );
                     }
 
-                    const lockedByPro = isProItem(item) && !learnerIsPro;
+                    const cardAccess = getCardAccessDecision(item);
+                    const lockedByPro = !cardAccess.unlocked;
 
                     return (
                       <article
@@ -3946,9 +4171,9 @@ export function LearnerPortalView({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (!learnerIsPro) {
+                                    if (!canNotesFavorites) {
                                       onShowToast(
-                                        "🔒 Simpan Favorit khusus member Learner PRO. Silakan upgrade ke PRO."
+                                        `🔒 Simpan Favorit terkunci pada paket ${activeTierLabel}. Silakan upgrade paket.`
                                       );
                                       onOpenUpgradeModal?.();
                                       return;
@@ -3961,12 +4186,12 @@ export function LearnerPortalView({
                                   <Heart
                                     size={14}
                                     className={
-                                      item.isFavorite && learnerIsPro
+                                      item.isFavorite && canNotesFavorites
                                         ? "text-[#EC4899]"
                                         : ""
                                     }
                                     fill={
-                                      item.isFavorite && learnerIsPro
+                                      item.isFavorite && canNotesFavorites
                                         ? "#EC4899"
                                         : "transparent"
                                     }
@@ -3990,7 +4215,7 @@ export function LearnerPortalView({
                               {isProItem(item) && (
                                 <span
                                   className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold border ${
-                                    learnerIsPro
+                                    !lockedByPro
                                       ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#059669]"
                                       : "bg-[#FEF3C7] border-[#F59E0B]/40 text-[#92400E]"
                                   }`}
@@ -4037,7 +4262,10 @@ export function LearnerPortalView({
                               {lockedByPro ? (
                                 <span className="inline-flex items-center gap-1 text-[#B45309] font-bold">
                                   <Lock size={11} />
-                                  Locked • Upgrade to PRO
+                                  {cardAccess.canUnlockWithPoints ||
+                                  cardAccess.canBuyPerMaterial
+                                    ? "Buka dgn Poin / Upgrade"
+                                    : "Locked • Upgrade Paket"}
                                 </span>
                               ) : item.progressPercent === 100 ? (
                                 <span className="inline-flex items-center gap-1 text-[#10B981] font-bold">
@@ -4246,7 +4474,7 @@ export function LearnerPortalView({
               learnerCertificateCourses[0]?.credentialId || "RS2-2026-8492"
             }
             courses={learnerCertificateCourses}
-            isLockedPro={!learnerIsPro}
+            isLockedPro={!canCertificate}
             onRequestUpgrade={onOpenUpgradeModal}
             onShowToast={onShowToast}
           />
@@ -4257,6 +4485,27 @@ export function LearnerPortalView({
             onClose={() => setRewardsModalOpen(false)}
             learnerName={learnerDisplayName}
             learnerEmail={currentUser?.email}
+            onShowToast={onShowToast}
+          />
+
+          {/* Unlock Module / Materi Satuan via Points or Purchase Modal */}
+          <UnlockModuleModal
+            target={unlockModalTarget}
+            onClose={() => setUnlockModalTarget(null)}
+            onUnlockedChapter={() => {
+              const unlockedCourse = unlockModalTarget?.courseTitle;
+              setUnlockModalTarget(null);
+              if (unlockedCourse) {
+                setScreenState({
+                  screen: "course-overview",
+                  courseTitle: unlockedCourse,
+                });
+              }
+            }}
+            onOpenUpgradeToPro={() => {
+              setUnlockModalTarget(null);
+              onOpenUpgradeModal?.();
+            }}
             onShowToast={onShowToast}
           />
 

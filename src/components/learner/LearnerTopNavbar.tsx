@@ -236,6 +236,7 @@ export function LearnerTopNavbar({
     markLearnerNotificationRead,
     clearLearnerNotifications,
     learnerIsPro,
+    learnerAccess,
     learnerPagesConfig,
     certificateUnlocked,
     learnerAssignedItems,
@@ -774,13 +775,13 @@ export function LearnerTopNavbar({
                 >
                   <Icon size={13} />
                   <span>{tab.label}</span>
-                  {(tab.id === "wiki" || tab.id === "favorites") &&
-                    !learnerIsPro && (
-                      <span className="inline-flex items-center gap-0.5 rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-1 py-0.2 text-[9px] font-bold text-[#B45309]">
-                        <Lock size={9} />
-                        PRO
-                      </span>
-                    )}
+                  {((tab.id === "wiki" && !learnerAccess.canWiki) ||
+                    (tab.id === "favorites" && !learnerAccess.canNotesFavorites)) && (
+                    <span className="inline-flex items-center gap-0.5 rounded bg-[#FEF3C7] border border-[#F59E0B]/30 px-1 py-0.2 text-[9px] font-bold text-[#B45309]">
+                      <Lock size={9} />
+                      PRO
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -794,13 +795,21 @@ export function LearnerTopNavbar({
               type="button"
               onClick={onOpenUpgradeModal}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold border transition-all cursor-pointer ${
-                learnerIsPro
+                learnerAccess.isPro
                   ? "bg-[#ECFDF5] border-[#10B981]/35 text-[#059669] hover:bg-[#D1FAE5]"
+                  : learnerAccess.isBasic
+                  ? "bg-[#EEF2FF] border-[#4F39F6]/30 text-[#4F39F6] hover:bg-[#E0E7FF]"
                   : "bg-[#F59E0B] hover:bg-[#D97706] border-[#D97706] text-[#121215] shadow-[0_2px_6px_rgba(245,158,11,0.28)]"
               }`}
             >
               <Zap size={13} fill="currentColor" />
-              <span>{learnerIsPro ? "PRO Member" : "Upgrade PRO"}</span>
+              <span>
+                {learnerAccess.isPro
+                  ? `${learnerAccess.activePackage.name}`
+                  : learnerAccess.isBasic
+                  ? `${learnerAccess.activePackage.name} • Upgrade Pro`
+                  : "Upgrade Paket"}
+              </span>
             </button>
           )}
 

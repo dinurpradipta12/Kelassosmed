@@ -13,6 +13,9 @@ export interface LearnerAssignedItem {
   description: string;
   isFavorite?: boolean;
   isPro?: boolean;
+  unlockPriceIdr?: number;
+  unlockPointsCost?: number;
+  cohort?: string;
   thumbnailUrl?: string;
   bannerGradient?: string;
   bannerAccent?: string;
@@ -65,6 +68,8 @@ export interface CourseChapterItem {
   hideEmbeddedBlock?: boolean;
   hideDatabaseBlock?: boolean;
   isPro?: boolean;
+  unlockPriceIdr?: number;
+  unlockPointsCost?: number;
 }
 
 export interface CourseSectionAccordion {

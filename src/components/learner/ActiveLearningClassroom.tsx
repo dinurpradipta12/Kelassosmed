@@ -29,8 +29,16 @@ import {
   type CourseChapterItem,
 } from "@/lib/phase5-data";
 import { ModalDialog } from "@/components/ui/ModalDialog";
-import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import {
+  useRuangSosmedStore,
+  evaluateChapterAccess,
+  formatIdr,
+} from "@/context/RuangSosmedStore";
 import { getYouTubeEmbedUrl } from "@/components/authoring/CoursePageEditor";
+import {
+  UnlockModuleModal,
+  type UnlockModuleTarget,
+} from "@/components/learner/UnlockModuleModal";
 
 interface ActiveLearningClassroomProps {
   courseTitle: string;
@@ -68,8 +76,12 @@ export function ActiveLearningClassroom({
     saveRsLessonNote,
     submitRsLessonReview,
     learnerIsPro,
+    learnerAccess,
     resolveUserAvatar,
   } = useRuangSosmedStore();
+
+  const [unlockModalTarget, setUnlockModalTarget] =
+    useState<UnlockModuleTarget | null>(null);
 
   const [rightDockTab, setRightDockTab] = useState<
     "curriculum" | "discussion" | "file"
@@ -229,7 +241,20 @@ export function ActiveLearningClassroom({
       );
   }, [discussionThreads, courseTitle, sections, explorerItems]);
 
+  const matchedExplorerCourse = React.useMemo(
+    () =>
+      (explorerItems || []).find(
+        (e) =>
+          (e.title || "").trim().toLowerCase() ===
+          (courseTitle || "").trim().toLowerCase()
+      ),
+    [explorerItems, courseTitle]
+  );
+
   const courseIsPro = React.useMemo(() => {
+    if (typeof matchedExplorerCourse?.isPro === "boolean") {
+      return matchedExplorerCourse.isPro;
+    }
     if (typeof window !== "undefined") {
       try {
         const key = courseTitle.toLowerCase().trim();
@@ -240,7 +265,7 @@ export function ActiveLearningClassroom({
       } catch {}
     }
     return false;
-  }, [courseTitle]);
+  }, [courseTitle, matchedExplorerCourse?.isPro]);
 
   const allSanitizedReviews = React.useMemo(() => {
     const list = rsLessonReviews ?? [];
@@ -338,28 +363,65 @@ export function ActiveLearningClassroom({
     });
   }, [allSanitizedReviews, reviewFilterTab, reviewSearchQuery, currentChapter]);
 
-  const isChapterProOnly = (
-    chapterIdOrItem: string | CourseChapterItem,
-    type?: string
-  ) => {
-    const ch =
-      typeof chapterIdOrItem === "string"
-        ? flatChapters.find((c) => c.id === chapterIdOrItem)
-        : chapterIdOrItem;
-    if (ch && typeof ch.isPro === "boolean") return ch.isPro;
-    if (courseIsPro) return true;
-    return (ch?.type || type) === "Assignment";
-  };
+  const getChapterAccess = React.useCallback(
+    (ch: CourseChapterItem) =>
+      evaluateChapterAccess({
+        courseTitle,
+        courseIsPro,
+        courseUnlockPointsCost: matchedExplorerCourse?.unlockPointsCost,
+        courseUnlockPriceIdr: matchedExplorerCourse?.unlockPriceIdr,
+        flatVisibleChapters: flatChapters,
+        chapter: ch,
+        access: learnerAccess,
+      }),
+    [
+      courseTitle,
+      courseIsPro,
+      matchedExplorerCourse?.unlockPointsCost,
+      matchedExplorerCourse?.unlockPriceIdr,
+      flatChapters,
+      learnerAccess,
+    ]
+  );
+
+  const handleLockedChapterAction = React.useCallback(
+    (ch: CourseChapterItem) => {
+      const chAccess = getChapterAccess(ch);
+      if (
+        chAccess.reason === "basic_limit_reached" ||
+        chAccess.canUnlockWithPoints ||
+        chAccess.canBuyPerMaterial
+      ) {
+        setUnlockModalTarget({
+          courseTitle,
+          chapterId: ch.id,
+          chapterTitle: ch.title,
+          reason: chAccess.reason,
+          maxModules: chAccess.maxModules,
+          canUnlockWithPoints: chAccess.canUnlockWithPoints,
+          pointsCost: chAccess.pointsCost,
+          canBuyPerMaterial: chAccess.canBuyPerMaterial,
+          priceIdr: chAccess.priceIdr,
+        });
+        return;
+      }
+      onShowToast(
+        ch.type === "Assignment"
+          ? "🔒 Review Tugas Praktik 1-on-1 bersama Mentor khusus paket Pro."
+          : "🔒 Bab Lanjutan ini terkunci. Silakan upgrade ke paket Basic atau Pro."
+      );
+      onOpenUpgradeModal?.();
+    },
+    [getChapterAccess, courseTitle, onShowToast, onOpenUpgradeModal]
+  );
 
   const isChLocked = React.useCallback(
     (ch: CourseChapterItem | null) => {
       if (!ch) return false;
-      const proOnly = isChapterProOnly(ch);
-      const proLocked = proOnly && !learnerIsPro;
-      return ch.locked || proLocked;
+      const chAccess = getChapterAccess(ch);
+      return ch.locked || !chAccess.unlocked;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [learnerIsPro, flatChapters, courseIsPro]
+    [getChapterAccess]
   );
 
   // Automatically jump to first unlocked chapter if target is locked
@@ -542,11 +604,20 @@ export function ActiveLearningClassroom({
             </div>
             <button
               type="button"
-              onClick={() => onShowToast(`Mengunduh "${certFileName}"...`)}
+              onClick={() => {
+                if (!learnerAccess.canCertificate) {
+                  onShowToast(
+                    "🔒 Klaim & Download Sertifikat HD tersedia pada paket Pro. Silakan upgrade paket Anda."
+                  );
+                  onOpenUpgradeModal?.();
+                  return;
+                }
+                onShowToast(`Mengunduh "${certFileName}"...`);
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white hover:bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-800 border border-slate-200 cursor-pointer shrink-0"
             >
-              <Download size={13} />
-              <span>Unduh</span>
+              {learnerAccess.canCertificate ? <Download size={13} /> : <Lock size={12} className="text-amber-600" />}
+              <span>{learnerAccess.canCertificate ? "Unduh" : "Upgrade"}</span>
             </button>
           </div>
 
@@ -777,11 +848,9 @@ export function ActiveLearningClassroom({
                   <button
                     type="button"
                     onClick={() => {
-                      if (isChapterProOnly(nextChapter) && !learnerIsPro) {
-                        onShowToast(
-                          "🔒 Bab Lanjutan (Advance Module) khusus member Learner PRO. Silakan upgrade ke PRO."
-                        );
-                        onOpenUpgradeModal?.();
+                      const nextAcc = getChapterAccess(nextChapter);
+                      if (!nextAcc.unlocked) {
+                        handleLockedChapterAction(nextChapter);
                         return;
                       }
                       if (nextChapter.type === "Quiz") {
@@ -827,7 +896,7 @@ export function ActiveLearningClassroom({
                     Catatan Pribadi — {currentChapter.title}
                   </h3>
                 </div>
-                {learnerIsPro ? (
+                {learnerAccess.canNotesFavorites ? (
                   <span className="text-[11px] font-medium text-emerald-600">
                     Tersimpan otomatis
                   </span>
@@ -839,7 +908,7 @@ export function ActiveLearningClassroom({
                 )}
               </div>
 
-              {learnerIsPro ? (
+              {learnerAccess.canNotesFavorites ? (
                 <textarea
                   rows={4}
                   value={rsLessonNotes?.[currentChapter.id] ?? ""}
@@ -852,7 +921,7 @@ export function ActiveLearningClassroom({
               ) : (
                 <div className="rounded-xl bg-amber-50/70 border border-amber-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <p className="text-xs text-amber-900">
-                    Catatan pribadi per bab tersedia untuk member Learner PRO.
+                    Catatan pribadi per bab tersedia untuk paket dengan fitur Catatan &amp; Favorit aktif.
                   </p>
                   <button
                     type="button"
@@ -860,7 +929,7 @@ export function ActiveLearningClassroom({
                     className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-white cursor-pointer shrink-0"
                   >
                     <Zap size={11} className="text-amber-400" fill="currentColor" />
-                    <span>Upgrade PRO</span>
+                    <span>Upgrade Paket</span>
                   </button>
                 </div>
               )}
@@ -1076,10 +1145,10 @@ export function ActiveLearningClassroom({
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
                       Lampiran Materi
                     </h2>
-                    {!learnerIsPro && (
+                    {!learnerAccess.canDownloads && (
                       <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                         <Lock size={10} />
-                        Khusus PRO
+                        Terkunci
                       </span>
                     )}
                   </div>
@@ -1105,9 +1174,9 @@ export function ActiveLearningClassroom({
                         <button
                           type="button"
                           onClick={() => {
-                            if (!learnerIsPro) {
+                            if (!learnerAccess.canDownloads) {
                               onShowToast(
-                                `🔒 Download "${file.name}" khusus member Learner PRO. Silakan upgrade ke PRO.`
+                                `🔒 Download "${file.name}" memerlukan paket dengan fitur Download aktif (Basic / Pro).`
                               );
                               onOpenUpgradeModal?.();
                               return;
@@ -1116,19 +1185,19 @@ export function ActiveLearningClassroom({
                           }}
                           className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 border border-slate-200 hover:border-[#4F39F6] cursor-pointer shrink-0"
                         >
-                          {learnerIsPro ? (
+                          {learnerAccess.canDownloads ? (
                             <Download size={12} />
                           ) : (
                             <Lock size={11} className="text-amber-600" />
                           )}
-                          <span>{learnerIsPro ? "Unduh" : "PRO"}</span>
+                          <span>{learnerAccess.canDownloads ? "Unduh" : "Upgrade"}</span>
                         </button>
                       </div>
                     ))}
 
                     {matchedLinkedLesson &&
                       matchedLinkedLesson.assets.map((asset) =>
-                        learnerIsPro ? (
+                        learnerAccess.canDownloads ? (
                           <a
                             key={asset.assetKey}
                             href={asset.href}
@@ -1399,8 +1468,12 @@ export function ActiveLearningClassroom({
                       <div className="p-1.5 space-y-1 bg-white">
                         {filteredChs.map((ch) => {
                           const isActive = ch.id === currentChapter.id;
-                          const proOnly = isChapterProOnly(ch);
-                          const proLocked = proOnly && !learnerIsPro;
+                          const chAccess = getChapterAccess(ch);
+                          const chIsProOnly =
+                            typeof ch.isPro === "boolean"
+                              ? ch.isPro
+                              : Boolean(courseIsPro) || ch.type === "Assignment";
+                          const proLocked = !chAccess.unlocked;
                           const globalIdx = flatChapters.findIndex(
                             (fc) => fc.id === ch.id
                           );
@@ -1414,12 +1487,7 @@ export function ActiveLearningClassroom({
                               type="button"
                               onClick={() => {
                                 if (proLocked) {
-                                  onShowToast(
-                                    ch.type === "Assignment"
-                                      ? "🔒 Review Tugas Praktik 1-on-1 bersama Mentor khusus member Learner PRO."
-                                      : "🔒 Bab Lanjutan (Advance Module) khusus member Learner PRO. Silakan upgrade ke PRO."
-                                  );
-                                  onOpenUpgradeModal?.();
+                                  handleLockedChapterAction(ch);
                                   return;
                                 }
                                 if (ch.locked) {
@@ -1489,9 +1557,13 @@ export function ActiveLearningClassroom({
                                       Sedang diputar
                                     </span>
                                   )}
-                                  {proOnly && (
+                                  {chIsProOnly && (
                                     <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.2 font-semibold text-amber-800">
-                                      PRO
+                                      {proLocked && chAccess.canUnlockWithPoints
+                                        ? `${chAccess.pointsCost} pts`
+                                        : proLocked && chAccess.canBuyPerMaterial
+                                        ? formatIdr(chAccess.priceIdr)
+                                        : "PRO"}
                                     </span>
                                   )}
                                 </div>
@@ -1508,6 +1580,29 @@ export function ActiveLearningClassroom({
 
             {/* TAB 2: DISKUSI */}
             {rightDockTab === "discussion" && (
+              !learnerAccess.canDiscussion ? (
+                <div className="rounded-xl bg-amber-50/70 border border-amber-200 p-5 text-center space-y-3">
+                  <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                    <Lock size={18} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-slate-900">
+                      Diskusi &amp; Q&amp;A Mentor Terkunci
+                    </p>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Fitur tanya jawab langsung bersama Mentor tidak aktif pada paket Anda saat ini. Upgrade paket untuk berdiskusi di sini.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenUpgradeModal?.()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-2 text-xs font-bold text-white cursor-pointer"
+                  >
+                    <Zap size={12} fill="currentColor" />
+                    <span>Upgrade Paket</span>
+                  </button>
+                </div>
+              ) : (
               <div className="space-y-3">
                 <input
                   type="text"
@@ -1600,6 +1695,7 @@ export function ActiveLearningClassroom({
                     ))}
                 </div>
               </div>
+              )
             )}
 
             {/* TAB 3: LAMPIRAN BAB SAAT INI */}
@@ -1635,9 +1731,9 @@ export function ActiveLearningClassroom({
                       <button
                         type="button"
                         onClick={() => {
-                          if (!learnerIsPro) {
+                          if (!learnerAccess.canDownloads) {
                             onShowToast(
-                              `🔒 Download "${file.name}" khusus member Learner PRO.`
+                              `🔒 Download "${file.name}" memerlukan paket dengan fitur Download aktif (Basic / Pro).`
                             );
                             onOpenUpgradeModal?.();
                             return;
@@ -1647,7 +1743,7 @@ export function ActiveLearningClassroom({
                         title="Unduh File"
                         className="h-8 w-8 rounded-lg bg-white hover:border-[#4F39F6] border border-slate-200 flex items-center justify-center text-slate-700 cursor-pointer shrink-0"
                       >
-                        {learnerIsPro ? (
+                        {learnerAccess.canDownloads ? (
                           <Download size={14} />
                         ) : (
                           <Lock size={13} className="text-amber-600" />
@@ -1952,6 +2048,18 @@ export function ActiveLearningClassroom({
           </div>
         </div>
       </ModalDialog>
+
+      <UnlockModuleModal
+        target={unlockModalTarget}
+        onClose={() => setUnlockModalTarget(null)}
+        onUnlockedChapter={(chId) => {
+          if (chId) {
+            onSelectChapter(chId);
+          }
+        }}
+        onOpenUpgradeToPro={() => onOpenUpgradeModal?.()}
+        onShowToast={onShowToast}
+      />
     </div>
   );
 }

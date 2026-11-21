@@ -154,6 +154,12 @@ export function accordionToEditorSections(
       hideEmbeddedBlock: Boolean(ch.hideEmbeddedBlock),
       hideDatabaseBlock: Boolean(ch.hideDatabaseBlock),
       isPro: Boolean(ch.isPro),
+      ...(ch.unlockPointsCost !== undefined
+        ? { unlockPointsCost: Number(ch.unlockPointsCost) }
+        : {}),
+      ...(ch.unlockPriceIdr !== undefined
+        ? { unlockPriceIdr: Number(ch.unlockPriceIdr) }
+        : {}),
     })),
   }));
 }
@@ -201,6 +207,12 @@ export function editorSectionsToAccordion(
       hideEmbeddedBlock: Boolean(ch.hideEmbeddedBlock),
       hideDatabaseBlock: Boolean(ch.hideDatabaseBlock),
       isPro: Boolean(ch.isPro),
+      ...(ch.unlockPointsCost !== undefined
+        ? { unlockPointsCost: Number(ch.unlockPointsCost) }
+        : {}),
+      ...(ch.unlockPriceIdr !== undefined
+        ? { unlockPriceIdr: Number(ch.unlockPriceIdr) }
+        : {}),
     })),
   }));
 }
@@ -377,6 +389,12 @@ export function CoursePageEditor({
   const [courseIsPro, setCourseIsPro] = useState<boolean>(() => {
     if (isNew) return false;
     const key = initialTitle.toLowerCase().trim();
+    const matchedExp = explorerItems?.find(
+      (it) => it.title.trim().toLowerCase() === key
+    );
+    if (typeof matchedExp?.isPro === "boolean") {
+      return matchedExp.isPro;
+    }
     if (typeof window !== "undefined" && key) {
       try {
         const saved = window.localStorage.getItem(
@@ -405,7 +423,10 @@ export function CoursePageEditor({
     if (currentExplorerItem?.language) {
       setCourseLang(currentExplorerItem.language);
     }
-  }, [currentExplorerItem?.language]);
+    if (typeof currentExplorerItem?.isPro === "boolean") {
+      setCourseIsPro(currentExplorerItem.isPro);
+    }
+  }, [currentExplorerItem?.language, currentExplorerItem?.isPro]);
 
   // Auto-save draft ke localStorage saat sections berubah; isolasi draft baru per draftSessionId agar tidak bentrok dengan course sebelumnya
   useEffect(() => {
@@ -882,7 +903,7 @@ export function CoursePageEditor({
 
           <ContentBadge type={contentType} size="sm" />
 
-          {/* Switch Tingkat Akses Kursus (Free vs PRO) */}
+          {/* Switch Tingkat Akses Kursus (Free/Freemium vs PRO) */}
           <button
             type="button"
             onClick={() => {
@@ -897,28 +918,34 @@ export function CoursePageEditor({
                   );
                 } catch {}
               }
+              if (currentExplorerItem?.id || docTitle.trim()) {
+                updateExplorerItemDetails(
+                  currentExplorerItem?.id || docTitle.trim(),
+                  { isPro: nextCoursePro }
+                );
+              }
               onShowToast(
                 nextCoursePro
-                  ? `⭐ Kursus "${docTitle}" diatur sebagai Kursus Khusus Member PRO.`
-                  : `🔓 Kursus "${docTitle}" diatur sebagai Kursus Terbuka (Free Access).`
+                  ? `🔒 Kelas "${docTitle}" diatur sebagai Khusus PRO.`
+                  : `🔓 Kelas "${docTitle}" diatur sebagai Gratis / Freemium (kontrol per bab).`
               );
             }}
             className={`hidden sm:inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold border transition-all cursor-pointer ${
               courseIsPro
                 ? "bg-[#FEF3C7] text-[#92400E] border-[#F59E0B]/50 shadow-2xs hover:bg-[#FDE68A]"
-                : "bg-[#F8F9FB] text-[#5E5E5E] border-[#EAECEF] hover:bg-[#FFFFFF] hover:border-[#4F39F6] hover:text-[#4F39F6]"
+                : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
             }`}
-            title="Klik untuk beralih antara Kursus Free (Terbuka) dan Kursus Khusus PRO"
+            title="Klik untuk beralih antara Gratis / Freemium dan Khusus PRO"
           >
             {courseIsPro ? (
               <>
                 <Zap size={11} fill="currentColor" className="text-[#D97706]" />
-                <span>Kursus PRO ⭐</span>
+                <span>Akses Kelas: PRO</span>
               </>
             ) : (
               <>
-                <Lock size={11} className="text-[#9CA3AF]" />
-                <span>Kursus Free</span>
+                <Lock size={11} className="text-emerald-600" />
+                <span>Akses Kelas: Gratis / Freemium</span>
               </>
             )}
           </button>
@@ -1067,6 +1094,7 @@ export function CoursePageEditor({
                     thumbnailUrl: hasBanner ? bannerImageUrl || "" : "",
                     bannerGradient: hasBanner ? selectedPreset?.bg : undefined,
                     language: courseLang,
+                    isPro: courseIsPro,
                     description: currentChapter?.bodyText?.slice(0, 200) || "",
                   }
                 );
@@ -1153,11 +1181,16 @@ export function CoursePageEditor({
                   mappedSections,
                   currentChapter?.bodyText?.slice(0, 200) || ""
                 );
-                if (hasBanner && (bannerImageUrl || selectedPreset?.bg)) {
+                if (hasBanner || courseIsPro) {
                   updateExplorerItemDetails(cleanTitle, {
-                    thumbnailUrl: bannerImageUrl || "",
-                    bannerGradient: selectedPreset?.bg,
+                    ...(hasBanner
+                      ? {
+                          thumbnailUrl: bannerImageUrl || "",
+                          bannerGradient: selectedPreset?.bg,
+                        }
+                      : {}),
                     language: courseLang,
+                    isPro: courseIsPro,
                   });
                 }
               }}
@@ -1177,16 +1210,59 @@ export function CoursePageEditor({
           className="w-full lg:w-[260px] shrink-0 bg-[#F9FAFB] border-b lg:border-b-0 lg:border-r border-[#EAECEF] p-3.5 flex flex-col justify-between"
         >
           <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#5E5E5E]">
-                PAGES
-              </h2>
+            <div className="space-y-2 px-1">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#5E5E5E]">
+                  PAGES
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleAddSection}
+                  className="text-xs font-bold text-[#4F39F6] hover:text-[#3B28CC] transition-colors cursor-pointer"
+                >
+                  Add section
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={handleAddSection}
-                className="text-xs font-bold text-[#4F39F6] hover:text-[#3B28CC] transition-colors cursor-pointer"
+                disabled={previewMode}
+                onClick={() => {
+                  let seenFirst = false;
+                  setSections((prev) =>
+                    prev.map((sec) => ({
+                      ...sec,
+                      chapters: sec.chapters.map((ch) => {
+                        if (!seenFirst) {
+                          seenFirst = true;
+                          return { ...ch, isPro: false };
+                        }
+                        return { ...ch, isPro: true };
+                      }),
+                    }))
+                  );
+                  setCourseIsPro(false);
+                  if (typeof window !== "undefined") {
+                    try {
+                      window.localStorage.setItem(
+                        `ruang_sosmed_course_tier_${docTitle.toLowerCase().trim()}`,
+                        "free"
+                      );
+                    } catch {}
+                  }
+                  if (currentExplorerItem?.id || docTitle.trim()) {
+                    updateExplorerItemDetails(
+                      currentExplorerItem?.id || docTitle.trim(),
+                      { isPro: false }
+                    );
+                  }
+                  onShowToast(
+                    "⚡ Preset Freemium diterapkan: Bab 1 Gratis, Bab 2 dst. Khusus PRO!"
+                  );
+                }}
+                className="w-full inline-flex items-center justify-center gap-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1.5 text-[10px] font-bold text-amber-900 transition-colors cursor-pointer disabled:opacity-50"
               >
-                Add section
+                <Zap size={10} className="text-amber-600" fill="currentColor" />
+                <span>Preset Freemium (Bab 1 Gratis, Sisanya PRO)</span>
               </button>
             </div>
 
@@ -1598,11 +1674,40 @@ export function CoursePageEditor({
                                   Hidden
                                                                 </span>
                               )}
-                              {ch.isPro && (
-                                <span className="rounded bg-[#FEF3C7] border border-[#F59E0B]/40 px-1 py-0.2 text-[9px] font-bold text-[#92400E]">
-                                  PRO
-                                </span>
-                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const nextPro = !ch.isPro;
+                                  setSections((prev) =>
+                                    prev.map((s) =>
+                                      s.id === section.id
+                                        ? {
+                                            ...s,
+                                            chapters: s.chapters.map((c) =>
+                                              c.id === ch.id
+                                                ? { ...c, isPro: nextPro }
+                                                : c
+                                            ),
+                                          }
+                                        : s
+                                    )
+                                  );
+                                  onShowToast(
+                                    nextPro
+                                      ? `🔒 "${ch.title}" diatur sebagai Khusus PRO.`
+                                      : `🔓 "${ch.title}" diatur sebagai Gratis.`
+                                  );
+                                }}
+                                title="Klik untuk ganti antara Gratis & Khusus PRO"
+                                className={`rounded border px-1.5 py-0.2 text-[9px] font-bold cursor-pointer transition-colors ${
+                                  ch.isPro
+                                    ? "bg-[#FEF3C7] border-[#F59E0B]/40 text-[#92400E] hover:bg-[#FDE68A]"
+                                    : "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                                }`}
+                              >
+                                {ch.isPro ? "PRO" : "Gratis"}
+                              </button>
                             </div>
 
                             <span
@@ -1993,6 +2098,58 @@ export function CoursePageEditor({
                         </>
                       )}
                     </button>
+
+                    {currentChapter.isPro && (
+                      <>
+                        <label
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#FFFBEB] px-2 py-1 text-[11px] font-medium text-[#92400E] border border-[#FDE68A]"
+                          title="Biaya poin opsional untuk membuka bab ini (kosong = ikuti default paket)"
+                        >
+                          <span>Poin Buka:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            disabled={previewMode}
+                            value={currentChapter.unlockPointsCost ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value.trim();
+                              updateCurrentChapter({
+                                unlockPointsCost:
+                                  raw === ""
+                                    ? undefined
+                                    : Math.max(0, Math.round(Number(raw) || 0)),
+                              });
+                            }}
+                            placeholder="Default"
+                            className="w-14 bg-transparent font-bold text-[#92400E] focus:outline-none placeholder:font-normal placeholder:text-[#D97706]/60"
+                          />
+                        </label>
+                        <label
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#ECFDF5] px-2 py-1 text-[11px] font-medium text-[#065F46] border border-[#A7F3D0]"
+                          title="Harga satuan opsional jika dibeli per materi (kosong = ikuti default paket)"
+                        >
+                          <span>Rp</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1000}
+                            disabled={previewMode}
+                            value={currentChapter.unlockPriceIdr ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value.trim();
+                              updateCurrentChapter({
+                                unlockPriceIdr:
+                                  raw === ""
+                                    ? undefined
+                                    : Math.max(0, Math.round(Number(raw) || 0)),
+                              });
+                            }}
+                            placeholder="Default"
+                            className="w-16 bg-transparent font-bold text-[#065F46] focus:outline-none placeholder:font-normal placeholder:text-[#059669]/60"
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                 </div>
 

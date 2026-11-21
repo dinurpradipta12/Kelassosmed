@@ -39,6 +39,9 @@ import {
   RotateCcw,
   BookOpen,
   KeyRound,
+  Globe,
+  Lock,
+  Zap,
 } from "lucide-react";
 import {
   CONTENT_TYPES_LIST,
@@ -555,10 +558,12 @@ export function LearningContentExplorer({
   onSelectProject,
   onBackToProjects,
 }: LearningContentExplorerProps) {
-  const { assignees, cohortProjects, addCohortProject } = useRuangSosmedStore();
+  const { assignees, cohortProjects, addCohortProject, updateCohortProject } =
+    useRuangSosmedStore();
   const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newProjectColor, setNewProjectColor] = useState("#4F39F6");
+  const [newProjectShareAll, setNewProjectShareAll] = useState(true);
   const getItemAssignedCount = (item: ExplorerContentItem) => {
     const raw = item.assignedLearners;
     if (Array.isArray(raw)) {
@@ -612,6 +617,7 @@ export function LearningContentExplorer({
   const {
     workspaceCollaborators,
     updateExplorerItemThumbnail,
+    updateExplorerItemDetails,
     toggleArchiveContent,
     toggleShareContent,
     createFolder,
@@ -1085,10 +1091,10 @@ export function LearningContentExplorer({
     wiki: "Wiki & Playbook Bacaan (Notion-Style)",
   };
 
-  const activeCohortColor =
-    (cohortProjects || []).find(
-      (c) => c.name.trim().toLowerCase() === activeProjectName.trim().toLowerCase()
-    )?.color || "#EC4899";
+  const activeCohortObj = (cohortProjects || []).find(
+    (c) => c.name.trim().toLowerCase() === activeProjectName.trim().toLowerCase()
+  );
+  const activeCohortColor = activeCohortObj?.color || "#EC4899";
 
   const showAlwaysFolderView =
     !currentFolder &&
@@ -1210,11 +1216,50 @@ export function LearningContentExplorer({
                   </div>
                 </div>
 
-                <div className="mt-5 pt-3 border-t border-[#F1F5F9] flex items-center justify-between text-xs">
-                  <span className="text-[#64748B] font-medium">
-                    {projCourses.length} materi pembelajaran
-                  </span>
-                  <span className="inline-flex items-center gap-1 font-bold text-[#4F39F6] group-hover:translate-x-0.5 transition-transform">
+                <div className="mt-5 pt-3 border-t border-[#F1F5F9] flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[#64748B] font-medium shrink-0">
+                      {projCourses.length} materi
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const nextVal = !proj.shareWithAllLearners;
+                        updateCohortProject(proj.id || proj.name, {
+                          shareWithAllLearners: nextVal,
+                        });
+                        onShowToast(
+                          nextVal
+                            ? `🌐 Project "${proj.name}" sekarang otomatis dibagikan ke SEMUA member baru & lama!`
+                            : `🔒 Project "${proj.name}" diubah ke Assign Manual.`
+                        );
+                      }}
+                      title={
+                        proj.shareWithAllLearners
+                          ? "Otomatis terlihat semua siswa baru & lama (Klik untuk ubah ke Assign Manual)"
+                          : "Hanya untuk siswa yang di-assign (Klik untuk bagikan ke semua siswa sekaligus)"
+                      }
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border transition-colors cursor-pointer ${
+                        proj.shareWithAllLearners
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                          : "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {proj.shareWithAllLearners ? (
+                        <>
+                          <Globe size={10} />
+                          <span>Semua Member</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock size={10} />
+                          <span>Assign Manual</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <span className="inline-flex items-center gap-1 font-bold text-[#4F39F6] group-hover:translate-x-0.5 transition-transform shrink-0">
                     <span>Buka Project</span>
                     <ChevronRight size={14} />
                   </span>
@@ -1236,10 +1281,20 @@ export function LearningContentExplorer({
               e.preventDefault();
               const trimmed = newProjectTitle.trim();
               if (!trimmed) return;
-              addCohortProject(trimmed, newProjectColor);
+              addCohortProject(
+                trimmed,
+                newProjectColor,
+                undefined,
+                newProjectShareAll
+              );
               setNewProjectTitle("");
+              setNewProjectShareAll(true);
               setNewProjectModalOpen(false);
-              onShowToast(`Project "${trimmed}" berhasil dibuat.`);
+              onShowToast(
+                newProjectShareAll
+                  ? `Project "${trimmed}" dibuat & dibagikan ke semua siswa sekaligus.`
+                  : `Project "${trimmed}" berhasil dibuat.`
+              );
               onSelectProject?.(trimmed);
             }}
             className="space-y-4"
@@ -1253,7 +1308,7 @@ export function LearningContentExplorer({
                 required
                 value={newProjectTitle}
                 onChange={(e) => setNewProjectTitle(e.target.value)}
-                placeholder="Contoh: Batch 2 Intensive"
+                placeholder="Contoh: Fundamental Social Media"
                 className="w-full rounded-xl border border-[#EAECEF] bg-[#F8F9FB] px-3 py-2 text-xs text-[#121215] focus:bg-white focus:border-[#4F39F6] focus:outline-none"
               />
             </div>
@@ -1280,6 +1335,23 @@ export function LearningContentExplorer({
                 )}
               </div>
             </div>
+
+            <label className="flex items-start gap-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newProjectShareAll}
+                onChange={(e) => setNewProjectShareAll(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <div>
+                <span className="block text-xs font-bold text-emerald-950">
+                  🌐 Bagikan ke Semua Siswa Sekaligus (Auto-Publish)
+                </span>
+                <span className="block text-[11px] text-emerald-800 mt-0.5">
+                  Setiap member baru yang mendaftar langsung melihat folder &amp; materi di project ini; materi/video berbayar tetap terkunci sesuai status Free/PRO.
+                </span>
+              </div>
+            </label>
 
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -1335,6 +1407,41 @@ export function LearningContentExplorer({
           <span className="inline-flex items-center rounded-md bg-[#F1F5F9] border border-[#E2E8F0] px-2.5 py-1 text-xs font-semibold text-[#475569]">
             {subViewTitleMap[activeSubView]}
           </span>
+
+          {activeCohortObj && (
+            <button
+              type="button"
+              onClick={() => {
+                const nextVal = !activeCohortObj.shareWithAllLearners;
+                updateCohortProject(activeCohortObj.id || activeCohortObj.name, {
+                  shareWithAllLearners: nextVal,
+                });
+                onShowToast(
+                  nextVal
+                    ? `🌐 Semua folder & materi di "${activeCohortObj.name}" sekarang otomatis tampil untuk SEMUA siswa baru & lama!`
+                    : `🔒 Project "${activeCohortObj.name}" dikembalikan ke mode Assign Manual.`
+                );
+              }}
+              title="Aktifkan/matikan akses otomatis project ini untuk seluruh siswa terdaftar"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold border transition-colors cursor-pointer ${
+                activeCohortObj.shareWithAllLearners
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                  : "bg-white border-[#EAECEF] text-[#5E5E5E] hover:border-[#4F39F6] hover:text-[#4F39F6]"
+              }`}
+            >
+              {activeCohortObj.shareWithAllLearners ? (
+                <>
+                  <Globe size={12} />
+                  <span>Bagikan ke Semua Siswa: ON</span>
+                </>
+              ) : (
+                <>
+                  <Lock size={12} />
+                  <span>Bagikan ke Semua: OFF (Assign Manual)</span>
+                </>
+              )}
+            </button>
+          )}
 
           {/* Overlapping Member Avatar Stack + Invite Button */}
           <div className="flex items-center pl-1">
@@ -2410,6 +2517,22 @@ export function LearningContentExplorer({
                       <span className="inline-flex items-center rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-1.5 py-0.5 text-[10px] font-medium text-[#5E5E5E] max-w-full truncate">
                         {item.category}
                       </span>
+                      <span
+                        className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold border ${
+                          item.isPro
+                            ? "bg-amber-50 border-amber-200 text-amber-800"
+                            : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                        }`}
+                      >
+                        {item.isPro ? (
+                          <>
+                            <Zap size={9} fill="currentColor" />
+                            <span>PRO</span>
+                          </>
+                        ) : (
+                          <span>Gratis / Freemium</span>
+                        )}
+                      </span>
                       {(item.urgency === "Urgent" ||
                         item.urgency === "High Priority") && (
                         <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border bg-[#EF4444]/10 border-[#EF4444]/20 text-[#EF4444]">
@@ -2492,6 +2615,34 @@ export function LearningContentExplorer({
                           >
                             <KeyRound size={13} />
                             <span>Kode ({itemCode})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuCardId(null);
+                              const nextPro = !item.isPro;
+                              updateExplorerItemDetails(item.id, {
+                                isPro: nextPro,
+                              });
+                              onShowToast(
+                                nextPro
+                                  ? `🔒 "${item.title}" diubah menjadi Khusus Berbayar (PRO).`
+                                  : `🔓 "${item.title}" diubah menjadi Gratis / Freemium (kontrol per bab).`
+                              );
+                            }}
+                            className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#121215] hover:bg-[#F8F9FB] cursor-pointer"
+                          >
+                            <Zap
+                              size={13}
+                              className={
+                                item.isPro ? "text-[#D97706]" : "text-[#10B981]"
+                              }
+                            />
+                            <span>
+                              {item.isPro
+                                ? "Set Gratis / Freemium"
+                                : "Set Khusus PRO"}
+                            </span>
                           </button>
                           <button
                             type="button"

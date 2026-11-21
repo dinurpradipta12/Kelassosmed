@@ -27,9 +27,17 @@ import {
   type CourseChapterItem,
 } from "@/lib/phase5-data";
 import { ContentBadge } from "@/components/ui/ContentBadge";
-import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import {
+  useRuangSosmedStore,
+  evaluateChapterAccess,
+  formatIdr,
+} from "@/context/RuangSosmedStore";
 import { OfficialCertificateModal } from "@/components/certificate/OfficialCertificateModal";
 import { ModalDialog } from "@/components/ui/ModalDialog";
+import {
+  UnlockModuleModal,
+  type UnlockModuleTarget,
+} from "@/components/learner/UnlockModuleModal";
 
 interface LearnerCourseOverviewProps {
   courseTitle?: string;
@@ -61,6 +69,7 @@ export function LearnerCourseOverview({
   const {
     certificateUnlocked,
     learnerIsPro,
+    learnerAccess,
     learnerAssignedItems,
     explorerItems,
     rsLessonReviews,
@@ -68,6 +77,9 @@ export function LearnerCourseOverview({
     postDiscussionMessage,
     resolveUserAvatar,
   } = useRuangSosmedStore();
+
+  const [unlockModalTarget, setUnlockModalTarget] =
+    useState<UnlockModuleTarget | null>(null);
 
   const leadMentorAvatar = resolveUserAvatar(
     "Dinur M. Pradipta",
@@ -195,7 +207,18 @@ export function LearnerCourseOverview({
     certificateUnlocked ||
     (totalChapters > 0 && completedChapters >= totalChapters);
 
+  const flatVisibleChapters = React.useMemo(
+    () => visibleSections.flatMap((s) => s.chapters),
+    [visibleSections]
+  );
+
   const courseIsPro = React.useMemo(() => {
+    if (typeof matchedExplorerCourse?.isPro === "boolean") {
+      return matchedExplorerCourse.isPro;
+    }
+    if (typeof matchedAssignedCourse?.isPro === "boolean") {
+      return matchedAssignedCourse.isPro;
+    }
     if (typeof window !== "undefined") {
       try {
         const key = courseTitle.toLowerCase().trim();
@@ -206,20 +229,48 @@ export function LearnerCourseOverview({
       } catch {}
     }
     return false;
-  }, [courseTitle]);
+  }, [courseTitle, matchedExplorerCourse?.isPro, matchedAssignedCourse?.isPro]);
 
-  const isChapterProOnly = (ch: CourseChapterItem) => {
-    if (typeof ch.isPro === "boolean") return ch.isPro;
-    if (courseIsPro) return true;
-    return ch.type === "Assignment";
-  };
+  const getChapterAccess = (ch: CourseChapterItem) =>
+    evaluateChapterAccess({
+      courseTitle,
+      courseIsPro,
+      courseUnlockPointsCost:
+        matchedExplorerCourse?.unlockPointsCost ??
+        matchedAssignedCourse?.unlockPointsCost,
+      courseUnlockPriceIdr:
+        matchedExplorerCourse?.unlockPriceIdr ??
+        matchedAssignedCourse?.unlockPriceIdr,
+      flatVisibleChapters,
+      chapter: ch,
+      access: learnerAccess,
+    });
 
   const handleChapterClick = (ch: CourseChapterItem) => {
-    if (isChapterProOnly(ch) && !learnerIsPro) {
+    const chAccess = getChapterAccess(ch);
+    if (!chAccess.unlocked) {
+      if (
+        chAccess.reason === "basic_limit_reached" ||
+        chAccess.canUnlockWithPoints ||
+        chAccess.canBuyPerMaterial
+      ) {
+        setUnlockModalTarget({
+          courseTitle,
+          chapterId: ch.id,
+          chapterTitle: ch.title,
+          reason: chAccess.reason,
+          maxModules: chAccess.maxModules,
+          canUnlockWithPoints: chAccess.canUnlockWithPoints,
+          pointsCost: chAccess.pointsCost,
+          canBuyPerMaterial: chAccess.canBuyPerMaterial,
+          priceIdr: chAccess.priceIdr,
+        });
+        return;
+      }
       onShowToast(
         ch.type === "Assignment"
-          ? "🔒 Review Tugas Praktik 1-on-1 bersama Mentor khusus member Learner PRO."
-          : "🔒 Bab Lanjutan (Advance Module) khusus member Learner PRO. Silakan upgrade ke PRO."
+          ? "🔒 Review Tugas Praktik 1-on-1 bersama Mentor tersedia di paket Pro."
+          : "🔒 Bab Lanjutan ini terkunci. Pilih paket Basic atau Pro untuk membuka."
       );
       onOpenUpgradeModal?.();
       return;
@@ -314,7 +365,22 @@ export function LearnerCourseOverview({
             <div className="pt-2 flex flex-wrap items-center gap-4">
               <button
                 type="button"
-                onClick={() => onStartClassroom()}
+                onClick={() => {
+                  const firstOpen =
+                    flatVisibleChapters.find(
+                      (c) => !c.completed && !c.locked && getChapterAccess(c).unlocked
+                    ) ||
+                    flatVisibleChapters.find(
+                      (c) => !c.locked && getChapterAccess(c).unlocked
+                    );
+                  if (firstOpen) {
+                    onStartClassroom(firstOpen.id);
+                  } else if (flatVisibleChapters[0]) {
+                    handleChapterClick(flatVisibleChapters[0]);
+                  } else {
+                    onStartClassroom();
+                  }
+                }}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-5 py-2.5 text-sm font-semibold text-white transition-colors cursor-pointer"
               >
                 <Play size={15} fill="currentColor" />
@@ -413,8 +479,12 @@ export function LearnerCourseOverview({
                             : ch.type === "Assignment"
                             ? ClipboardCheck
                             : BookOpen;
-                        const proOnly = isChapterProOnly(ch);
-                        const proLocked = proOnly && !learnerIsPro;
+                        const chAccess = getChapterAccess(ch);
+                        const chapterIsProFlag =
+                          typeof ch.isPro === "boolean"
+                            ? ch.isPro
+                            : Boolean(courseIsPro) || ch.type === "Assignment";
+                        const proLocked = !chAccess.unlocked;
                         const isLocked = ch.locked || proLocked;
 
                         return (
@@ -465,17 +535,25 @@ export function LearnerCourseOverview({
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">
-                              {proOnly && (
+                              {chapterIsProFlag ? (
                                 <span
                                   className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                                    learnerIsPro
+                                    chAccess.unlocked
                                       ? "bg-emerald-50 text-emerald-700"
                                       : "bg-amber-50 text-amber-700"
                                   }`}
                                 >
-                                  {ch.type === "Assignment"
+                                  {chAccess.reason === "basic_included"
+                                    ? "Basic"
+                                    : chAccess.reason === "unlocked_individually"
+                                    ? "Terbuka"
+                                    : ch.type === "Assignment"
                                     ? "PRO 1-on-1"
                                     : "PRO"}
+                                </span>
+                              ) : (
+                                <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                  Gratis
                                 </span>
                               )}
 
@@ -492,7 +570,11 @@ export function LearnerCourseOverview({
                               >
                                 <span>
                                   {proLocked
-                                    ? "Upgrade PRO"
+                                    ? chAccess.canUnlockWithPoints
+                                      ? `Buka (${chAccess.pointsCost} pts)`
+                                      : chAccess.canBuyPerMaterial
+                                      ? formatIdr(chAccess.priceIdr)
+                                      : "Upgrade"
                                     : ch.locked
                                     ? "Terkunci"
                                     : ch.type === "Quiz"
@@ -582,12 +664,23 @@ export function LearnerCourseOverview({
 
               <button
                 type="button"
-                onClick={() => setContactMentorOpen(true)}
+                onClick={() => {
+                  if (!learnerAccess.canDiscussion) {
+                    onShowToast(
+                      "🔒 Tanya Jawab & Diskusi dengan Mentor tidak aktif pada paket Anda. Upgrade ke Basic atau Pro untuk menggunakannya."
+                    );
+                    onOpenUpgradeModal?.();
+                    return;
+                  }
+                  setContactMentorOpen(true);
+                }}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-50 hover:bg-indigo-50 hover:text-[#4F39F6] hover:border-indigo-200 px-3.5 py-2 text-xs font-semibold text-slate-700 border border-slate-200 transition-colors cursor-pointer"
               >
-                <Mail size={13} />
-                <span>Hubungi Mentor</span>
-                {courseMessages.length > 0 && (
+                {learnerAccess.canDiscussion ? <Mail size={13} /> : <Lock size={13} className="text-amber-600" />}
+                <span>
+                  {learnerAccess.canDiscussion ? "Hubungi Mentor" : "Hubungi Mentor (Upgrade)"}
+                </span>
+                {learnerAccess.canDiscussion && courseMessages.length > 0 && (
                   <span className="rounded-full bg-[#4F39F6] px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
                     {courseMessages.length}
                   </span>
@@ -625,16 +718,16 @@ export function LearnerCourseOverview({
               type="button"
               onClick={handleOpenCertModal}
               className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors cursor-pointer ${
-                isFullyUnlocked && learnerIsPro
+                isFullyUnlocked && learnerAccess.canCertificate
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                   : "bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4F39F6] border border-[#4F39F6]/25"
               }`}
             >
-              {learnerIsPro ? <Award size={13} /> : <Lock size={12} />}
+              {learnerAccess.canCertificate ? <Award size={13} /> : <Lock size={12} />}
               <span>
-                {learnerIsPro
+                {learnerAccess.canCertificate
                   ? "Lihat & Unduh Sertifikat"
-                  : "Klaim Sertifikat (PRO)"}
+                  : "Klaim Sertifikat (Pro)"}
               </span>
             </button>
           </div>
@@ -822,8 +915,18 @@ export function LearnerCourseOverview({
         learnerRole="Social Media Specialist"
         courseTitle={courseTitle}
         credentialId="RS2-2026-8492"
-        isLockedPro={!learnerIsPro}
+        isLockedPro={!learnerAccess.canCertificate}
         onRequestUpgrade={onOpenUpgradeModal}
+        onShowToast={onShowToast}
+      />
+
+      <UnlockModuleModal
+        target={unlockModalTarget}
+        onClose={() => setUnlockModalTarget(null)}
+        onUnlockedChapter={(chId) => {
+          if (chId) onStartClassroom(chId);
+        }}
+        onOpenUpgradeToPro={() => onOpenUpgradeModal?.()}
         onShowToast={onShowToast}
       />
     </div>

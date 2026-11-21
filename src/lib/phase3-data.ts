@@ -45,6 +45,8 @@ export interface EditorChapter {
   hideEmbeddedBlock?: boolean;
   hideDatabaseBlock?: boolean;
   isPro?: boolean;
+  unlockPriceIdr?: number;
+  unlockPointsCost?: number;
 }
 
 export interface EditorSection {

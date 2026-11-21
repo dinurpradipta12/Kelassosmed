@@ -15,6 +15,9 @@ import {
   Upload,
   MessageCircle,
   ShieldCheck,
+  XCircle,
+  Clock,
+  Lock,
 } from "lucide-react";
 import {
   CONTENT_TYPES_LIST,
@@ -27,8 +30,14 @@ import { ContentBadge, ContentIconBox } from "@/components/ui/ContentBadge";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
+  PACKAGE_FEATURE_DEFINITIONS,
+  ALL_FALSE_ENTITLEMENTS,
   getNormalizedProPackages,
+  computeTrial7DaysPriceIdr,
+  formatIdr,
+  parseIdrFromLabel,
   type LearnerProPackageItem,
+  type PackageTierKind,
 } from "@/context/RuangSosmedStore";
 import { supabase, STORAGE_BUCKETS } from "@/lib/supabase/client";
 import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
@@ -260,13 +269,22 @@ interface UpgradePlanModalProps {
     packageName: string;
     priceLabel: string;
     periodLabel: string;
+    billingCycle?: "7d_trial" | "30d";
+    durationDays?: number;
     buyerName?: string;
     buyerEmail?: string;
     paymentMethod?: "qris" | "bank";
     proofUrl?: string;
   }) => Promise<void> | void;
   isProActive?: boolean;
+  hasUsedTrial?: boolean;
+  activePackageId?: string | null;
+  activePackageName?: string | null;
+  activeTierKind?: PackageTierKind;
+  preselectedPackageId?: string;
   canTestFreeToggle?: boolean;
+  previewTier?: "auto" | "free" | "basic" | "pro";
+  onSelectPreviewTier?: (tier: "auto" | "free" | "basic" | "pro") => void;
   onSwitchToFree?: () => void;
   initialStep?: "overview" | "payment";
   defaultBuyerName?: string;
@@ -280,7 +298,14 @@ export function UpgradePlanModal({
   onClose,
   onConfirmUpgrade,
   isProActive = false,
+  hasUsedTrial = false,
+  activePackageId = null,
+  activePackageName = null,
+  activeTierKind = "free",
+  preselectedPackageId,
   canTestFreeToggle = false,
+  previewTier = "auto",
+  onSelectPreviewTier,
   onSwitchToFree,
   initialStep = "overview",
   defaultBuyerName = "",
@@ -293,12 +318,16 @@ export function UpgradePlanModal({
   };
 
   const packages = getNormalizedProPackages(cfg);
-  const defaultPkg =
-    packages.find((p) => p.highlighted) || packages[0];
+  const paidPackages = packages.filter((p) => !p.isFreeTier && p.tierKind !== "free");
+  const defaultPaidPkg =
+    paidPackages.find((p) => p.highlighted) ||
+    paidPackages[paidPackages.length - 1] ||
+    packages[0];
 
   const [selectedPackageId, setSelectedPackageId] = useState<string>(
-    defaultPkg?.id || "pkg-creator-academy"
+    defaultPaidPkg?.id || "pkg-pro"
   );
+  const [billingCycle, setBillingCycle] = useState<"7d_trial" | "30d">("30d");
   const [step, setStep] = useState<"overview" | "payment">(initialStep);
   const [paymentMethod, setPaymentMethod] = useState<"qris" | "bank">("qris");
   const [buyerName, setBuyerName] = useState(defaultBuyerName);
@@ -309,24 +338,86 @@ export function UpgradePlanModal({
   const [isSubmittingUpgrade, setIsSubmittingUpgrade] = useState(false);
 
   const selectedPkg: LearnerProPackageItem =
-    packages.find((p) => p.id === selectedPackageId) || defaultPkg;
+    packages.find((p) => p.id === selectedPackageId) || defaultPaidPkg;
 
   const activeQrisUrl = selectedPkg?.qrCodeUrl || cfg.qrCodeUrl || "";
+
+  const isTrialEligibleForSelected =
+    !hasUsedTrial &&
+    !selectedPkg?.isFreeTier &&
+    selectedPkg?.enable7DayTrial !== false;
+
+  const effectiveCycle: "7d_trial" | "30d" =
+    billingCycle === "7d_trial" && isTrialEligibleForSelected ? "7d_trial" : "30d";
+
+  const computePackageCyclePricing = (pkg: LearnerProPackageItem, cycle: "7d_trial" | "30d") => {
+    if (pkg.isFreeTier) {
+      return {
+        amountIdr: 0,
+        priceText: "Gratis",
+        periodText: "Selamanya",
+        durationDays: 0,
+      };
+    }
+    const monthlyIdr = Math.max(
+      0,
+      Number(pkg.monthlyPriceIdr ?? parseIdrFromLabel(pkg.priceLabel) ?? 150000)
+    );
+    const useTrial =
+      cycle === "7d_trial" && !hasUsedTrial && pkg.enable7DayTrial !== false;
+    if (useTrial) {
+      const trialIdr = computeTrial7DaysPriceIdr(
+        monthlyIdr,
+        pkg.trial7DaysPriceIdr
+      );
+      return {
+        amountIdr: trialIdr,
+        priceText: formatIdr(trialIdr),
+        periodText: "/ 7 hari (Trial 1×)",
+        durationDays: 7,
+      };
+    }
+    return {
+      amountIdr: monthlyIdr,
+      priceText: monthlyIdr > 0 ? formatIdr(monthlyIdr) : pkg.priceLabel,
+      periodText: pkg.periodLabel || "/ 30 hari",
+      durationDays: 30,
+    };
+  };
+
+  const selectedPricing = computePackageCyclePricing(selectedPkg, effectiveCycle);
 
   useEffect(() => {
     if (open) {
       const freshPkgs = getNormalizedProPackages(cfg);
-      const freshDefault =
-        freshPkgs.find((p) => p.highlighted) || freshPkgs[0];
-      setSelectedPackageId(freshDefault?.id || "pkg-creator-academy");
-      setStep(isProActive ? "overview" : initialStep);
+      const freshPaid = freshPkgs.filter((p) => !p.isFreeTier && p.tierKind !== "free");
+      const targetPre =
+        preselectedPackageId &&
+        freshPkgs.some((p) => p.id === preselectedPackageId)
+          ? preselectedPackageId
+          : (freshPaid.find((p) => p.highlighted) ||
+              freshPaid[freshPaid.length - 1] ||
+              freshPkgs[0])?.id || "pkg-pro";
+      setSelectedPackageId(targetPre);
+      setBillingCycle((prev) => (hasUsedTrial ? "30d" : prev));
+      setStep(isProActive && activeTierKind === "pro" ? "overview" : initialStep);
       setPaymentMethod("qris");
       setBuyerName(defaultBuyerName || "");
       setBuyerContact(defaultBuyerEmail || "");
       setProofPreview("");
+      setFormError(null);
       setCopiedAcc(false);
     }
-  }, [open, initialStep, isProActive, defaultBuyerName, defaultBuyerEmail]);
+  }, [
+    open,
+    initialStep,
+    isProActive,
+    hasUsedTrial,
+    activeTierKind,
+    preselectedPackageId,
+    defaultBuyerName,
+    defaultBuyerEmail,
+  ]);
 
   const handleCopyAccount = () => {
     if (!cfg.accountNumber) return;
@@ -364,12 +455,13 @@ export function UpgradePlanModal({
 
     const lines = [
       "Halo Admin Ruang Sosmed 2.0,",
-      `Saya telah melakukan pembayaran upgrade *${selectedPkg.badge || cfg.badgeText} (${selectedPkg.name})*`,
-      `Nominal: *${selectedPkg.priceLabel} ${selectedPkg.periodLabel || cfg.bannerPeriodLabel || ""}*`,
+      `Saya telah melakukan pembayaran paket *${selectedPkg.name}* (${selectedPkg.badge || cfg.badgeText})`,
+      `Durasi: *${effectiveCycle === "7d_trial" ? "Percobaan 7 Hari (1×)" : "Langganan 30 Hari (1 Bulan)"}*`,
+      `Nominal: *${selectedPricing.priceText} ${selectedPricing.periodText}*`,
       `Metode: *${paymentMethod === "qris" ? "Scan QRIS" : `Transfer ${cfg.bankName}`}*`,
       buyerName.trim() ? `Nama: ${buyerName.trim()}` : null,
       buyerContact.trim() ? `Email/WA: ${buyerContact.trim()}` : null,
-      "Mohon aktivasi akun Learner PRO saya. Terima kasih!",
+      "Mohon aktivasi paket saya. Terima kasih!",
     ]
       .filter(Boolean)
       .join("\n");
@@ -382,16 +474,23 @@ export function UpgradePlanModal({
   };
 
   const modalTitleText =
-    step === "payment" && !isProActive
-      ? "Pembayaran Upgrade Learner PRO"
+    step === "payment"
+      ? `Pembayaran Paket ${selectedPkg.name}`
       : isProActive
-      ? "Ruang Sosmed 2.0 Learner PRO (Active)"
+      ? `Membership Aktif: ${activePackageName || "PRO"}`
       : cfg.modalTitle;
 
   const modalSubtitleText =
-    step === "payment" && !isProActive
-      ? `Selesaikan pembayaran ${selectedPkg.priceLabel} (${selectedPkg.name}) melalui QRIS atau transfer bank`
+    step === "payment"
+      ? `Selesaikan pembayaran ${selectedPricing.priceText} ${selectedPricing.periodText} melalui QRIS atau transfer bank`
       : cfg.modalSubtitle;
+
+  const modalWidth =
+    step === "payment"
+      ? "max-w-lg"
+      : packages.length >= 3
+      ? "max-w-4xl"
+      : "max-w-2xl";
 
   return (
     <ModalDialog
@@ -400,9 +499,9 @@ export function UpgradePlanModal({
       titleId="upgrade-plan-modal-title"
       title={modalTitleText}
       subtitle={modalSubtitleText}
-      maxWidthClass="max-w-lg"
+      maxWidthClass={modalWidth}
     >
-      {step === "payment" && !isProActive ? (
+      {step === "payment" && !selectedPkg.isFreeTier ? (
         <div className="space-y-4">
           {/* Top Navigation & Bill Summary */}
           <div className="flex items-center justify-between gap-2">
@@ -412,33 +511,40 @@ export function UpgradePlanModal({
               className="inline-flex items-center gap-1 text-xs font-semibold text-[#5E5E5E] hover:text-[#121215] cursor-pointer"
             >
               <ChevronLeft size={14} />
-              <span>
-                {packages.length > 1
-                  ? "Ganti Paket / Lihat Benefit"
-                  : "Kembali ke Detail Benefit"}
-              </span>
+              <span>Ganti Paket / Lihat Perbandingan</span>
             </button>
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF3C7] px-2.5 py-0.5 text-[10px] font-bold text-[#92400E]">
-              <Zap size={10} fill="currentColor" />
-              {selectedPkg.name}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {effectiveCycle === "7d_trial" && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                  Trial 7 Hari (1×)
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#FEF3C7] px-2.5 py-0.5 text-[10px] font-bold text-[#92400E]">
+                <Zap size={10} fill="currentColor" />
+                {selectedPkg.name}
+              </span>
+            </div>
           </div>
 
           <div className="rounded-xl bg-[#FFFBEB] border border-[#FDE68A] p-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#92400E]">
-                Total Pembayaran
+                Total Pembayaran ({effectiveCycle === "7d_trial" ? "Trial 7 Hari" : "30 Hari / 1 Bulan"})
               </p>
               <p className="text-xl font-extrabold text-[#121215]">
-                {selectedPkg.priceLabel}
+                {selectedPricing.priceText}
                 <span className="text-xs font-medium text-[#78350F] ml-1">
-                  {selectedPkg.periodLabel || cfg.bannerPeriodLabel || "/ bulan"}
+                  {selectedPricing.periodText}
                 </span>
               </p>
             </div>
             <div className="text-right text-[11px] text-[#78350F]">
               <p className="font-bold">{selectedPkg.badge}</p>
-              <p>{(selectedPkg.features || []).length} Fitur PRO Terbuka</p>
+              <p>
+                {selectedPkg.moduleAccessMode === "limited"
+                  ? `Maks. ${selectedPkg.maxModulesPerCourse || 6} modul/materi`
+                  : "Semua modul unlimited"}
+              </p>
             </div>
           </div>
 
@@ -586,7 +692,7 @@ export function UpgradePlanModal({
               </p>
             )}
             <p className="text-[11px] text-[#5E5E5E]">
-              Setelah konfirmasi dikirim, Admin akan memverifikasi pembayaran Anda sebelum mengaktifkan akses Learner PRO.
+              Setelah konfirmasi dikirim, Admin akan memverifikasi pembayaran Anda sebelum mengaktifkan paket {selectedPkg.name}.
             </p>
           </div>
 
@@ -617,9 +723,10 @@ export function UpgradePlanModal({
                   await onConfirmUpgrade({
                     packageId: selectedPkg.id,
                     packageName: selectedPkg.name,
-                    priceLabel: selectedPkg.priceLabel,
-                    periodLabel:
-                      selectedPkg.periodLabel || cfg.bannerPeriodLabel || "/ bulan",
+                    priceLabel: selectedPricing.priceText,
+                    periodLabel: selectedPricing.periodText,
+                    billingCycle: effectiveCycle,
+                    durationDays: selectedPricing.durationDays,
                     buyerName: buyerName.trim(),
                     buyerEmail: buyerContact.trim(),
                     paymentMethod,
@@ -643,111 +750,269 @@ export function UpgradePlanModal({
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Multi-Package Selector (Shown cleanly whenever Admin defines > 1 package) */}
-          {!isProActive && packages.length > 1 && (
-            <div className="space-y-1.5">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF]">
-                Pilih Paket ({packages.length})
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {packages.map((pkg) => {
-                  const isSel = pkg.id === selectedPkg.id;
-                  return (
-                    <button
-                      key={pkg.id}
-                      type="button"
-                      onClick={() => setSelectedPackageId(pkg.id)}
-                      className={`text-left rounded-xl p-3 border transition-all cursor-pointer ${
-                        isSel
-                          ? "bg-[#FFFBEB] border-[#F59E0B] ring-1 ring-[#F59E0B]"
-                          : "bg-[#F8F9FB] border-[#EAECEF] hover:bg-white"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1.5">
-                        <span className="text-xs font-bold text-[#121215] truncate">
-                          {pkg.name}
-                        </span>
-                        {pkg.highlighted && (
-                          <span className="rounded bg-[#F59E0B]/20 px-1.5 py-0.5 text-[9px] font-bold text-[#B45309] shrink-0">
-                            Utama
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm font-extrabold text-[#121215] mt-0.5">
-                        {pkg.priceLabel}{" "}
-                        <span className="text-[10px] font-medium text-[#5E5E5E]">
-                          {pkg.periodLabel}
-                        </span>
-                      </p>
-                    </button>
-                  );
-                })}
+          {/* Duration / Billing Cycle Toggle: 7-Day 1x Trial vs 30-Day Monthly */}
+          <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs">
+              <Clock size={14} className="text-[#4F39F6] shrink-0" />
+              <div>
+                <p className="font-bold text-[#121215]">
+                  Pilih Durasi Langganan
+                </p>
+                <p className="text-[11px] text-[#5E5E5E]">
+                  {hasUsedTrial
+                    ? "Trial 7 hari (1× pakai) sudah pernah dipakai — pilihan aktif hanya 30 hari."
+                    : "Tersedia percobaan 7 hari (1× pakai member baru) atau paket bulanan 30 hari."}
+                </p>
               </div>
             </div>
-          )}
 
-          <div
-            className="pro-amber-gradient-header rounded-xl border border-[#FDE68A] p-5"
-            style={{
-              background:
-                "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 65%, #FDE68A 100%)",
-            }}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-[#F59E0B]/20 border border-[#F59E0B]/35 px-2.5 py-0.5 text-xs font-bold text-[#B45309]">
-                <Zap size={13} fill="currentColor" />
-                {selectedPkg.badge || cfg.badgeText}
-              </span>
-              <span className="text-xs font-semibold text-[#92400E]">
-                {selectedPkg.name}
-              </span>
-            </div>
-
-            <div className="mt-3 flex items-baseline gap-1.5">
-              <span className="text-2xl font-extrabold text-[#121215]">
-                {selectedPkg.priceLabel}
-              </span>
-              <span className="text-xs font-medium text-[#5E5E5E]">
-                {selectedPkg.periodLabel}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-[#5E5E5E]">
-              {selectedPkg.description}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-4">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-2.5">
-              {selectedPkg.featuresHeading || cfg.featuresHeading}
-            </p>
-            <ul className="space-y-2 text-xs text-[#121215] font-medium">
-              {(selectedPkg.features || []).map((feat, idx) => (
-                <li
-                  key={`${selectedPkg.id}-${idx}-${feat}`}
-                  className="flex items-start gap-2.5"
+            {!hasUsedTrial ? (
+              <div className="inline-flex rounded-xl bg-white p-1 border border-[#EAECEF] gap-1">
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle("7d_trial")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                    billingCycle === "7d_trial"
+                      ? "bg-emerald-600 text-white shadow-2xs"
+                      : "text-[#5E5E5E] hover:text-[#121215]"
+                  }`}
                 >
-                  <CheckCircle2
-                    size={15}
-                    className="text-[#F59E0B] shrink-0 mt-0.5"
-                  />
-                  <span>{feat}</span>
-                </li>
-              ))}
-            </ul>
+                  Trial 7 Hari (1×)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle("30d")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                    billingCycle === "30d"
+                      ? "bg-[#4F39F6] text-white shadow-2xs"
+                      : "text-[#5E5E5E] hover:text-[#121215]"
+                  }`}
+                >
+                  30 Hari (1 Bulan)
+                </button>
+              </div>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-lg bg-[#4F39F6]/10 border border-[#4F39F6]/25 px-3 py-1.5 text-xs font-bold text-[#4F39F6]">
+                Langganan 30 Hari Aktif
+              </span>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-            {isProActive && canTestFreeToggle && onSwitchToFree ? (
-              <button
-                type="button"
-                onClick={() => {
-                  onSwitchToFree();
-                  onClose();
-                }}
-                className="rounded-lg border border-[#EAECEF] bg-[#F8F9FB] hover:bg-[#EAECEF]/70 px-3 py-2 text-xs font-semibold text-[#5E5E5E] cursor-pointer"
-              >
-                Switch to Free Tier (Test Locks)
-              </button>
+          {/* Package Comparison Grid (FREE / Basic / Pro / Custom) */}
+          <div
+            className={`grid gap-3 ${
+              packages.length >= 3
+                ? "grid-cols-1 md:grid-cols-3"
+                : packages.length === 2
+                ? "grid-cols-1 sm:grid-cols-2"
+                : "grid-cols-1"
+            }`}
+          >
+            {packages.map((pkg) => {
+              const isSelected = pkg.id === selectedPkg.id;
+              const isCurrentUserTier = pkg.isFreeTier
+                ? !isProActive
+                : isProActive &&
+                  (activePackageId === pkg.id ||
+                    (activePackageName &&
+                      activePackageName.trim().toLowerCase() ===
+                        pkg.name.trim().toLowerCase()) ||
+                    activeTierKind === pkg.tierKind);
+              const pricing = computePackageCyclePricing(pkg, effectiveCycle);
+              const monthlyBase = Math.max(
+                0,
+                Number(pkg.monthlyPriceIdr ?? parseIdrFromLabel(pkg.priceLabel) ?? 0)
+              );
+              const pkgEnt = {
+                ...ALL_FALSE_ENTITLEMENTS,
+                ...(pkg.entitlements || {}),
+              };
+
+              return (
+                <div
+                  key={pkg.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedPackageId(pkg.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedPackageId(pkg.id);
+                    }
+                  }}
+                  className={`rounded-2xl p-4 border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                    isSelected
+                      ? pkg.tierKind === "pro"
+                        ? "bg-[#FFFBEB]/60 border-[#F59E0B] ring-2 ring-[#F59E0B]/40 shadow-sm"
+                        : "bg-[#EEF2FF]/50 border-[#4F39F6] ring-2 ring-[#4F39F6]/30 shadow-sm"
+                      : "bg-white border-[#EAECEF] hover:border-[#CBD5E1]"
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-extrabold ${
+                            pkg.isFreeTier
+                              ? "bg-slate-100 text-slate-700"
+                              : pkg.tierKind === "basic"
+                              ? "bg-sky-100 text-sky-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {!pkg.isFreeTier && <Zap size={10} fill="currentColor" />}
+                          {pkg.badge || pkg.name}
+                        </span>
+                        <h3 className="text-base font-extrabold text-[#121215] mt-1">
+                          {pkg.name}
+                        </h3>
+                      </div>
+
+                      {isCurrentUserTier ? (
+                        <span className="rounded-full bg-emerald-100 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-800 shrink-0">
+                          Paket Aktif
+                        </span>
+                      ) : pkg.highlighted && !pkg.isFreeTier ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 shrink-0">
+                          Terpopuler
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xl font-extrabold text-[#121215]">
+                          {pricing.priceText}
+                        </span>
+                        <span className="text-[11px] font-medium text-[#5E5E5E]">
+                          {pricing.periodText}
+                        </span>
+                      </div>
+                      {!pkg.isFreeTier && effectiveCycle === "7d_trial" && pkg.enable7DayTrial !== false && monthlyBase > 0 && (
+                        <p className="text-[10px] text-[#5E5E5E] mt-0.5">
+                          Lanjut bulan berikutnya: {formatIdr(monthlyBase)} / 30 hari
+                        </p>
+                      )}
+                      <p className="text-[11px] text-[#5E5E5E] mt-1 leading-relaxed">
+                        {pkg.description}
+                      </p>
+                    </div>
+
+                    {/* Module Rule Badge */}
+                    <div className="rounded-lg bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-1.5 text-[11px] font-semibold text-[#121215]">
+                      {pkg.moduleAccessMode === "unlimited"
+                        ? "✨ Semua modul & video terbuka penuh"
+                        : pkg.moduleAccessMode === "limited"
+                        ? `📚 Maks. ${pkg.maxModulesPerCourse || 6} modul/materi (${pkg.allowPointsUnlock ? "buka lanjutan pakai Poin" : ""}${pkg.allowPointsUnlock && pkg.allowPerItemPurchase ? " / " : ""}${pkg.allowPerItemPurchase ? "beli satuan" : ""})`
+                        : "🔓 Hanya bab bertanda Gratis"}
+                    </div>
+
+                    {/* 7 Real Features ON/OFF Comparison */}
+                    <ul className="space-y-1.5 text-[11px]">
+                      {PACKAGE_FEATURE_DEFINITIONS.map((def) => {
+                        const enabled = Boolean(pkgEnt[def.key]);
+                        const displayLabel =
+                          pkg.featureLabels?.[def.key]?.trim() || def.shortLabel;
+                        return (
+                          <li
+                            key={`${pkg.id}-${def.key}`}
+                            className={`flex items-start gap-2 ${
+                              enabled
+                                ? "text-[#121215] font-semibold"
+                                : "text-[#9CA3AF] line-through"
+                            }`}
+                          >
+                            {enabled ? (
+                              <CheckCircle2
+                                size={13}
+                                className="text-emerald-600 shrink-0 mt-0.5"
+                              />
+                            ) : (
+                              <XCircle
+                                size={13}
+                                className="text-slate-300 shrink-0 mt-0.5"
+                              />
+                            )}
+                            <span>{displayLabel}</span>
+                          </li>
+                        );
+                      })}
+                      {(pkg.extraBenefits || []).map((ex, i) => (
+                        <li
+                          key={`${pkg.id}-ex-${i}`}
+                          className="flex items-start gap-2 text-[#4F39F6] font-semibold"
+                        >
+                          <CheckCircle2 size={13} className="shrink-0 mt-0.5" />
+                          <span>{ex}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-[#EAECEF]">
+                    {pkg.isFreeTier ? (
+                      <div className="w-full rounded-lg bg-slate-100 py-1.5 text-center text-[11px] font-bold text-slate-600">
+                        {isCurrentUserTier ? "Paket Dasar Aktif" : "Paket Gratis Dasar"}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPackageId(pkg.id);
+                          setStep("payment");
+                        }}
+                        className={`w-full inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-colors cursor-pointer ${
+                          pkg.tierKind === "pro"
+                            ? "bg-[#F59E0B] hover:bg-[#D97706] text-[#121215]"
+                            : "bg-[#4F39F6] hover:bg-[#3B28CC] text-white"
+                        }`}
+                      >
+                        <Zap size={12} fill="currentColor" />
+                        <span>
+                          {isCurrentUserTier
+                            ? `Perpanjang ${pkg.name}`
+                            : pkg.ctaButtonLabel || `Pilih ${pkg.name}`}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#EAECEF]">
+            {canTestFreeToggle && onSelectPreviewTier ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-bold text-[#5E5E5E]">
+                  Mode Preview Admin:
+                </span>
+                {(
+                  [
+                    { id: "auto", label: "Auto (Full)" },
+                    { id: "free", label: "Test FREE" },
+                    { id: "basic", label: "Test Basic" },
+                    { id: "pro", label: "Test Pro" },
+                  ] as const
+                ).map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectPreviewTier(mode.id);
+                      if (mode.id === "free") onSwitchToFree?.();
+                    }}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold border transition-colors cursor-pointer ${
+                      previewTier === mode.id
+                        ? "bg-[#121215] text-white border-[#121215]"
+                        : "bg-[#F8F9FB] text-[#5E5E5E] border-[#EAECEF] hover:bg-white"
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
             ) : (
               <span className="text-[11px] text-[#5E5E5E]">
                 {cfg.footerNote}
@@ -760,9 +1025,9 @@ export function UpgradePlanModal({
                 onClick={onClose}
                 className="rounded-lg px-3.5 py-2 text-xs font-semibold text-[#5E5E5E] hover:bg-[#F8F9FB] cursor-pointer"
               >
-                {isProActive ? "Close" : "Maybe Later"}
+                Tutup
               </button>
-              {!isProActive && (
+              {!selectedPkg.isFreeTier && (
                 <button
                   type="button"
                   onClick={() => setStep("payment")}
@@ -770,9 +1035,7 @@ export function UpgradePlanModal({
                 >
                   <Zap size={13} fill="currentColor" />
                   <span>
-                    {selectedPkg.ctaButtonLabel ||
-                      cfg.ctaButtonLabel ||
-                      "Activate Learner PRO"}
+                    Lanjut Bayar {selectedPkg.name} ({selectedPricing.priceText})
                   </span>
                 </button>
               )}
