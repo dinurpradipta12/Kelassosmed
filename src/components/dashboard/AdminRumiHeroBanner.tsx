@@ -2,9 +2,10 @@
 
 import React, { useMemo, useState } from "react";
 import {
-  AlertCircle,
-  BookOpen,
   Crown,
+  Inbox,
+  Plus,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   Users,
@@ -18,15 +19,31 @@ import { ModalDialog } from "@/components/ui/ModalDialog";
 interface AdminRumiHeroBannerProps {
   currentUser?: AuthenticatedUser | null;
   quizzesCount: number;
+  activeMaterialsCount?: number;
+  totalMembersCount?: number;
+  proMembersCount?: number;
+  pendingPaymentsCount?: number;
+  openIssuesCount?: number;
   onNavigateNav: (nav: AdminNavId) => void;
   onOpenGrading: () => void;
+  onCreateCourse?: () => void;
+  onRefreshLive?: () => void;
+  isRefreshingLive?: boolean;
 }
 
 export function AdminRumiHeroBanner({
   currentUser,
   quizzesCount,
+  activeMaterialsCount,
+  totalMembersCount,
+  proMembersCount,
+  pendingPaymentsCount = 0,
+  openIssuesCount: openIssuesProp,
   onNavigateNav,
   onOpenGrading,
+  onCreateCourse,
+  onRefreshLive,
+  isRefreshingLive = false,
 }: AdminRumiHeroBannerProps) {
   const { explorerItems, assignees, reportedIssues, learnerSubscriptions } =
     useRuangSosmedStore();
@@ -45,7 +62,7 @@ export function AdminRumiHeroBanner({
     return "Good evening";
   })();
 
-  const openIssuesCount = useMemo(
+  const storeOpenIssuesCount = useMemo(
     () =>
       (reportedIssues || []).filter(
         (iss) => String(iss.status || "").toLowerCase() !== "resolved"
@@ -53,7 +70,15 @@ export function AdminRumiHeroBanner({
     [reportedIssues]
   );
 
-  const proLearnersCount = useMemo(() => {
+  const storeActiveMaterialsCount = useMemo(
+    () =>
+      (explorerItems || []).filter(
+        (item) => !item.isArchived && item.type !== "Folder"
+      ).length,
+    [explorerItems]
+  );
+
+  const storeProLearnersCount = useMemo(() => {
     return (assignees || []).filter((a) => {
       const nameKey = (a.name || "").trim().toLowerCase();
       return (
@@ -63,9 +88,17 @@ export function AdminRumiHeroBanner({
     }).length;
   }, [assignees, learnerSubscriptions]);
 
+  const openIssuesCount = openIssuesProp ?? storeOpenIssuesCount;
+  const resolvedMaterialsCount =
+    activeMaterialsCount ?? storeActiveMaterialsCount;
+  const resolvedTotalMembers = totalMembersCount ?? assignees.length;
+  const resolvedProMembers = proMembersCount ?? storeProLearnersCount;
   const reviewCount = quizzesCount + openIssuesCount;
 
   const adminQuote = useMemo(() => {
+    if (pendingPaymentsCount > 0) {
+      return `Superior Admin Rumi siap mengawal! Ada ${pendingPaymentsCount} konfirmasi pembayaran PRO menunggu persetujuan.`;
+    }
     if (quizzesCount > 0 && openIssuesCount > 0) {
       return `Superior Admin Rumi siap mengawal! Ada ${quizzesCount} kuis menunggu penilaian & ${openIssuesCount} kendala materi perlu ditinjau.`;
     }
@@ -75,22 +108,20 @@ export function AdminRumiHeroBanner({
     if (openIssuesCount > 0) {
       return `Superior Admin Rumi memantau: ada ${openIssuesCount} laporan kendala dari learner yang menunggu respons mentor.`;
     }
-    return `Superior Admin Rumi aktif pada level maksimal! ${explorerItems.length} materi & ${assignees.length} member (${proLearnersCount} PRO) berjalan mulus.`;
+    return `Superior Admin Rumi aktif pada level maksimal! ${resolvedMaterialsCount} materi aktif & ${resolvedTotalMembers} member (${resolvedProMembers} PRO) berjalan mulus.`;
   }, [
+    pendingPaymentsCount,
     quizzesCount,
     openIssuesCount,
-    explorerItems.length,
-    assignees.length,
-    proLearnersCount,
+    resolvedMaterialsCount,
+    resolvedTotalMembers,
+    resolvedProMembers,
   ]);
 
   return (
     <>
-      <header
-        aria-label="Admin Studio Dashboard"
-        className="mb-6"
-      >
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+      <header aria-label="Admin Studio Dashboard" className="mb-1">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Left: Frameless Superior Admin Rumi Mascot + Executive Greeting */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5 min-w-0 flex-1">
             <div className="flex items-center gap-3 sm:block shrink-0">
@@ -167,38 +198,31 @@ export function AdminRumiHeroBanner({
             </div>
           </div>
 
-          {/* Right: 3 Compact Studio Metric Quick Tiles */}
-          <div className="grid grid-cols-3 gap-2.5 shrink-0 lg:w-[340px]">
+          {/* Right: Crisp Quick Action Cluster */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => onNavigateNav("content")}
-              className="group rounded-2xl bg-white hover:bg-white border border-slate-200/85 hover:border-[#4F39F6]/40 p-3 text-left shadow-2xs transition-all cursor-pointer"
+              onClick={() =>
+                onCreateCourse ? onCreateCourse() : onNavigateNav("content")
+              }
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white shadow-[0_4px_12px_rgba(79,57,246,0.28)] transition-all cursor-pointer"
             >
-              <div className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 text-[#4F39F6] mb-1.5">
-                <BookOpen size={14} />
-              </div>
-              <p className="text-lg font-extrabold text-[#121215] leading-none">
-                {explorerItems.length}
-              </p>
-              <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">
-                Materi Aktif
-              </p>
+              <Plus size={14} strokeWidth={2.5} />
+              <span>Buat Materi</span>
             </button>
 
             <button
               type="button"
               onClick={() => onNavigateNav("learners")}
-              className="group rounded-2xl bg-white hover:bg-white border border-slate-200/85 hover:border-emerald-400/50 p-3 text-left shadow-2xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#FFFFFF] hover:bg-[#F8F9FB] border border-[#EAECEF] hover:border-[#4F39F6]/40 px-3 py-2 text-xs font-bold text-[#121215] shadow-2xs transition-colors cursor-pointer"
             >
-              <div className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 mb-1.5">
-                <Users size={14} />
-              </div>
-              <p className="text-lg font-extrabold text-[#121215] leading-none">
-                {assignees.length}
-              </p>
-              <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">
-                Total Member
-              </p>
+              <Users size={13} className="text-[#4F39F6]" />
+              <span>Kelola Member</span>
+              {pendingPaymentsCount > 0 && (
+                <span className="inline-flex items-center justify-center rounded-full bg-[#FEF3C7] border border-[#F59E0B]/40 px-1.5 py-0.5 text-[10px] font-extrabold text-[#B45309] tabular-nums leading-none">
+                  {pendingPaymentsCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -210,24 +234,32 @@ export function AdminRumiHeroBanner({
                   onNavigateNav("inbox");
                 }
               }}
-              className="group rounded-2xl bg-white hover:bg-white border border-slate-200/85 hover:border-amber-400/60 p-3 text-left shadow-2xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#FFFFFF] hover:bg-[#F8F9FB] border border-[#EAECEF] hover:border-[#4F39F6]/40 px-3 py-2 text-xs font-bold text-[#121215] shadow-2xs transition-colors cursor-pointer"
             >
-              <div
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg mb-1.5 ${
-                  reviewCount > 0
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-slate-100 text-slate-600"
-                }`}
-              >
-                <AlertCircle size={14} />
-              </div>
-              <p className="text-lg font-extrabold text-[#121215] leading-none">
-                {reviewCount}
-              </p>
-              <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">
-                Perlu Review
-              </p>
+              <Inbox size={13} className="text-[#0284C7]" />
+              <span>Inbox</span>
+              {reviewCount > 0 && (
+                <span className="inline-flex items-center justify-center rounded-full bg-[#FEF3C7] border border-[#F59E0B]/40 px-1.5 py-0.5 text-[10px] font-extrabold text-[#B45309] tabular-nums leading-none">
+                  {reviewCount}
+                </span>
+              )}
             </button>
+
+            {onRefreshLive && (
+              <button
+                type="button"
+                onClick={onRefreshLive}
+                disabled={isRefreshingLive}
+                aria-label="Muat ulang data live dashboard"
+                title="Muat ulang data live dari database"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[#FFFFFF] hover:bg-[#F8F9FB] border border-[#EAECEF] hover:border-[#4F39F6]/40 text-[#475569] hover:text-[#4F39F6] shadow-2xs transition-colors cursor-pointer disabled:opacity-60"
+              >
+                <RefreshCw
+                  size={13}
+                  className={isRefreshingLive ? "animate-spin" : ""}
+                />
+              </button>
+            )}
           </div>
         </div>
       </header>

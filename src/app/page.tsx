@@ -70,10 +70,7 @@ import {
   type AdminNavId,
   type SecondaryNavLinkId,
 } from "@/components/navigation/AdminLeftRail";
-import { QuickCreateStrip } from "@/components/dashboard/QuickCreateStrip";
-import { AdminRumiHeroBanner } from "@/components/dashboard/AdminRumiHeroBanner";
-import { LeftColumnWidgets } from "@/components/dashboard/LeftColumnWidgets";
-import { RightColumnWidgets } from "@/components/dashboard/RightColumnWidgets";
+import { AdminHomeDashboard } from "@/components/dashboard/AdminHomeDashboard";
 import {
   QuickCreateModal,
   GlobalSearchModal,
@@ -2010,55 +2007,38 @@ function RuangSosmedStudioInner() {
               />
             ) : (
               /* Screen: Admin Dashboard (Home) */
-              <div className="w-full px-4 sm:px-5 pt-5 pb-12">
-                {/* Superior Admin Rumi Greeting Banner (Exclusive MAX Sovereign Form) */}
-                <AdminRumiHeroBanner
-                  currentUser={currentUser}
-                  quizzesCount={quizzes.length}
-                  onNavigateNav={handleSelectNav}
-                  onOpenGrading={() =>
-                    setAuthoringMode({ kind: "grading-center" })
-                  }
-                />
-
-                {/* Quick Create Strip (Horizontal row of 6 clickable creation pills) */}
-                <QuickCreateStrip
-                  onCreateContent={handleTriggerContentCreation}
-                />
-
-                {/* Main Layout Grid (Left 8 Columns + Right 4 Columns) */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                  {/* Left 8 Columns */}
-                  <div className="lg:col-span-8">
-                    <LeftColumnWidgets
-                      quizzes={quizzes}
-                      onGradeQuiz={(quiz) =>
-                        setAuthoringMode({
-                          kind: "grading-center",
-                          submissionTitle: quiz.title,
-                        })
-                      }
-                      onOpenGradingCenter={(title) =>
-                        setAuthoringMode({
-                          kind: "grading-center",
-                          submissionTitle: title,
-                        })
-                      }
-                      onShowToast={triggerToast}
-                      currentUser={currentUser}
-                    />
-                  </div>
-
-                  {/* Right 4 Columns */}
-                  <div className="lg:col-span-4">
-                    <RightColumnWidgets
-                      onOpenUpgradeModal={() => setUpgradeModalOpen(true)}
-                      onShowToast={triggerToast}
-                      currentUser={currentUser}
-                    />
-                  </div>
-                </div>
-              </div>
+              <AdminHomeDashboard
+                currentUser={currentUser}
+                quizzes={quizzes}
+                onNavigateNav={handleSelectNav}
+                onCreateContent={handleTriggerContentCreation}
+                onEditContent={handleEditExplorerItem}
+                onOpenContentDetail={handleOpenFavoriteDetail}
+                onOpenFolder={(folderName) => {
+                  try {
+                    window.localStorage.setItem(
+                      "ruang_sosmed_admin_current_folder_v1",
+                      folderName
+                    );
+                  } catch {}
+                  setShowProjectHub(false);
+                  handleSelectNav("content");
+                }}
+                onGradeQuiz={(quiz) =>
+                  setAuthoringMode({
+                    kind: "grading-center",
+                    submissionTitle: quiz.title,
+                  })
+                }
+                onOpenGradingCenter={(title) =>
+                  setAuthoringMode({
+                    kind: "grading-center",
+                    submissionTitle: title,
+                  })
+                }
+                onOpenUpgradeModal={() => setUpgradeModalOpen(true)}
+                onShowToast={triggerToast}
+              />
             )}
             </div>
           </main>
