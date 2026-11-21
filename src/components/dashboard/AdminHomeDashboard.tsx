@@ -1114,7 +1114,7 @@ export function AdminHomeDashboard({
                           <div className="flex items-center justify-between text-[11px] font-bold">
                             <span className="text-[#121215]">{row.type}</span>
                             <span
-                              className="tabular-nums"
+                              className="rs-type-tint tabular-nums"
                               style={{ color: row.textTint }}
                             >
                               {row.count} item ({row.pct}%)
@@ -1629,7 +1629,7 @@ export function AdminHomeDashboard({
             {mentorTab === "quiz" && (
               <div className="space-y-2.5">
                 {quizzes.length === 0 ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#ECFDF5]/70 border border-[#A7F3D0] p-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] p-3.5">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#10B981] text-white">
                         <CheckCircle2 size={16} />
@@ -1766,7 +1766,7 @@ export function AdminHomeDashboard({
             {mentorTab === "issues" && (
               <div className="space-y-2.5">
                 {reportedIssues.length === 0 ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#ECFDF5]/70 border border-[#A7F3D0] p-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] p-3.5">
                     <div className="flex items-center gap-2.5">
                       <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#10B981] text-white">
                         <CheckCircle2 size={16} />
@@ -1894,7 +1894,7 @@ export function AdminHomeDashboard({
                   return (
                     <article
                       key={item.id}
-                      className="rounded-xl bg-[#F8F9FB]/85 hover:bg-[#FFFFFF] border border-[#EAECEF] hover:border-[#4F39F6]/40 p-3.5 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className="rounded-xl bg-[#F8F9FB] hover:bg-[#FFFFFF] border border-[#EAECEF] hover:border-[#4F39F6]/40 p-3.5 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
                       <div className="min-w-0 flex-1 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -2215,7 +2215,7 @@ export function AdminHomeDashboard({
                           </p>
                         </div>
                       </div>
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-[#FEF3C7]/80 border border-[#FDE68A] px-2 py-0.5 text-[11px] font-extrabold text-[#B45309] tabular-nums shrink-0">
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-[#FEF3C7] border border-[#FDE68A] px-2 py-0.5 text-[11px] font-extrabold text-[#B45309] tabular-nums shrink-0">
                         <Star size={10} fill="#F59E0B" />
                         <span>{student.points.toLocaleString()}</span>
                       </span>

@@ -21,7 +21,7 @@ export function ContentBadge({
   if (type === "Folder") {
     return (
       <span
-        className={`inline-flex items-center gap-1.5 rounded-md font-medium select-none ${
+        className={`rs-type-tint inline-flex items-center gap-1.5 rounded-md font-medium select-none ${
           size === "sm" ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs"
         }`}
         style={{
@@ -46,7 +46,7 @@ export function ContentBadge({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-md font-medium select-none ${
+      className={`rs-type-tint inline-flex items-center gap-1.5 rounded-md font-medium select-none ${
         size === "sm" ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs"
       }`}
       style={{

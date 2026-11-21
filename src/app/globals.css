@@ -343,11 +343,16 @@ html[data-theme-active="true"] .bg-\[\#F8F9FB\],
 html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/60,
 html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/70,
 html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/80,
+html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/85,
+html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/90,
+html[data-theme-active="true"] .bg-\[\#F8F9FB\]\/95,
 html[data-theme-active="true"] .bg-\[\#F9FAFB\],
 html[data-theme-active="true"] .bg-\[\#F9FAFB\]\/50,
 html[data-theme-active="true"] .bg-\[\#F9FAFB\]\/60,
 html[data-theme-active="true"] .bg-\[\#F8FAFC\],
 html[data-theme-active="true"] .bg-\[\#F8FAFC\]\/50,
+html[data-theme-active="true"] .bg-\[\#F8FAFC\]\/60,
+html[data-theme-active="true"] .bg-\[\#F8FAFC\]\/80,
 html[data-theme-active="true"] .bg-\[\#FAFAFA\],
 html[data-theme-active="true"] .bg-\[\#FAFAFC\] {
   background-color: var(--theme-canvas) !important;
@@ -393,6 +398,7 @@ html[data-theme-active="true"] .bg-slate-200\/60 {
 html[data-theme-active="true"] .hover\:bg-\[\#F8F9FB\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#F8F9FB\]\/60:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#F8F9FB\]\/80:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#F8F9FB\]\/85:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#F8FAFC\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#F1F5F9\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#FFFFFF\]:hover,
@@ -401,8 +407,13 @@ html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/30:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/50:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/60:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#EAECEF\]\/70:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EEF2FF\]:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#EEF2FF\]\/20:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EEF2FF\]\/50:hover,
 html[data-theme-active="true"] .hover\:bg-\[\#EEF2FF\]\/60:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EEF2FF\]\/70:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EEF2FF\]\/80:hover,
+html[data-theme-active="true"] .hover\:bg-\[\#EDE9FE\]:hover,
 html[data-theme-active="true"] .hover\:bg-white:hover,
 html[data-theme-active="true"] .hover\:bg-slate-50:hover,
 html[data-theme-active="true"] .hover\:bg-slate-50\/50:hover,
@@ -419,6 +430,7 @@ html[data-theme-active="true"] .hover\:bg-black\/\[0\.04\]:hover {
 /* Hairline Borders */
 html[data-theme-active="true"] .border-\[\#EAECEF\],
 html[data-theme-active="true"] .border-\[\#EAECEF\]\/70,
+html[data-theme-active="true"] .border-\[\#EAECEF\]\/80,
 html[data-theme-active="true"] .border-\[\#E2E8F0\],
 html[data-theme-active="true"] .border-\[\#D5D9E0\],
 html[data-theme-active="true"] .border-\[\#D1D5DB\],
@@ -550,15 +562,20 @@ html[data-theme-mode="dark"] .pro-amber-gradient-header {
 
 /* Amber / Warm Tinted Pills & Boxes in Dark Mode */
 html[data-theme-mode="dark"] .bg-\[\#FFFBEB\],
+html[data-theme-mode="dark"] .bg-\[\#FFFBEB\]\/60,
 html[data-theme-mode="dark"] .bg-\[\#FFFBEB\]\/70,
+html[data-theme-mode="dark"] .bg-\[\#FFFBEB\]\/80,
 html[data-theme-mode="dark"] .bg-\[\#FFFBEB\]\/95,
 html[data-theme-mode="dark"] .bg-\[\#FEF3C7\],
 html[data-theme-mode="dark"] .bg-\[\#FEF3C7\]\/40,
 html[data-theme-mode="dark"] .bg-\[\#FEF3C7\]\/60,
 html[data-theme-mode="dark"] .bg-\[\#FEF3C7\]\/70,
+html[data-theme-mode="dark"] .bg-\[\#FEF3C7\]\/80,
+html[data-theme-mode="dark"] .bg-\[\#FEF3C7\]\/90,
 html[data-theme-mode="dark"] .bg-\[\#FDE68A\],
 html[data-theme-mode="dark"] .bg-\[\#FEF08A\],
 html[data-theme-mode="dark"] .bg-\[\#FFF7ED\],
+html[data-theme-mode="dark"] .bg-\[\#FFEDD5\],
 html[data-theme-mode="dark"] .bg-amber-50,
 html[data-theme-mode="dark"] .bg-amber-50\/60,
 html[data-theme-mode="dark"] .bg-amber-50\/70,
@@ -568,6 +585,12 @@ html[data-theme-mode="dark"] .bg-amber-100 {
   border-color: rgba(245, 158, 11, 0.34) !important;
 }
 
+html[data-theme-mode="dark"] .border-\[\#FDE68A\],
+html[data-theme-mode="dark"] .border-\[\#FED7AA\] {
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+html[data-theme-mode="dark"] .hover\:bg-\[\#FEF3C7\]:hover,
 html[data-theme-mode="dark"] .hover\:bg-\[\#FDE68A\]:hover {
   background-color: rgba(245, 158, 11, 0.26) !important;
 }
@@ -584,12 +607,25 @@ html[data-theme-mode="dark"] .text-amber-900 {
   color: #FDE68A !important;
 }
 
+html[data-theme-mode="dark"] .text-\[\#C2410C\],
+html[data-theme-mode="dark"] .text-\[\#EA580C\] {
+  color: #FDBA74 !important;
+}
+
 /* Emerald / Green Tinted Pills in Dark Mode */
 html[data-theme-mode="dark"] .bg-\[\#ECFDF5\],
+html[data-theme-mode="dark"] .bg-\[\#ECFDF5\]\/60,
+html[data-theme-mode="dark"] .bg-\[\#ECFDF5\]\/70,
+html[data-theme-mode="dark"] .bg-\[\#ECFDF5\]\/80,
+html[data-theme-mode="dark"] .bg-\[\#ECFDF5\]\/90,
 html[data-theme-mode="dark"] .bg-\[\#D1FAE5\],
 html[data-theme-mode="dark"] .bg-emerald-50,
 html[data-theme-mode="dark"] .bg-emerald-50\/60 {
   background-color: rgba(16, 185, 129, 0.16) !important;
+  border-color: rgba(52, 211, 153, 0.32) !important;
+}
+
+html[data-theme-mode="dark"] .border-\[\#A7F3D0\] {
   border-color: rgba(52, 211, 153, 0.32) !important;
 }
 
@@ -612,6 +648,7 @@ html[data-theme-mode="dark"] .text-emerald-800 {
 html[data-theme-mode="dark"] .bg-\[\#EEF2FF\],
 html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/20,
 html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/40,
+html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/50,
 html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/60,
 html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/70,
 html[data-theme-mode="dark"] .bg-\[\#EEF2FF\]\/80,
@@ -619,6 +656,8 @@ html[data-theme-mode="dark"] .bg-\[\#E0E7FF\],
 html[data-theme-mode="dark"] .bg-\[\#E0F2FE\],
 html[data-theme-mode="dark"] .bg-\[\#DBEAFE\],
 html[data-theme-mode="dark"] .bg-\[\#DDD6FE\],
+html[data-theme-mode="dark"] .bg-\[\#F5F3FF\],
+html[data-theme-mode="dark"] .bg-\[\#EDE9FE\],
 html[data-theme-mode="dark"] .bg-\[\#EFF6FF\],
 html[data-theme-mode="dark"] .bg-\[\#EFF6FF\]\/50,
 html[data-theme-mode="dark"] .bg-\[\#F0FDFA\],
@@ -640,7 +679,9 @@ html[data-theme-mode="dark"] .hover\:bg-\[\#EFF6FF\]\/50:hover {
 }
 
 html[data-theme-mode="dark"] .border-\[\#BFDBFE\],
-html[data-theme-mode="dark"] .border-\[\#C7D2FE\] {
+html[data-theme-mode="dark"] .border-\[\#C7D2FE\],
+html[data-theme-mode="dark"] .border-\[\#BAE6FD\],
+html[data-theme-mode="dark"] .border-\[\#DDD6FE\] {
   border-color: rgba(96, 165, 250, 0.32) !important;
 }
 
@@ -648,6 +689,7 @@ html[data-theme-mode="dark"] .text-\[\#1E3A8A\],
 html[data-theme-mode="dark"] .text-\[\#1E40AF\],
 html[data-theme-mode="dark"] .text-\[\#2563EB\],
 html[data-theme-mode="dark"] .text-\[\#0284C7\],
+html[data-theme-mode="dark"] .text-\[\#0369A1\],
 html[data-theme-mode="dark"] .text-\[\#0891B2\],
 html[data-theme-mode="dark"] .text-blue-600,
 html[data-theme-mode="dark"] .text-blue-700,
@@ -660,8 +702,10 @@ html[data-theme-mode="dark"] .text-indigo-800 {
 html[data-theme-mode="dark"] .text-\[\#312E81\],
 html[data-theme-mode="dark"] .text-\[\#4338CA\],
 html[data-theme-mode="dark"] .text-\[\#4F46E5\],
-html[data-theme-mode="dark"] .text-\[\#5B21B6\] {
-  color: #A5B4FC !important;
+html[data-theme-mode="dark"] .text-\[\#5B21B6\],
+html[data-theme-mode="dark"] .text-\[\#6D28D9\],
+html[data-theme-mode="dark"] .text-\[\#7C3AED\] {
+  color: #C4B5FD !important;
 }
 
 /* Rose / Red Tinted Hidden Banners & Alert Boxes in Dark Mode */
@@ -675,6 +719,10 @@ html[data-theme-mode="dark"] .bg-rose-50,
 html[data-theme-mode="dark"] .bg-red-50 {
   background-color: rgba(239, 68, 68, 0.16) !important;
   border-color: rgba(248, 113, 113, 0.38) !important;
+}
+
+html[data-theme-mode="dark"] .hover\:bg-\[\#FEF2F2\]:hover {
+  background-color: rgba(239, 68, 68, 0.24) !important;
 }
 
 html[data-theme-mode="dark"] .text-\[\#DC2626\],
@@ -996,11 +1044,49 @@ progress.rs-progress-bar::-moz-progress-bar {
 }
 
 html[data-theme-mode="dark"] progress.rs-progress-ring {
-  --track-color: #1F2937;
+  --track-color: rgba(148, 163, 184, 0.22) !important;
 }
 
 html[data-theme-mode="dark"] progress.rs-progress-bar {
-  --progress-bar-track: #1F2937;
+  --progress-bar-track: rgba(148, 163, 184, 0.22) !important;
+  background: rgba(148, 163, 184, 0.22) !important;
+}
+
+html[data-theme-mode="dark"] .rs-type-tint {
+  filter: brightness(1.42) saturate(1.1);
+}
+
+/* Crisp 3-tier surface contrast in Dark Mode (Canvas < Main Card < Inner Row) */
+html[data-theme-mode="dark"] .rs-admin-card,
+html[data-theme-mode="dark"] .rs-dash-kpi-grid > button,
+html[data-theme-mode="dark"] .rs-dash-kpi-grid > div,
+html[data-theme-mode="dark"] .rs-dash-charts-grid > article,
+html[data-theme-mode="dark"] .rs-dash-bottom-grid > article,
+html[data-theme-mode="dark"] article.bg-\[\#FFFFFF\],
+html[data-theme-mode="dark"] article.bg-white {
+  background-color: color-mix(in oklab, var(--theme-surface) 88%, #94A3B8 12%) !important;
+  border-color: color-mix(in oklab, var(--theme-border) 72%, #94A3B8 28%) !important;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Nested inner rows / sub-cards inside a card stay distinct from both page canvas and card surface */
+html[data-theme-mode="dark"] article .bg-\[\#F8F9FB\],
+html[data-theme-mode="dark"] article .bg-\[\#F8F9FB\]\/60,
+html[data-theme-mode="dark"] article .bg-\[\#F8F9FB\]\/70,
+html[data-theme-mode="dark"] article .bg-\[\#F8F9FB\]\/80,
+html[data-theme-mode="dark"] article .bg-\[\#F8F9FB\]\/85,
+html[data-theme-mode="dark"] article .bg-\[\#F8FAFC\],
+html[data-theme-mode="dark"] article .bg-\[\#F9FAFB\],
+html[data-theme-mode="dark"] article article.bg-\[\#F8F9FB\] {
+  background-color: color-mix(in oklab, var(--theme-surface-soft) 84%, #94A3B8 16%) !important;
+  border-color: color-mix(in oklab, var(--theme-border) 70%, #94A3B8 30%) !important;
+}
+
+html[data-theme-mode="dark"] article .hover\:bg-\[\#FFFFFF\]:hover,
+html[data-theme-mode="dark"] article .hover\:bg-\[\#F8F9FB\]:hover {
+  background-color: color-mix(in oklab, var(--theme-surface-hover) 80%, #94A3B8 20%) !important;
 }
 
 @keyframes rs-float-gentle {

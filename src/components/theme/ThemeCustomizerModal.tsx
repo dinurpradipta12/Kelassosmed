@@ -78,16 +78,16 @@ export const THEME_PRESETS: Record<
   dark: {
     label: "Aura Dark",
     subtitle: "Gelap elegan & fokus",
-    swatch: "#161B26",
+    swatch: "#151D2E",
     config: {
       presetId: "dark",
       mode: "dark",
-      canvasBg: "#0E1117",
-      surfaceBg: "#161B26",
-      surfaceSoftBg: "#1B2230",
-      surfaceMutedBg: "#21293A",
-      surfaceHoverBg: "#263044",
-      borderColor: "#2A3449",
+      canvasBg: "#0A0E17",
+      surfaceBg: "#151D2E",
+      surfaceSoftBg: "#1E2940",
+      surfaceMutedBg: "#263450",
+      surfaceHoverBg: "#2E3F60",
+      borderColor: "#2F3F5E",
       textColor: "#F1F5F9",
       textSecondaryColor: "#CBD5E1",
       textMutedColor: "#94A3B8",
@@ -263,12 +263,12 @@ export function buildCustomPaletteFromHues(
     return {
       presetId: "custom",
       mode: "dark",
-      canvasBg: hslToHex(canvasHue, 24, 9),
-      surfaceBg: hslToHex(canvasHue, 24, 13),
-      surfaceSoftBg: hslToHex(canvasHue, 24, 16),
-      surfaceMutedBg: hslToHex(canvasHue, 24, 20),
-      surfaceHoverBg: hslToHex(canvasHue, 24, 23),
-      borderColor: hslToHex(canvasHue, 22, 24),
+      canvasBg: hslToHex(canvasHue, 26, 7),
+      surfaceBg: hslToHex(canvasHue, 24, 14),
+      surfaceSoftBg: hslToHex(canvasHue, 24, 19),
+      surfaceMutedBg: hslToHex(canvasHue, 24, 24),
+      surfaceHoverBg: hslToHex(canvasHue, 24, 28),
+      borderColor: hslToHex(canvasHue, 22, 29),
       textColor: "#F1F5F9",
       textSecondaryColor: "#CBD5E1",
       textMutedColor: "#94A3B8",
@@ -363,6 +363,18 @@ export function loadSavedThemeConfig(): AppThemeConfig {
     if (!raw) return DEFAULT_THEME_CONFIG;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && parsed.presetId) {
+      if (parsed.presetId === "dark") {
+        return {
+          ...DEFAULT_THEME_CONFIG,
+          ...parsed,
+          canvasBg: THEME_PRESETS.dark.config.canvasBg,
+          surfaceBg: THEME_PRESETS.dark.config.surfaceBg,
+          surfaceSoftBg: THEME_PRESETS.dark.config.surfaceSoftBg,
+          surfaceMutedBg: THEME_PRESETS.dark.config.surfaceMutedBg,
+          surfaceHoverBg: THEME_PRESETS.dark.config.surfaceHoverBg,
+          borderColor: THEME_PRESETS.dark.config.borderColor,
+        };
+      }
       return {
         ...DEFAULT_THEME_CONFIG,
         ...parsed,
