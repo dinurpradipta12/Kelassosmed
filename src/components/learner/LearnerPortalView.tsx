@@ -82,12 +82,17 @@ import {
   awardRumiXpEvent,
   claimDailyLoginXp,
   loadRumiXpState,
+  resolveRumiLevelInfo,
   resolveXpUserKey,
   type RumiXpProfileState,
 } from "@/lib/rumi-xp";
+import { RumiFloatingAssistant } from "@/components/assistant/RumiFloatingAssistant";
+import type { RumiPageContextId } from "@/lib/rumi-assistant-guide";
+import { getSubscriptionStatusInfo } from "@/lib/subscription-utils";
 
 interface LearnerPortalViewProps {
   currentUser?: AuthenticatedUser | null;
+  proExpiresAt?: string | null;
   onOpenUpgradeModal?: () => void;
   onStartUpgradePayment?: (opts?: {
     packageId?: string;
@@ -312,6 +317,7 @@ function LearnerMacFolderIcon({
 
 export function LearnerPortalView({
   currentUser,
+  proExpiresAt,
   onOpenUpgradeModal,
   onStartUpgradePayment,
   onShowToast,
@@ -4858,6 +4864,108 @@ export function LearnerPortalView({
           </div>
         )}
       </aside>
+
+      {/* Rumi Floating Assistant (Learner Portal — all pages + peek-a-boo idle mode) */}
+      {(() => {
+        const rumiContextId: RumiPageContextId =
+          screenState.screen === "course-overview"
+            ? "learner:course-overview"
+            : screenState.screen === "classroom"
+            ? "learner:classroom"
+            : screenState.screen === "quiz-runner"
+            ? "learner:quiz-runner"
+            : screenState.screen === "wiki-reader"
+            ? "learner:wiki-reader"
+            : activeNavTab === "my-learning"
+            ? "learner:my-learning"
+            : activeNavTab === "catalog"
+            ? "learner:catalog"
+            : activeNavTab === "wiki"
+            ? "learner:wiki"
+            : activeNavTab === "favorites"
+            ? "learner:favorites"
+            : activeNavTab === "profile"
+            ? "learner:profile"
+            : "learner:home";
+
+        const rumiSubtitle =
+          screenState.screen === "course-overview" ||
+          screenState.screen === "classroom"
+            ? screenState.courseTitle
+            : screenState.screen === "quiz-runner"
+            ? screenState.quizTitle
+            : screenState.screen === "wiki-reader"
+            ? screenState.wikiIdOrTitle
+            : undefined;
+
+        const rumiLevelInfo = resolveRumiLevelInfo(rumiXpState.totalXp);
+        const subStatusInfo = getSubscriptionStatusInfo({
+          isProTier: learnerIsPro,
+          expiresAt: proExpiresAt,
+        });
+        const learnerUserKey =
+          (
+            currentUser?.email ||
+            currentUser?.username ||
+            currentUser?.name ||
+            ""
+          )
+            .trim()
+            .toLowerCase() || "guest";
+
+        const quickActions = [
+          ...(activeNavTab !== "my-learning" ||
+          screenState.screen !== "dashboard"
+            ? [
+                {
+                  id: "go-my-learning",
+                  label: "Buka My Learning",
+                  onClick: () => handleSelectNavTab("my-learning"),
+                },
+              ]
+            : []),
+          ...(activeNavTab !== "catalog"
+            ? [
+                {
+                  id: "go-catalog",
+                  label: "Jelajah Katalog",
+                  onClick: () => handleSelectNavTab("catalog"),
+                },
+              ]
+            : []),
+          ...(onOpenUpgradeModal
+            ? [
+                {
+                  id: "open-upgrade-voucher",
+                  label: learnerIsPro
+                    ? "Perpanjang / Kode PRO"
+                    : "Upgrade / Pakai Kode PRO",
+                  onClick: onOpenUpgradeModal,
+                },
+              ]
+            : []),
+        ];
+
+        return (
+          <RumiFloatingAssistant
+            roleMode="learner"
+            userKey={learnerUserKey}
+            pageContextId={rumiContextId}
+            pageSubtitle={rumiSubtitle}
+            hideAtTopOnHome={
+              screenState.screen === "dashboard" && activeNavTab === "home"
+            }
+            learnerStage={rumiLevelInfo.stage}
+            xpState={rumiXpState}
+            proDaysRemaining={subStatusInfo.daysRemaining}
+            quickActions={quickActions}
+            onOpenProfileRumiSettings={() =>
+              handleSelectNavTab("profile", "manual-setup")
+            }
+            onShowToast={onShowToast}
+          />
+        );
+      })()}
     </div>
   );
 }

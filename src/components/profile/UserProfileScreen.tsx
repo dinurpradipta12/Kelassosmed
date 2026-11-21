@@ -25,7 +25,19 @@ import {
   Image as ImageIcon,
   Upload,
   X,
+  Sparkles,
+  Eye,
 } from "lucide-react";
+import { RumiMascotIllustration } from "@/components/learner/RumiEvolutionMascot";
+import {
+  DEFAULT_RUMI_ASSISTANT_PREFS,
+  RUMI_PREFS_EVENT,
+  clampIdleSeconds,
+  loadRumiAssistantPrefs,
+  saveRumiAssistantPrefs,
+  type RumiAssistantPrefs,
+  type RumiAssistantSize,
+} from "@/lib/rumi-assistant-prefs";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
 import { ContentBadge } from "@/components/ui/ContentBadge";
@@ -457,6 +469,36 @@ export function UserProfileScreen({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const headerFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Per-User Rumi Assistant Preferences (idle hide duration, peek mode, size, auto bubble)
+  const rumiPrefUserKey =
+    (currentUser?.email || currentUser?.username || currentUser?.name || "")
+      .trim()
+      .toLowerCase() ||
+    (profile.email || "").trim().toLowerCase() ||
+    "guest";
+  const [rumiPrefs, setRumiPrefs] = useState<RumiAssistantPrefs>(
+    DEFAULT_RUMI_ASSISTANT_PREFS
+  );
+  const [rumiPreviewPeek, setRumiPreviewPeek] = useState(false);
+
+  useEffect(() => {
+    setRumiPrefs(loadRumiAssistantPrefs(rumiPrefUserKey));
+    const onPrefsUpdated = () => {
+      setRumiPrefs(loadRumiAssistantPrefs(rumiPrefUserKey));
+    };
+    window.addEventListener(RUMI_PREFS_EVENT, onPrefsUpdated);
+    return () => window.removeEventListener(RUMI_PREFS_EVENT, onPrefsUpdated);
+  }, [rumiPrefUserKey]);
+
+  const handleUpdateRumiPrefs = (
+    patch: Partial<RumiAssistantPrefs>,
+    toastMsg?: string
+  ) => {
+    const next = saveRumiAssistantPrefs(rumiPrefUserKey, patch);
+    setRumiPrefs(next);
+    if (toastMsg) onShowToast(toastMsg);
+  };
 
   const syncHeaderBanner = (nextHeader: string) => {
     const updatedProfile: UserProfileData = {
@@ -1339,6 +1381,252 @@ export function UserProfileScreen({
                 </div>
               </div>
 
+              {/* 6. Pengaturan Rumi Assistant (Berlaku untuk semua user: Learner & Admin) */}
+              <div
+                id="rumi-assistant-settings"
+                className="pt-6 border-t border-[#EAECEF] space-y-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm font-bold text-[#121215] flex items-center gap-1.5">
+                      <Sparkles size={15} className="text-[#4F39F6]" />
+                      <span>Pengaturan Rumi Assistant</span>
+                    </h2>
+                    <p className="text-[11px] text-[#5E5E5E] mt-0.5">
+                      Atur waktu idle sebelum Rumi bersembunyi di sisi kanan layar (mode ngintip), ukuran, dan sapaan otomatis.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleUpdateRumiPrefs(
+                        { ...DEFAULT_RUMI_ASSISTANT_PREFS },
+                        "Pengaturan Rumi dikembalikan ke standar."
+                      )
+                    }
+                    className="rounded-lg border border-[#EAECEF] bg-[#FFFFFF] hover:bg-[#F8F9FB] px-2.5 py-1 text-[11px] font-semibold text-[#5E5E5E] cursor-pointer"
+                  >
+                    Reset Default
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 rounded-xl border border-[#EAECEF] bg-[#F8F9FB] p-4">
+                  {/* Live Mini Peek Preview */}
+                  <div className="lg:col-span-4 flex flex-col items-center justify-between rounded-xl border border-[#EAECEF] bg-[#FFFFFF] p-3 overflow-hidden relative min-h-[155px]">
+                    <div className="w-full flex items-center justify-between text-[10px] font-semibold text-[#5E5E5E]">
+                      <span>Preview Posisi Layar</span>
+                      <button
+                        type="button"
+                        onClick={() => setRumiPreviewPeek((prev) => !prev)}
+                        className="inline-flex items-center gap-1 rounded-md border border-[#EAECEF] bg-[#F8F9FB] hover:border-[#4F39F6] px-2 py-0.5 text-[10px] font-bold text-[#4F39F6] cursor-pointer"
+                      >
+                        <Eye size={10} />
+                        <span>{rumiPreviewPeek ? "Muncul" : "Tes Ngintip"}</span>
+                      </button>
+                    </div>
+
+                    <div className="relative w-full h-24 flex items-end justify-end overflow-hidden border-r-4 border-[#4F39F6]/30 pr-1">
+                      <div
+                        className={`transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                          rumiPreviewPeek
+                            ? "translate-x-[42%] -rotate-12 scale-85"
+                            : "translate-x-0 rotate-0 scale-100"
+                        }`}
+                      >
+                        <RumiMascotIllustration
+                          stage={5}
+                          variant={mode === "admin" ? "admin-superior" : "learner"}
+                          mood={rumiPreviewPeek ? "peeking" : "happy"}
+                          sizeClass={
+                            rumiPrefs.size === "sm"
+                              ? "w-14 h-14"
+                              : rumiPrefs.size === "lg"
+                              ? "w-20 h-20"
+                              : "w-16 h-16"
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-[#9CA3AF] text-center">
+                      {rumiPreviewPeek
+                        ? "Separuh wajah mengintip di tepi kanan — muncul lagi saat di-hover!"
+                        : `Ukuran aktif: ${
+                            rumiPrefs.size === "sm"
+                              ? "Kecil"
+                              : rumiPrefs.size === "lg"
+                              ? "Besar"
+                              : "Sedang"
+                          }`}
+                    </p>
+                  </div>
+
+                  {/* Interactive Controls */}
+                  <div className="lg:col-span-8 space-y-3">
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2">
+                      <div>
+                        <p className="text-xs font-semibold text-[#121215]">
+                          Aktifkan Rumi Assistant Mengambang
+                        </p>
+                        <p className="text-[10px] text-[#5E5E5E]">
+                          Membantu menjelaskan isi & fungsi halaman yang sedang Anda buka.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleUpdateRumiPrefs(
+                            { enabled: !rumiPrefs.enabled },
+                            rumiPrefs.enabled
+                              ? "Rumi Assistant disembunyikan."
+                              : "Rumi Assistant diaktifkan!"
+                          )
+                        }
+                        className={`rounded-full px-3 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                          rumiPrefs.enabled
+                            ? "bg-[#4F39F6] text-white"
+                            : "bg-[#EAECEF] text-[#5E5E5E]"
+                        }`}
+                      >
+                        {rumiPrefs.enabled ? "Aktif" : "Nonaktif"}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2">
+                      <div>
+                        <p className="text-xs font-semibold text-[#121215]">
+                          Bersembunyi di Sisi Layar saat Idle (Ngintip)
+                        </p>
+                        <p className="text-[10px] text-[#5E5E5E]">
+                          Saat idle, Rumi mengecil & mengintip di pinggir layar lalu Peek-a-Boo saat di-hover.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleUpdateRumiPrefs({
+                            autoHideOnIdle: !rumiPrefs.autoHideOnIdle,
+                          })
+                        }
+                        className={`rounded-full px-3 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                          rumiPrefs.autoHideOnIdle
+                            ? "bg-[#10B981] text-white"
+                            : "bg-[#EAECEF] text-[#5E5E5E]"
+                        }`}
+                      >
+                        {rumiPrefs.autoHideOnIdle ? "Aktif" : "Standby Terus"}
+                      </button>
+                    </div>
+
+                    {/* Custom Idle Timeout Seconds */}
+                    <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2.5 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-[#121215]">
+                          Waktu Idle Sebelum Ngintip (detik)
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min={5}
+                            max={300}
+                            disabled={!rumiPrefs.autoHideOnIdle}
+                            value={rumiPrefs.idleHideSeconds}
+                            onChange={(e) =>
+                              handleUpdateRumiPrefs({
+                                idleHideSeconds: clampIdleSeconds(
+                                  Number(e.target.value)
+                                ),
+                              })
+                            }
+                            className="w-20 rounded-lg bg-[#F8F9FB] px-2.5 py-1 text-xs font-bold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none tabular-nums disabled:opacity-50"
+                          />
+                          <span className="text-[11px] text-[#5E5E5E]">detik</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[10, 20, 30, 60, 120].map((sec) => (
+                          <button
+                            key={sec}
+                            type="button"
+                            disabled={!rumiPrefs.autoHideOnIdle}
+                            onClick={() =>
+                              handleUpdateRumiPrefs({ idleHideSeconds: sec })
+                            }
+                            className={`rounded-md px-2.5 py-1 text-[11px] font-semibold border transition-colors cursor-pointer disabled:opacity-50 ${
+                              rumiPrefs.idleHideSeconds === sec
+                                ? "bg-[#4F39F6]/10 border-[#4F39F6] text-[#4F39F6]"
+                                : "bg-[#F8F9FB] border-[#EAECEF] text-[#5E5E5E] hover:border-[#CBD5E1]"
+                            }`}
+                          >
+                            {sec} dtk
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Size + Auto Bubble */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2 space-y-1.5">
+                        <span className="block text-xs font-semibold text-[#121215]">
+                          Ukuran Rumi Floating
+                        </span>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(
+                            [
+                              { id: "sm", label: "Kecil" },
+                              { id: "md", label: "Sedang" },
+                              { id: "lg", label: "Besar" },
+                            ] as { id: RumiAssistantSize; label: string }[]
+                          ).map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() =>
+                                handleUpdateRumiPrefs({ size: opt.id })
+                              }
+                              className={`rounded-md py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                                rumiPrefs.size === opt.id
+                                  ? "bg-[#4F39F6] text-white"
+                                  : "bg-[#F8F9FB] text-[#5E5E5E] hover:text-[#121215]"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2 flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold text-[#121215]">
+                            Balon Sapaan Otomatis
+                          </p>
+                          <p className="text-[10px] text-[#5E5E5E]">
+                            Muncul 4–5 dtk tiap buka halaman
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateRumiPrefs({
+                              autoBubble: !rumiPrefs.autoBubble,
+                            })
+                          }
+                          className={`rounded-full px-3 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                            rumiPrefs.autoBubble
+                              ? "bg-[#4F39F6] text-white"
+                              : "bg-[#EAECEF] text-[#5E5E5E]"
+                          }`}
+                        >
+                          {rumiPrefs.autoBubble ? "Aktif" : "Bisukan"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="pt-4 flex items-center gap-3">
                 <button
                   type="submit"
@@ -1963,6 +2251,46 @@ export function UserProfileScreen({
                   </p>
                 </div>
               </div>
+            </section>
+
+            {/* Quick Shortcut to Per-User Rumi Assistant Preferences */}
+            <section className="rounded-xl border border-[#4F39F6]/20 bg-[#F8F9FB] p-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <RumiMascotIllustration
+                  stage={5}
+                  variant={mode === "admin" ? "admin-superior" : "learner"}
+                  mood={rumiPrefs.autoHideOnIdle ? "peeking" : "happy"}
+                  sizeClass="w-12 h-12"
+                />
+                <div className="min-w-0">
+                  <h4 className="text-xs font-bold text-[#121215] flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-[#4F39F6]" />
+                    <span>Pengaturan Rumi Assistant</span>
+                  </h4>
+                  <p className="text-[11px] text-[#5E5E5E] mt-0.5">
+                    {rumiPrefs.enabled
+                      ? rumiPrefs.autoHideOnIdle
+                        ? `Aktif • Bersembunyi di sisi layar setelah ${rumiPrefs.idleHideSeconds} detik idle (${
+                            rumiPrefs.size === "sm"
+                              ? "Kecil"
+                              : rumiPrefs.size === "lg"
+                              ? "Besar"
+                              : "Sedang"
+                          })`
+                        : "Aktif • Mode standby penuh di layar"
+                      : "Saat ini dinonaktifkan"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => changeSubView("manual-setup")}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-2 text-xs font-bold text-white shadow-2xs transition-colors cursor-pointer shrink-0"
+              >
+                <Settings size={13} />
+                <span>Atur Waktu Idle &amp; Ukuran</span>
+              </button>
             </section>
           </div>
         )}

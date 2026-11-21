@@ -102,7 +102,11 @@ import { AdminRewardsManager } from "@/components/admin/AdminRewardsManager";
 import {
   AdminSettingsScreen,
 } from "@/components/admin/AdminHistoryAndSettings";
-import { UserProfileScreen } from "@/components/profile/UserProfileScreen";
+import {
+  UserProfileScreen,
+} from "@/components/profile/UserProfileScreen";
+import { RumiFloatingAssistant } from "@/components/assistant/RumiFloatingAssistant";
+import type { RumiPageContextId } from "@/lib/rumi-assistant-guide";
 import {
   type ContentType,
   type UngradedQuizItem,
@@ -143,6 +147,9 @@ function RuangSosmedStudioInner() {
   const {
     explorerItems,
     ungradedQuizzes: quizzes,
+    reportedIssues,
+    discussionThreads,
+    adminNotifications,
     learnerIsPro,
     learnerAccess,
     learnerPackageId,
@@ -336,6 +343,10 @@ function RuangSosmedStudioInner() {
   const [activeSubMeta, setActiveSubMeta] = useState<ActiveSubMeta | null>(
     null
   );
+  const [adminProfileSubView, setAdminProfileSubView] = useState<
+    "profile" | "manual-setup"
+  >("profile");
+  const [pendingProPaymentsCount, setPendingProPaymentsCount] = useState(0);
 
   const clearWelcomeProSeenForUser = useCallback(
     (user?: AuthenticatedUser | null) => {
@@ -426,6 +437,31 @@ function RuangSosmedStudioInner() {
       } catch {}
     }
   }, [roleMode, isCurrentUserAdmin, currentUser]);
+
+  // Live pending PRO payments count for Admin Rumi Assistant reminder expression
+  useEffect(() => {
+    if (
+      !isSupabaseConfigured ||
+      roleMode !== "admin" ||
+      !isCurrentUserAdmin
+    ) {
+      setPendingProPaymentsCount(0);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from("pro_upgrade_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending")
+      .then(({ count }) => {
+        if (!cancelled && typeof count === "number") {
+          setPendingProPaymentsCount(count);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [roleMode, isCurrentUserAdmin, activeNav, adminNotifications.length]);
 
   const handleRoleModeChange = (newMode: AppRoleMode) => {
     if (newMode === "admin" && !isCurrentUserAdmin) {
@@ -1684,6 +1720,7 @@ function RuangSosmedStudioInner() {
       {roleMode === "learner" ? (
         <LearnerPortalView
           currentUser={currentUser}
+          proExpiresAt={activeSubMeta?.expiresAt}
           onOpenUpgradeModal={() => {
             setUpgradePreselectedPackageId(undefined);
             setUpgradeInitialCycle(undefined);
@@ -2065,6 +2102,12 @@ function RuangSosmedStudioInner() {
               <UserProfileScreen
                 mode="admin"
                 currentUser={currentUser}
+                initialSubView={adminProfileSubView}
+                onSubViewChange={(next) => {
+                  if (next === "profile" || next === "manual-setup") {
+                    setAdminProfileSubView(next);
+                  }
+                }}
                 onBack={() => setActiveNav("learners")}
                 onUpdateUser={(updated) => setCurrentUser(updated)}
                 onShowToast={triggerToast}
@@ -2106,6 +2149,87 @@ function RuangSosmedStudioInner() {
             )}
             </div>
           </main>
+
+          {/* Rumi Floating Assistant (Admin Studio — all sections + peek-a-boo idle mode) */}
+          {roleMode === "admin" && isCurrentUserAdmin && !authoringMode && (() => {
+            const adminUserKey =
+              (
+                currentUser?.email ||
+                currentUser?.username ||
+                currentUser?.name ||
+                ""
+              )
+                .trim()
+                .toLowerCase() || "guest";
+
+            const openIssuesCount = (reportedIssues || []).filter(
+              (iss) => String(iss.status || "").toLowerCase() !== "resolved"
+            ).length;
+            const unreadDiscussionsCount = (discussionThreads || []).filter(
+              (t) => (t.replies || []).length === 0
+            ).length;
+
+            const adminContextId = `admin:${activeNav}` as RumiPageContextId;
+            const adminQuickActions = [
+              ...(activeNav !== "learners"
+                ? [
+                    {
+                      id: "admin-go-learners",
+                      label: "Direktori Member",
+                      onClick: () => handleSelectNav("learners"),
+                    },
+                  ]
+                : []),
+              ...(activeNav !== "inbox"
+                ? [
+                    {
+                      id: "admin-go-inbox",
+                      label: "Mentor Inbox",
+                      onClick: () => handleSelectNav("inbox"),
+                    },
+                  ]
+                : []),
+              ...(activeNav !== "settings"
+                ? [
+                    {
+                      id: "admin-go-settings",
+                      label: "Pengaturan & Kode PRO",
+                      onClick: () => handleSelectNav("settings"),
+                    },
+                  ]
+                : []),
+              ...(activeNav !== "analytics"
+                ? [
+                    {
+                      id: "admin-go-analytics",
+                      label: "Analitik Live",
+                      onClick: () => handleSelectNav("analytics"),
+                    },
+                  ]
+                : []),
+            ];
+
+            return (
+              <RumiFloatingAssistant
+                roleMode="admin"
+                userKey={adminUserKey}
+                pageContextId={adminContextId}
+                hideAtTopOnHome={activeNav === "home"}
+                adminAlerts={{
+                  pendingPayments: pendingProPaymentsCount,
+                  pendingGrading: (quizzes || []).length,
+                  unreadDiscussions: unreadDiscussionsCount,
+                  openIssues: openIssuesCount,
+                }}
+                quickActions={adminQuickActions}
+                onOpenProfileRumiSettings={() => {
+                  setAdminProfileSubView("manual-setup");
+                  handleSelectNav("profile");
+                }}
+                onShowToast={triggerToast}
+              />
+            );
+          })()}
         </div>
       )}
 

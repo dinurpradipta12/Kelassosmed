@@ -1232,6 +1232,77 @@ html[data-theme-mode="dark"] article .hover\:bg-\[\#F8F9FB\]:hover {
   }
 }
 
+@keyframes rs-rumi-zzz {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 4px, 0) scale(0.75);
+  }
+  30% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(7px, -11px, 0) scale(1.1);
+  }
+}
+
+@keyframes rs-rumi-hop {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  35% {
+    transform: translate3d(0, -10px, 0) scale(1.06, 0.96);
+  }
+  70% {
+    transform: translate3d(0, 2px, 0) scale(0.97, 1.03);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes rs-rumi-peek-breathe {
+  0%, 100% {
+    transform: translate3d(0px, 0px, 0);
+  }
+  50% {
+    transform: translate3d(-4px, -2px, 0);
+  }
+}
+
+@keyframes rs-rumi-popover-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes rs-rumi-bubble-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(8px, 6px, 0) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes rs-rumi-reminder-dot {
+  0%, 100% {
+    opacity: 0.85;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.22);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .rs-mascot-float {
     animation: rs-float-gentle 3.8s ease-in-out infinite;
@@ -1317,6 +1388,28 @@ html[data-theme-mode="dark"] article .hover\:bg-\[\#F8F9FB\]:hover {
     transform-box: fill-box;
     transform-origin: top center;
     animation: rs-rumi-cape-sway 3.1s ease-in-out infinite;
+  }
+  .rs-rumi-zzz {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-zzz 2.4s ease-in-out infinite;
+  }
+  .rs-rumi-hop {
+    animation: rs-rumi-hop 540ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .rs-rumi-peek-breathe {
+    animation: rs-rumi-peek-breathe 2.8s ease-in-out infinite;
+  }
+  .rs-rumi-popover-in {
+    animation: rs-rumi-popover-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .rs-rumi-bubble-in {
+    animation: rs-rumi-bubble-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .rs-rumi-reminder-dot {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rs-rumi-reminder-dot 1.6s ease-in-out infinite;
   }
 }
 

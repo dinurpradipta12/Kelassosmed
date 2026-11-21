@@ -23,11 +23,220 @@ import {
 } from "@/lib/rumi-xp";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 
+export type RumiMascotMood =
+  | "happy"
+  | "sleepy"
+  | "excited"
+  | "focused"
+  | "reminder"
+  | "peeking";
+
 export interface RumiMascotIllustrationProps {
   stage?: RumiEvolutionStage;
   variant?: "learner" | "admin-superior";
+  mood?: RumiMascotMood;
   paused?: boolean;
   sizeClass?: string;
+}
+
+interface RumiVisorFaceProps {
+  mood: RumiMascotMood;
+  leftEyeX: number;
+  rightEyeX: number;
+  eyeY: number;
+  mouthY: number;
+  eyeGlow: string;
+  eyeFill: string;
+  mouthStroke: string;
+  eyeRx?: number;
+  eyeRy?: number;
+  glowR?: number;
+  catchColor?: string;
+  sparkColor?: string;
+}
+
+function RumiVisorFace({
+  mood,
+  leftEyeX,
+  rightEyeX,
+  eyeY,
+  mouthY,
+  eyeGlow,
+  eyeFill,
+  mouthStroke,
+  eyeRx = 4.3,
+  eyeRy = 5,
+  glowR = 6,
+  catchColor = "#FFFFFF",
+  sparkColor = "#FDE047",
+}: RumiVisorFaceProps) {
+  const midX = (leftEyeX + rightEyeX) / 2;
+
+  if (mood === "sleepy") {
+    return (
+      <>
+        {/* Soft Half-Closed Cozy Eyelids */}
+        <path
+          d={`M${leftEyeX - 4.5} ${eyeY + 0.4} Q${leftEyeX} ${eyeY + 4.4} ${leftEyeX + 4.5} ${eyeY + 0.4}`}
+          fill="none"
+          stroke={eyeFill}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        <path
+          d={`M${rightEyeX - 4.5} ${eyeY + 0.4} Q${rightEyeX} ${eyeY + 4.4} ${rightEyeX + 4.5} ${eyeY + 0.4}`}
+          fill="none"
+          stroke={eyeFill}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        />
+        {/* Tiny Calm Smile */}
+        <path
+          d={`M${midX - 3.6} ${mouthY + 1} Q${midX} ${mouthY + 3.4} ${midX + 3.6} ${mouthY + 1}`}
+          fill="none"
+          stroke={mouthStroke}
+          strokeWidth="2.2"
+          strokeLinecap="round"
+        />
+        {/* Drifting Sleep Zzz */}
+        <g className="rs-rumi-zzz">
+          <path
+            d={`M${rightEyeX + 7} ${eyeY - 12} H${rightEyeX + 12} L${rightEyeX + 7} ${eyeY - 7} H${rightEyeX + 12}`}
+            fill="none"
+            stroke={sparkColor}
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d={`M${rightEyeX + 14} ${eyeY - 18} H${rightEyeX + 17.5} L${rightEyeX + 14} ${eyeY - 14.5} H${rightEyeX + 17.5}`}
+            fill="none"
+            stroke={sparkColor}
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+      </>
+    );
+  }
+
+  if (mood === "excited") {
+    return (
+      <>
+        {/* Joyful Smiling Crescent Eyes (^ ^) */}
+        <path
+          d={`M${leftEyeX - 4.6} ${eyeY + 1.6} Q${leftEyeX} ${eyeY - 5.2} ${leftEyeX + 4.6} ${eyeY + 1.6}`}
+          fill="none"
+          stroke={eyeFill}
+          strokeWidth="2.8"
+          strokeLinecap="round"
+        />
+        <path
+          d={`M${rightEyeX - 4.6} ${eyeY + 1.6} Q${rightEyeX} ${eyeY - 5.2} ${rightEyeX + 4.6} ${eyeY + 1.6}`}
+          fill="none"
+          stroke={eyeFill}
+          strokeWidth="2.8"
+          strokeLinecap="round"
+        />
+        {/* Big Cheerful Beam Smile */}
+        <path
+          d={`M${midX - 6.4} ${mouthY - 0.4} Q${midX} ${mouthY + 6.8} ${midX + 6.4} ${mouthY - 0.4} Z`}
+          fill={eyeFill}
+          fillOpacity="0.28"
+          stroke={mouthStroke}
+          strokeWidth="2.6"
+          strokeLinejoin="round"
+        />
+        <path
+          d={`M${rightEyeX + 8} ${eyeY - 11} L${rightEyeX + 9.2} ${eyeY - 8.2} L${rightEyeX + 12} ${eyeY - 7} L${rightEyeX + 9.2} ${eyeY - 5.8} L${rightEyeX + 8} ${eyeY - 3} L${rightEyeX + 6.8} ${eyeY - 5.8} L${rightEyeX + 4} ${eyeY - 7} L${rightEyeX + 6.8} ${eyeY - 8.2} Z`}
+          fill={sparkColor}
+        />
+      </>
+    );
+  }
+
+  const eyeShiftX = mood === "peeking" ? -2.2 : mood === "focused" ? -1.2 : 0;
+
+  return (
+    <>
+      <g className="rs-rumi-eyes">
+        <circle cx={leftEyeX} cy={eyeY} r={glowR} fill={eyeGlow} fillOpacity="0.25" />
+        <circle cx={rightEyeX} cy={eyeY} r={glowR} fill={eyeGlow} fillOpacity="0.25" />
+        <ellipse
+          cx={leftEyeX}
+          cy={eyeY}
+          rx={mood === "peeking" ? eyeRx * 1.05 : eyeRx}
+          ry={mood === "peeking" ? eyeRy * 1.04 : eyeRy}
+          fill={eyeFill}
+        />
+        <ellipse
+          cx={rightEyeX}
+          cy={eyeY}
+          rx={mood === "peeking" ? eyeRx * 1.05 : eyeRx}
+          ry={mood === "peeking" ? eyeRy * 1.04 : eyeRy}
+          fill={eyeFill}
+        />
+        <circle cx={leftEyeX + 1.5 + eyeShiftX} cy={eyeY - 1.9} r="1.75" fill={catchColor} />
+        <circle cx={rightEyeX + 1.5 + eyeShiftX} cy={eyeY - 1.9} r="1.75" fill={catchColor} />
+        <circle
+          cx={leftEyeX - 1.5 + eyeShiftX}
+          cy={eyeY + 2}
+          r="0.88"
+          fill="#FFFFFF"
+          fillOpacity="0.9"
+        />
+        <circle
+          cx={rightEyeX - 1.5 + eyeShiftX}
+          cy={eyeY + 2}
+          r="0.88"
+          fill="#FFFFFF"
+          fillOpacity="0.9"
+        />
+      </g>
+
+      {mood === "peeking" ? (
+        <path
+          d={`M${midX - 5.2} ${mouthY + 0.4} Q${midX - 2.4} ${mouthY + 3.8} ${midX} ${mouthY + 1} Q${midX + 2.4} ${mouthY + 3.8} ${midX + 5.2} ${mouthY + 0.4}`}
+          fill="none"
+          stroke={mouthStroke}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : mood === "focused" ? (
+        <path
+          d={`M${midX - 4.8} ${mouthY + 0.2} Q${midX} ${mouthY + 3.8} ${midX + 4.8} ${mouthY + 0.2}`}
+          fill="none"
+          stroke={mouthStroke}
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
+      ) : (
+        <path
+          d={`M${midX - 6} ${mouthY} Q${midX} ${mouthY + 5.3} ${midX + 6} ${mouthY}`}
+          fill="none"
+          stroke={mouthStroke}
+          strokeWidth="2.7"
+          strokeLinecap="round"
+        />
+      )}
+
+      {mood === "reminder" && (
+        <g className="rs-rumi-reminder-dot">
+          <circle
+            cx={rightEyeX + 8.5}
+            cy={eyeY - 10}
+            r="4.2"
+            fill="#F59E0B"
+            stroke="#FFFFFF"
+            strokeWidth="1.4"
+          />
+          <circle cx={rightEyeX + 8.5} cy={eyeY - 10} r="1.4" fill="#FFFFFF" />
+        </g>
+      )}
+    </>
+  );
 }
 
 /**
@@ -37,6 +246,7 @@ export interface RumiMascotIllustrationProps {
 export function RumiMascotIllustration({
   stage = 1,
   variant = "learner",
+  mood = "happy",
   paused = false,
   sizeClass = "w-28 h-28 sm:w-32 sm:h-32",
 }: RumiMascotIllustrationProps) {
@@ -284,23 +494,20 @@ export function RumiMascotIllustration({
           <ellipse cx="59.5" cy="91.5" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
           <ellipse cx="88.5" cy="91.5" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
 
-          {/* Oversized Cute Luminous Kawaii Eyes */}
-          <g className="rs-rumi-eyes">
-            <circle cx="63.5" cy="83.5" r="5.8" fill="#A5B4FC" fillOpacity="0.25" />
-            <circle cx="84.5" cy="83.5" r="5.8" fill="#A5B4FC" fillOpacity="0.25" />
-            <ellipse cx="63.5" cy="83.5" rx="4.2" ry="4.9" fill="#EEF2FF" />
-            <ellipse cx="84.5" cy="83.5" rx="4.2" ry="4.9" fill="#EEF2FF" />
-            <circle cx="65" cy="81.6" r="1.7" fill="#FFFFFF" />
-            <circle cx="86" cy="81.6" r="1.7" fill="#FFFFFF" />
-            <circle cx="62" cy="85.5" r="0.85" fill="#FFFFFF" fillOpacity="0.9" />
-            <circle cx="83" cy="85.5" r="0.85" fill="#FFFFFF" fillOpacity="0.9" />
-          </g>
-          <path
-            d="M68 92.5 Q74 97.5 80 92.5"
-            fill="none"
-            stroke="#E0E7FF"
-            strokeWidth="2.6"
-            strokeLinecap="round"
+          {/* Oversized Cute Luminous Kawaii Eyes + Dynamic Expression */}
+          <RumiVisorFace
+            mood={mood}
+            leftEyeX={63.5}
+            rightEyeX={84.5}
+            eyeY={83.5}
+            mouthY={92.5}
+            eyeGlow="#A5B4FC"
+            eyeFill="#EEF2FF"
+            mouthStroke="#E0E7FF"
+            eyeRx={4.2}
+            eyeRy={4.9}
+            glowR={5.8}
+            sparkColor="#FDE047"
           />
 
           {/* Cozy Champagne-Gold Earmuffs */}
@@ -447,22 +654,20 @@ export function RumiMascotIllustration({
           {/* Rosy Blush + Luminous Sky-Cyan Kawaii Eyes */}
           <ellipse cx="59" cy="92.5" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
           <ellipse cx="89" cy="92.5" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
-          <g className="rs-rumi-eyes">
-            <circle cx="63" cy="84.5" r="5.8" fill="#38BDF8" fillOpacity="0.25" />
-            <circle cx="85" cy="84.5" r="5.8" fill="#38BDF8" fillOpacity="0.25" />
-            <ellipse cx="63" cy="84.5" rx="4.2" ry="4.9" fill="#E0F2FE" />
-            <ellipse cx="85" cy="84.5" rx="4.2" ry="4.9" fill="#E0F2FE" />
-            <circle cx="64.5" cy="82.6" r="1.7" fill="#FFFFFF" />
-            <circle cx="86.5" cy="82.6" r="1.7" fill="#FFFFFF" />
-            <circle cx="61.5" cy="86.5" r="0.85" fill="#FFFFFF" fillOpacity="0.9" />
-            <circle cx="83.5" cy="86.5" r="0.85" fill="#FFFFFF" fillOpacity="0.9" />
-          </g>
-          <path
-            d="M67 93.5 Q74 98.8 81 93.5"
-            fill="none"
-            stroke="#7DD3FC"
-            strokeWidth="2.8"
-            strokeLinecap="round"
+          {/* Luminous Sky-Cyan Kawaii Eyes + Dynamic Expression */}
+          <RumiVisorFace
+            mood={mood}
+            leftEyeX={63}
+            rightEyeX={85}
+            eyeY={84.5}
+            mouthY={93.5}
+            eyeGlow="#38BDF8"
+            eyeFill="#E0F2FE"
+            mouthStroke="#7DD3FC"
+            eyeRx={4.2}
+            eyeRy={4.9}
+            glowR={5.8}
+            sparkColor="#FEF08A"
           />
 
           {/* Glowing Aqua Studio Headphones */}
@@ -656,22 +861,20 @@ export function RumiMascotIllustration({
           {/* Rosy Cheeks & Luminous Mint-Aqua Kawaii Eyes */}
           <ellipse cx="59" cy="72" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
           <ellipse cx="89" cy="72" rx="4" ry="2.1" fill="#FB7185" fillOpacity="0.72" />
-          <g className="rs-rumi-eyes">
-            <circle cx="63" cy="63" r="6" fill="#22D3EE" fillOpacity="0.25" />
-            <circle cx="85" cy="63" r="6" fill="#22D3EE" fillOpacity="0.25" />
-            <ellipse cx="63" cy="63" rx="4.3" ry="5" fill="#ECFEFF" />
-            <ellipse cx="85" cy="63" rx="4.3" ry="5" fill="#ECFEFF" />
-            <circle cx="64.5" cy="61.2" r="1.8" fill="#FFFFFF" />
-            <circle cx="86.5" cy="61.2" r="1.8" fill="#FFFFFF" />
-            <circle cx="61.5" cy="65" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
-            <circle cx="83.5" cy="65" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
-          </g>
-          <path
-            d="M68 73 Q74 78.2 80 73"
-            fill="none"
-            stroke="#67E8F9"
-            strokeWidth="2.7"
-            strokeLinecap="round"
+          {/* Luminous Mint-Aqua Kawaii Eyes + Dynamic Expression */}
+          <RumiVisorFace
+            mood={mood}
+            leftEyeX={63}
+            rightEyeX={85}
+            eyeY={63}
+            mouthY={73}
+            eyeGlow="#22D3EE"
+            eyeFill="#ECFEFF"
+            mouthStroke="#67E8F9"
+            eyeRx={4.3}
+            eyeRy={5}
+            glowR={6}
+            sparkColor="#67E8F9"
           />
 
           {/* Glossy Cyan Studio Headphones + Sleek Creator Mic Boom */}
@@ -853,22 +1056,21 @@ export function RumiMascotIllustration({
           {/* Rosy Blush + Electric Cyan & Gold-Sparkle Kawaii Eyes */}
           <ellipse cx="59" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.72" />
           <ellipse cx="89" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.72" />
-          <g className="rs-rumi-eyes">
-            <circle cx="63" cy="62.5" r="6.2" fill="#38BDF8" fillOpacity="0.25" />
-            <circle cx="85" cy="62.5" r="6.2" fill="#38BDF8" fillOpacity="0.25" />
-            <ellipse cx="63" cy="62.5" rx="4.4" ry="5.1" fill="#E0F2FE" />
-            <ellipse cx="85" cy="62.5" rx="4.4" ry="5.1" fill="#E0F2FE" />
-            <circle cx="64.5" cy="60.6" r="1.8" fill="#FEF08A" />
-            <circle cx="86.5" cy="60.6" r="1.8" fill="#FEF08A" />
-            <circle cx="61.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
-            <circle cx="83.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
-          </g>
-          <path
-            d="M68 72.5 Q74 77.8 80 72.5"
-            fill="none"
-            stroke="#FDE68A"
-            strokeWidth="2.8"
-            strokeLinecap="round"
+          {/* Electric Cyan & Gold-Sparkle Kawaii Eyes + Dynamic Expression */}
+          <RumiVisorFace
+            mood={mood}
+            leftEyeX={63}
+            rightEyeX={85}
+            eyeY={62.5}
+            mouthY={72.5}
+            eyeGlow="#38BDF8"
+            eyeFill="#E0F2FE"
+            mouthStroke="#FDE68A"
+            eyeRx={4.4}
+            eyeRy={5.1}
+            glowR={6.2}
+            catchColor="#FEF08A"
+            sparkColor="#FDE047"
           />
 
           {/* Gold Studio Headphones with Glowing Violet LEDs */}
@@ -1078,23 +1280,20 @@ export function RumiMascotIllustration({
           <ellipse cx="59" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.76" />
           <ellipse cx="89" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.76" />
 
-          {/* Luminous Warm Solar-Gold Kawaii Blinking Eyes */}
-          <g className="rs-rumi-eyes">
-            <circle cx="63" cy="62.5" r="6.3" fill="#FBBF24" fillOpacity="0.26" />
-            <circle cx="85" cy="62.5" r="6.3" fill="#FBBF24" fillOpacity="0.26" />
-            <ellipse cx="63" cy="62.5" rx="4.4" ry="5.1" fill="#FEF9C3" />
-            <ellipse cx="85" cy="62.5" rx="4.4" ry="5.1" fill="#FEF9C3" />
-            <circle cx="64.5" cy="60.6" r="1.8" fill="#FFFFFF" />
-            <circle cx="86.5" cy="60.6" r="1.8" fill="#FFFFFF" />
-            <circle cx="61.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.92" />
-            <circle cx="83.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.92" />
-          </g>
-          <path
-            d="M68 72.5 Q74 77.8 80 72.5"
-            fill="none"
-            stroke="#FDE68A"
-            strokeWidth="2.9"
-            strokeLinecap="round"
+          {/* Luminous Warm Solar-Gold Kawaii Eyes + Dynamic Expression */}
+          <RumiVisorFace
+            mood={mood}
+            leftEyeX={63}
+            rightEyeX={85}
+            eyeY={62.5}
+            mouthY={72.5}
+            eyeGlow="#FBBF24"
+            eyeFill="#FEF9C3"
+            mouthStroke="#FDE68A"
+            eyeRx={4.4}
+            eyeRy={5.1}
+            glowR={6.3}
+            sparkColor="#FDE047"
           />
 
           {/* Sculpted Solar-Gold Studio Headphones with Warm Amber LEDs */}
@@ -1303,24 +1502,20 @@ export function RumiMascotIllustration({
           <ellipse cx="59" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.72" />
           <ellipse cx="89" cy="71.5" rx="4.2" ry="2.2" fill="#FB7185" fillOpacity="0.72" />
 
-          {/* Luminous Ice-Cyan Kawaii Blinking Eyes */}
-          <g className="rs-rumi-eyes">
-            <circle cx="63" cy="62.5" r="6.2" fill="#38BDF8" fillOpacity="0.24" />
-            <circle cx="85" cy="62.5" r="6.2" fill="#38BDF8" fillOpacity="0.24" />
-            <ellipse cx="63" cy="62.5" rx="4.4" ry="5.1" fill="#E0F2FE" />
-            <ellipse cx="85" cy="62.5" rx="4.4" ry="5.1" fill="#E0F2FE" />
-            <circle cx="64.5" cy="60.6" r="1.8" fill="#FFFFFF" />
-            <circle cx="86.5" cy="60.6" r="1.8" fill="#FFFFFF" />
-            <circle cx="61.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
-            <circle cx="83.5" cy="64.6" r="0.9" fill="#FFFFFF" fillOpacity="0.9" />
-          </g>
-          {/* Cute Luminous Smile */}
-          <path
-            d="M68 72.5 Q74 77.8 80 72.5"
-            fill="none"
-            stroke="#7DD3FC"
-            strokeWidth="2.8"
-            strokeLinecap="round"
+          {/* Luminous Ice-Cyan Kawaii Eyes + Dynamic Expression */}
+          <RumiVisorFace
+            mood={mood}
+            leftEyeX={63}
+            rightEyeX={85}
+            eyeY={62.5}
+            mouthY={72.5}
+            eyeGlow="#38BDF8"
+            eyeFill="#E0F2FE"
+            mouthStroke="#7DD3FC"
+            eyeRx={4.4}
+            eyeRy={5.1}
+            glowR={6.2}
+            sparkColor="#67E8F9"
           />
 
           {/* Sleek Brushed-Champagne Studio Headphones with Ice-Cyan LEDs */}
