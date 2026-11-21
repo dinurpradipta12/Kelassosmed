@@ -216,7 +216,7 @@ export const DEFAULT_LEARNER_PRO_CONFIG: LearnerProPlanConfig = {
   whatsappNumber: "6281234567890",
   paymentInstructions:
     "Scan kode QRIS di atas melalui aplikasi m-Banking atau e-Wallet (GoPay, OVO, DANA, ShopeePay), lalu konfirmasi pembayaran Anda.",
-  packagesSchemaVersion: 2,
+  packagesSchemaVersion: 3,
   packages: createDefaultTierPackages(),
 };
 

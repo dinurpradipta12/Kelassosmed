@@ -356,7 +356,7 @@ export function createDefaultTierPackages(): LearnerProPackageItem[] {
     maxModulesPerCourse: 0,
     allowPointsUnlock: false,
     defaultUnlockPointsCost: 50,
-    allowPerItemPurchase: false,
+    allowPerItemPurchase: true,
     defaultUnlockPriceIdr: 15000,
     features: [],
   };
@@ -480,6 +480,7 @@ export function normalizePackageItem(
   const entitlements: PackageEntitlements = {
     ...defaultsForTier,
     ...(pkg.entitlements || {}),
+    ...(isFree ? { proContent: false } : {}),
   };
 
   const parsedPrice = parseIdrFromLabel(pkg.priceLabel);
@@ -506,15 +507,10 @@ export function normalizePackageItem(
     ? formatIdr(monthlyPriceIdr)
     : pkg.priceLabel || "Rp 150.000";
 
-  const moduleAccessMode: ModuleAccessMode =
-    pkg.moduleAccessMode ||
-    (inferredTierKind === "free"
-      ? entitlements.proContent
-        ? "unlimited"
-        : "free_only"
-      : inferredTierKind === "basic"
-      ? "limited"
-      : "unlimited");
+  const moduleAccessMode: ModuleAccessMode = isFree
+    ? "free_only"
+    : pkg.moduleAccessMode ||
+      (inferredTierKind === "basic" ? "limited" : "unlimited");
 
   const maxModulesPerCourse =
     typeof pkg.maxModulesPerCourse === "number" && pkg.maxModulesPerCourse >= 0
@@ -585,7 +581,7 @@ export function normalizePackageItem(
     allowPerItemPurchase:
       pkg.allowPerItemPurchase !== undefined
         ? Boolean(pkg.allowPerItemPurchase)
-        : moduleAccessMode === "limited",
+        : moduleAccessMode !== "unlimited",
     defaultUnlockPriceIdr:
       typeof pkg.defaultUnlockPriceIdr === "number"
         ? Math.max(0, pkg.defaultUnlockPriceIdr)
@@ -691,8 +687,29 @@ export function normalizeProPackages(
   }
 
   const normalized = rawList.map((p, idx) => normalizePackageItem(p, idx));
-  const hasFree = normalized.some((p) => p.isFreeTier);
-  const result = hasFree ? normalized : [defaults[0], ...normalized];
+  const upgraded =
+    schemaVer < 3
+      ? normalized.map((p) =>
+          p.isFreeTier
+            ? {
+                ...p,
+                entitlements: {
+                  ...(p.entitlements || ALL_FALSE_ENTITLEMENTS),
+                  proContent: false,
+                },
+                moduleAccessMode: "free_only" as ModuleAccessMode,
+                allowPerItemPurchase: true,
+                defaultUnlockPriceIdr:
+                  typeof p.defaultUnlockPriceIdr === "number" &&
+                  p.defaultUnlockPriceIdr > 0
+                    ? p.defaultUnlockPriceIdr
+                    : 15000,
+              }
+            : p
+        )
+      : normalized;
+  const hasFree = upgraded.some((p) => p.isFreeTier);
+  const result = hasFree ? upgraded : [defaults[0], ...upgraded];
   if (!result.some((p) => !p.isFreeTier && p.highlighted)) {
     const firstPro =
       result.find((p) => !p.isFreeTier && p.tierKind === "pro") ||
@@ -989,11 +1006,22 @@ export function evaluateChapterAccess(params: {
     };
   }
 
+  if (access.isFree) {
+    return {
+      unlocked: false,
+      reason: "upgrade_required",
+      chapterIndex,
+      maxModules,
+      canUnlockWithPoints: access.allowPointsUnlock && pointsCost > 0,
+      pointsCost,
+      canBuyPerMaterial: access.allowPerItemPurchase && priceIdr > 0,
+      priceIdr,
+      requiredFeature: "proContent",
+    };
+  }
+
   if (access.canProContent) {
-    if (
-      access.moduleAccessMode === "unlimited" ||
-      access.moduleAccessMode === "free_only"
-    ) {
+    if (access.moduleAccessMode === "unlimited") {
       return {
         unlocked: true,
         reason: "pro_unlimited",

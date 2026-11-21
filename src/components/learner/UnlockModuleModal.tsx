@@ -35,6 +35,7 @@ export interface UnlockModuleTarget {
   pointsCost: number;
   canBuyPerMaterial: boolean;
   priceIdr: number;
+  initialCheckout?: boolean;
 }
 
 interface UnlockModuleModalProps {
@@ -77,7 +78,13 @@ export function UnlockModuleModal({
   useEffect(() => {
     if (target) {
       const activeUser = getActiveSessionUser();
-      setShowCheckout(false);
+      setShowCheckout(
+        Boolean(
+          target.initialCheckout &&
+            target.canBuyPerMaterial &&
+            target.priceIdr > 0
+        )
+      );
       setPaymentMethod("qris");
       setBuyerName(activeUser.name || "");
       setBuyerContact(activeUser.email || "");
@@ -200,11 +207,11 @@ export function UnlockModuleModal({
       open={Boolean(target)}
       onClose={onClose}
       titleId="unlock-module-modal-title"
-      title={`Buka Materi Lanjutan: ${displayTitle}`}
+      title={`Buka Video / Materi PRO: ${displayTitle}`}
       subtitle={
         target.reason === "basic_limit_reached"
-          ? `Paket Basic membuka maksimal ${target.maxModules || 6} modul awal per materi. Pilih salah satu cara di bawah untuk membuka modul ini.`
-          : "Materi ini membutuhkan akses lanjutan. Pilih cara membuka modul ini:"
+          ? `Paket Basic membuka maksimal ${target.maxModules || 6} modul awal per materi. Pilih cara di bawah untuk membuka video/materi ini.`
+          : "Video ini khusus member berbayar. Pilih bayar satuan per video atau ambil paket PRO untuk membuka seluruh materi."
       }
       maxWidthClass="max-w-lg"
     >
@@ -265,10 +272,10 @@ export function UnlockModuleModal({
                     </span>
                     <div>
                       <p className="text-xs font-bold text-[#121215]">
-                        Beli Akses Materi Ini Saja
+                        Bayar per Video / Materi Ini Saja
                       </p>
                       <p className="text-[11px] text-emerald-900 mt-0.5">
-                        Sekali bayar <strong>{formatIdr(target.priceIdr)}</strong> permanen untuk membuka modul ini tanpa perlu ganti paket.
+                        Sekali bayar <strong>{formatIdr(target.priceIdr)}</strong> permanen untuk memutar video ini tanpa perlu berlangganan paket.
                       </p>
                     </div>
                   </div>
@@ -279,7 +286,7 @@ export function UnlockModuleModal({
                   onClick={() => setShowCheckout(true)}
                   className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-bold text-white cursor-pointer transition-colors"
                 >
-                  <span>Bayar {formatIdr(target.priceIdr)} (QRIS / Transfer)</span>
+                  <span>Bayar per Video • {formatIdr(target.priceIdr)} (QRIS / Transfer)</span>
                 </button>
               </div>
             )}
@@ -292,10 +299,10 @@ export function UnlockModuleModal({
                 </span>
                 <div>
                   <p className="text-xs font-bold text-[#121215]">
-                    Upgrade ke Paket Pro Unlimited
+                    Ambil Paket PRO (Akses Semua Materi)
                   </p>
                   <p className="text-[11px] text-[#475569] mt-0.5">
-                    Buka 100% semua modul di semua kelas tanpa batas dan tanpa potong poin, plus Sertifikat HD &amp; Review 1-on-1.
+                    Buka 100% semua video &amp; modul PRO tanpa batas, plus Sertifikat HD &amp; Review 1-on-1 bersama Mentor.
                   </p>
                 </div>
               </div>
@@ -309,7 +316,7 @@ export function UnlockModuleModal({
                 className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white cursor-pointer transition-colors"
               >
                 <Zap size={13} fill="currentColor" />
-                <span>Lihat Paket Pro Unlimited</span>
+                <span>Ambil Paket PRO (Trial 3/7 Hari &amp; Bulanan)</span>
               </button>
             </div>
           </>

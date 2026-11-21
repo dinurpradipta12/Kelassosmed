@@ -23,6 +23,8 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Image as ImageIcon,
+  Coins,
+  QrCode,
 } from "lucide-react";
 import {
   type CourseSectionAccordion,
@@ -424,6 +426,9 @@ export function ActiveLearningClassroom({
     [getChapterAccess]
   );
 
+  const currentChapterAccess = getChapterAccess(currentChapter);
+  const isCurrentChapterLocked = !currentChapterAccess.unlocked;
+
   // Automatically jump to first unlocked chapter if target is locked
   React.useEffect(() => {
     if (currentChapter && isChLocked(currentChapter)) {
@@ -709,7 +714,92 @@ export function ActiveLearningClassroom({
           <div className="overflow-hidden rounded-2xl bg-white border border-slate-200/90 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
             {!currentChapter.hideVideoBlock && (
               <div className="bg-slate-950 w-full">
-                {youtubeEmbedUrl ? (
+                {isCurrentChapterLocked ? (
+                  <div className="w-full aspect-video min-h-[280px] bg-gradient-to-br from-slate-900 via-[#1E1B4B] to-slate-950 p-6 sm:p-8 flex flex-col items-center justify-center text-center text-white">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/20 border border-amber-300/40 px-3 py-1 text-[11px] font-bold text-amber-200 mb-3">
+                      <Lock size={12} />
+                      <span>Materi PRO Terkunci</span>
+                    </span>
+                    <h2 className="text-base sm:text-lg font-extrabold text-white max-w-lg leading-snug">
+                      {currentChapter.title}
+                    </h2>
+                    <p className="text-xs text-slate-300 max-w-md mt-1.5 leading-relaxed">
+                      {currentChapterAccess.reason === "basic_limit_reached"
+                        ? `Paket Basic membuka maksimal ${currentChapterAccess.maxModules || 6} modul awal per kursus. Buka modul ini atau upgrade ke Paket PRO Unlimited.`
+                        : "Video ini berstatus PRO. Pilih bayar satuan per video atau ambil paket PRO untuk memutar video dan membuka materi lengkapnya."}
+                    </p>
+
+                    <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
+                      {currentChapterAccess.canBuyPerMaterial &&
+                        currentChapterAccess.priceIdr > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setUnlockModalTarget({
+                                courseTitle,
+                                chapterId: currentChapter.id,
+                                chapterTitle: currentChapter.title,
+                                reason: currentChapterAccess.reason,
+                                maxModules: currentChapterAccess.maxModules,
+                                canUnlockWithPoints:
+                                  currentChapterAccess.canUnlockWithPoints,
+                                pointsCost: currentChapterAccess.pointsCost,
+                                canBuyPerMaterial:
+                                  currentChapterAccess.canBuyPerMaterial,
+                                priceIdr: currentChapterAccess.priceIdr,
+                                initialCheckout: true,
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-sm cursor-pointer transition-colors"
+                          >
+                            <QrCode size={14} />
+                            <span>
+                              Bayar per Video (
+                              {formatIdr(currentChapterAccess.priceIdr)})
+                            </span>
+                          </button>
+                        )}
+
+                      {currentChapterAccess.canUnlockWithPoints &&
+                        currentChapterAccess.pointsCost > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setUnlockModalTarget({
+                                courseTitle,
+                                chapterId: currentChapter.id,
+                                chapterTitle: currentChapter.title,
+                                reason: currentChapterAccess.reason,
+                                maxModules: currentChapterAccess.maxModules,
+                                canUnlockWithPoints:
+                                  currentChapterAccess.canUnlockWithPoints,
+                                pointsCost: currentChapterAccess.pointsCost,
+                                canBuyPerMaterial:
+                                  currentChapterAccess.canBuyPerMaterial,
+                                priceIdr: currentChapterAccess.priceIdr,
+                                initialCheckout: false,
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-sm cursor-pointer transition-colors"
+                          >
+                            <Coins size={14} />
+                            <span>
+                              Buka Pakai {currentChapterAccess.pointsCost} Poin
+                            </span>
+                          </button>
+                        )}
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenUpgradeModal?.()}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2.5 text-xs font-bold text-white shadow-sm cursor-pointer transition-colors"
+                      >
+                        <Zap size={13} fill="currentColor" />
+                        <span>Ambil Paket PRO</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : youtubeEmbedUrl ? (
                   <div className="w-full aspect-video">
                     <iframe
                       src={youtubeEmbedUrl}
@@ -824,21 +914,33 @@ export function ActiveLearningClassroom({
 
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    if (isCurrentChapterLocked) {
+                      handleLockedChapterAction(currentChapter);
+                      return;
+                    }
                     onMarkChapterComplete(
                       currentChapter.id,
                       currentChapter.points
-                    )
-                  }
+                    );
+                  }}
                   className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                    currentChapter.completed
+                    isCurrentChapterLocked
+                      ? "bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
+                      : currentChapter.completed
                       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                       : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs"
                   }`}
                 >
-                  <Check size={13} strokeWidth={2.5} />
+                  {isCurrentChapterLocked ? (
+                    <Lock size={12} />
+                  ) : (
+                    <Check size={13} strokeWidth={2.5} />
+                  )}
                   <span>
-                    {currentChapter.completed
+                    {isCurrentChapterLocked
+                      ? "Materi Terkunci"
+                      : currentChapter.completed
                       ? `Selesai (+${currentChapter.points})`
                       : `Tandai Selesai (+${currentChapter.points} Poin)`}
                   </span>
@@ -1021,7 +1123,60 @@ export function ActiveLearningClassroom({
           )}
 
           {/* 3. Main Lesson Reading Card */}
-          {(hasTextSection ||
+          {isCurrentChapterLocked ? (
+            <article className="rounded-2xl bg-white p-6 sm:p-8 border border-amber-200/80 text-center space-y-4">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-200">
+                <Lock size={20} />
+              </div>
+              <div className="space-y-1 max-w-md mx-auto">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Isi Bacaan &amp; Lampiran Bab Terkunci (PRO)
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Buka video &amp; modul ini secara satuan atau aktifkan Paket PRO untuk mengakses seluruh rangkuman dan file lampiran.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {currentChapterAccess.canBuyPerMaterial &&
+                  currentChapterAccess.priceIdr > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setUnlockModalTarget({
+                          courseTitle,
+                          chapterId: currentChapter.id,
+                          chapterTitle: currentChapter.title,
+                          reason: currentChapterAccess.reason,
+                          maxModules: currentChapterAccess.maxModules,
+                          canUnlockWithPoints:
+                            currentChapterAccess.canUnlockWithPoints,
+                          pointsCost: currentChapterAccess.pointsCost,
+                          canBuyPerMaterial:
+                            currentChapterAccess.canBuyPerMaterial,
+                          priceIdr: currentChapterAccess.priceIdr,
+                          initialCheckout: true,
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-bold text-white cursor-pointer"
+                    >
+                      <QrCode size={13} />
+                      <span>
+                        Bayar per Video (
+                        {formatIdr(currentChapterAccess.priceIdr)})
+                      </span>
+                    </button>
+                  )}
+                <button
+                  type="button"
+                  onClick={() => onOpenUpgradeModal?.()}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white cursor-pointer"
+                >
+                  <Zap size={13} fill="currentColor" />
+                  <span>Ambil Paket PRO</span>
+                </button>
+              </div>
+            </article>
+          ) : (hasTextSection ||
             hasCallout ||
             hasImageCaption ||
             hasAttachments ||
@@ -1559,10 +1714,10 @@ export function ActiveLearningClassroom({
                                   )}
                                   {chIsProOnly && (
                                     <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.2 font-semibold text-amber-800">
-                                      {proLocked && chAccess.canUnlockWithPoints
-                                        ? `${chAccess.pointsCost} pts`
-                                        : proLocked && chAccess.canBuyPerMaterial
-                                        ? formatIdr(chAccess.priceIdr)
+                                      {proLocked && chAccess.canBuyPerMaterial
+                                        ? `PRO • ${formatIdr(chAccess.priceIdr)}`
+                                        : proLocked && chAccess.canUnlockWithPoints
+                                        ? `PRO • ${chAccess.pointsCost} pts`
                                         : "PRO"}
                                     </span>
                                   )}

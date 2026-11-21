@@ -346,10 +346,10 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
     const paidPkgs = pkgs.filter((p) => !p.isFreeTier && p.tierKind !== "free");
     const primary =
       paidPkgs.find((p) => p.highlighted) || paidPkgs[0] || pkgs[0];
-    if (!primary) return { ...draft, packagesSchemaVersion: 2, packages: pkgs };
+    if (!primary) return { ...draft, packagesSchemaVersion: 3, packages: pkgs };
     return {
       ...draft,
-      packagesSchemaVersion: 2,
+      packagesSchemaVersion: 3,
       planName: primary.name,
       badgeText: primary.badge,
       priceLabel: primary.priceLabel,
@@ -420,6 +420,12 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
 
   const handleTogglePkgEntitlement = (key: PackageFeatureKey) => {
     if (!selectedPkg) return;
+    if (selectedPkg.isFreeTier && key === "proContent") {
+      onShowToast(
+        "Materi/Video bertanda PRO selalu terkunci pada paket FREE (bisa dibuka via Bayar per Video atau upgrade ke Basic/Pro). Gunakan status Gratis di Editor Materi jika ingin gratis untuk semua."
+      );
+      return;
+    }
     const currentEnt = {
       ...ALL_FALSE_ENTITLEMENTS,
       ...(selectedPkg.entitlements || {}),
@@ -1405,10 +1411,21 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                               key={opt.id}
                               type="button"
                               onClick={() => {
+                                if (selectedPkg.isFreeTier && opt.id !== "free_only") {
+                                  onShowToast(
+                                    "Paket FREE selalu mengunci bab bertanda PRO (user FREE dapat memilih Bayar per Video atau mengambil paket Basic/Pro). Untuk bab gratis, ubah status bab ke Gratis di Editor Materi."
+                                  );
+                                  return;
+                                }
                                 const patch: Partial<LearnerProPackageItem> = {
                                   moduleAccessMode: opt.id,
                                 };
-                                if (opt.id !== "free_only") {
+                                if (opt.id === "free_only") {
+                                  patch.entitlements = {
+                                    ...activeEnt,
+                                    proContent: false,
+                                  };
+                                } else {
                                   patch.entitlements = {
                                     ...activeEnt,
                                     proContent: true,
