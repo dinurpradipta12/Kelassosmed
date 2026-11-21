@@ -45,6 +45,7 @@ import {
   getNormalizedProPackages,
   createDefaultTierPackages,
   buildPackageBenefitLines,
+  computeTrial3DaysPriceIdr,
   computeTrial7DaysPriceIdr,
   formatIdr,
   type LearnerProPlanConfig,
@@ -466,6 +467,8 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
       priceLabel: "Rp 199.000",
       periodLabel: "/ bulan",
       monthlyPriceIdr: 199000,
+      enable3DayTrial: true,
+      trial3DaysPriceIdr: null,
       enable7DayTrial: true,
       trial7DaysPriceIdr: null,
       tierKind: "custom",
@@ -875,6 +878,10 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
               0,
               Number(selectedPkg.monthlyPriceIdr ?? 0)
             );
+            const autoTrial3Price = computeTrial3DaysPriceIdr(
+              monthlyNumeric,
+              selectedPkg.trial3DaysPriceIdr
+            );
             const autoTrialPrice = computeTrial7DaysPriceIdr(
               monthlyNumeric,
               selectedPkg.trial7DaysPriceIdr
@@ -933,6 +940,10 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                       const onCount = PACKAGE_FEATURE_DEFINITIONS.filter(
                         (f) => pkgEnt[f.key]
                       ).length;
+                      const pkgTrial3Idr = computeTrial3DaysPriceIdr(
+                        Number(pkg.monthlyPriceIdr ?? 0),
+                        pkg.trial3DaysPriceIdr
+                      );
                       const pkgTrialIdr = computeTrial7DaysPriceIdr(
                         Number(pkg.monthlyPriceIdr ?? 0),
                         pkg.trial7DaysPriceIdr
@@ -983,11 +994,23 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                               </span>
                             </p>
 
-                            {!pkg.isFreeTier && pkg.enable7DayTrial !== false && pkgTrialIdr > 0 && (
-                              <p className="text-[11px] font-semibold text-emerald-700">
-                                Trial 7 hr (1×): {formatIdr(pkgTrialIdr)}
-                              </p>
-                            )}
+                            {!pkg.isFreeTier &&
+                              ((pkg.enable3DayTrial !== false && pkgTrial3Idr > 0) ||
+                                (pkg.enable7DayTrial !== false && pkgTrialIdr > 0)) && (
+                                <p className="text-[11px] font-semibold text-emerald-700">
+                                  Trial 1×:{" "}
+                                  {[
+                                    pkg.enable3DayTrial !== false && pkgTrial3Idr > 0
+                                      ? `3 hr ${formatIdr(pkgTrial3Idr)}`
+                                      : null,
+                                    pkg.enable7DayTrial !== false && pkgTrialIdr > 0
+                                      ? `7 hr ${formatIdr(pkgTrialIdr)}`
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" • ")}
+                                </p>
+                              )}
 
                             <p className="text-[11px] text-slate-500">
                               {onCount}/7 fitur ON • {modBadge}
@@ -1053,7 +1076,7 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                       <>
                         <IosGroupedRow
                           label="Harga Bulanan (30 Hari)"
-                          hint="Masukkan angka dalam Rupiah; harga Trial 7 hari otomatis dihitung ~1/4 bulanan"
+                          hint="Masukkan angka dalam Rupiah; harga Trial 3 & 7 hari otomatis menyesuaikan secara proporsional"
                           alignTop
                         >
                           <div className="space-y-2">
@@ -1083,16 +1106,24 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                               </span>
                             </div>
 
-                            {selectedPkg.enable7DayTrial !== false && (
+                            {(selectedPkg.enable3DayTrial !== false ||
+                              selectedPkg.enable7DayTrial !== false) && (
                               <div className="rounded-xl bg-emerald-50 border border-emerald-200/90 px-3 py-2 text-[11px] text-emerald-900 flex flex-wrap items-center justify-between gap-2">
                                 <span>
-                                  ⚡ Harga Trial 7 Hari (1× pakai) menyesuaikan otomatis (~1/4 bulan):{" "}
-                                  <strong className="text-emerald-700">
-                                    {formatIdr(autoTrialPrice)} / 7 hari
-                                  </strong>
+                                  ⚡ Harga Trial (1× pakai) menyesuaikan otomatis:{" "}
+                                  {selectedPkg.enable3DayTrial !== false && (
+                                    <strong className="text-emerald-700 mr-2">
+                                      3 Hari: {formatIdr(autoTrial3Price)}
+                                    </strong>
+                                  )}
+                                  {selectedPkg.enable7DayTrial !== false && (
+                                    <strong className="text-emerald-700">
+                                      7 Hari: {formatIdr(autoTrialPrice)}
+                                    </strong>
+                                  )}
                                 </span>
                                 <span className="text-[10px] font-semibold text-emerald-700">
-                                  Khusus member baru
+                                  Khusus member baru (1×)
                                 </span>
                               </div>
                             )}
@@ -1100,53 +1131,102 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                         </IosGroupedRow>
 
                         <IosGroupedRow
-                          label="Percobaan 7 Hari (1× Pakai)"
-                          hint="Hanya muncul sekali untuk member baru; setelah dipakai pilihan aktif tinggal 30 hari"
+                          label="Percobaan 3 & 7 Hari (1× Pakai)"
+                          hint="Hanya muncul sekali untuk member baru; setelah salah satu dipakai pilihan aktif tinggal 30 hari"
                           alignTop
                         >
-                          <div className="space-y-2.5">
-                            <label className="inline-flex items-center gap-2.5 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={selectedPkg.enable7DayTrial !== false}
-                                onChange={(e) =>
-                                  updateSelectedPackage({
-                                    enable7DayTrial: e.target.checked,
-                                  })
-                                }
-                                className="h-4 w-4 rounded border-slate-300 text-[#4F39F6] focus:ring-[#4F39F6]"
-                              />
-                              <span className="text-xs font-semibold text-slate-800">
-                                Aktifkan pilihan langganan Trial 7 Hari (1× pakai per akun)
-                              </span>
-                            </label>
-
-                            {selectedPkg.enable7DayTrial !== false && (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-[11px] text-slate-500">
-                                  Override Harga 7 Hari (Opsional): Rp
-                                </span>
+                          <div className="space-y-3">
+                            {/* Trial 3 Hari Option */}
+                            <div className="rounded-xl bg-slate-50/90 border border-slate-200/80 p-3 space-y-2">
+                              <label className="inline-flex items-center gap-2.5 cursor-pointer">
                                 <input
-                                  type="number"
-                                  min={0}
-                                  step={1000}
-                                  value={
-                                    selectedPkg.trial7DaysPriceIdr ?? ""
-                                  }
-                                  onChange={(e) => {
-                                    const raw = e.target.value.trim();
+                                  type="checkbox"
+                                  checked={selectedPkg.enable3DayTrial !== false}
+                                  onChange={(e) =>
                                     updateSelectedPackage({
-                                      trial7DaysPriceIdr:
-                                        raw === ""
-                                          ? null
-                                          : Math.max(0, Math.round(Number(raw) || 0)),
-                                    });
-                                  }}
-                                  placeholder={`Auto (${formatIdr(computeTrial7DaysPriceIdr(monthlyNumeric, null))})`}
-                                  className={`${IOS_INPUT_CLASS} max-w-[200px]`}
+                                      enable3DayTrial: e.target.checked,
+                                    })
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300 text-[#4F39F6] focus:ring-[#4F39F6]"
                                 />
-                              </div>
-                            )}
+                                <span className="text-xs font-semibold text-slate-800">
+                                  Aktifkan pilihan langganan Trial 3 Hari (1× pakai per akun)
+                                </span>
+                              </label>
+
+                              {selectedPkg.enable3DayTrial !== false && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-[11px] text-slate-500">
+                                    Override Harga 3 Hari (Opsional): Rp
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={1000}
+                                    value={
+                                      selectedPkg.trial3DaysPriceIdr ?? ""
+                                    }
+                                    onChange={(e) => {
+                                      const raw = e.target.value.trim();
+                                      updateSelectedPackage({
+                                        trial3DaysPriceIdr:
+                                          raw === ""
+                                            ? null
+                                            : Math.max(0, Math.round(Number(raw) || 0)),
+                                      });
+                                    }}
+                                    placeholder={`Auto (${formatIdr(computeTrial3DaysPriceIdr(monthlyNumeric, null))})`}
+                                    className={`${IOS_INPUT_CLASS} max-w-[200px]`}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Trial 7 Hari Option */}
+                            <div className="rounded-xl bg-slate-50/90 border border-slate-200/80 p-3 space-y-2">
+                              <label className="inline-flex items-center gap-2.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedPkg.enable7DayTrial !== false}
+                                  onChange={(e) =>
+                                    updateSelectedPackage({
+                                      enable7DayTrial: e.target.checked,
+                                    })
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300 text-[#4F39F6] focus:ring-[#4F39F6]"
+                                />
+                                <span className="text-xs font-semibold text-slate-800">
+                                  Aktifkan pilihan langganan Trial 7 Hari (1× pakai per akun)
+                                </span>
+                              </label>
+
+                              {selectedPkg.enable7DayTrial !== false && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-[11px] text-slate-500">
+                                    Override Harga 7 Hari (Opsional): Rp
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step={1000}
+                                    value={
+                                      selectedPkg.trial7DaysPriceIdr ?? ""
+                                    }
+                                    onChange={(e) => {
+                                      const raw = e.target.value.trim();
+                                      updateSelectedPackage({
+                                        trial7DaysPriceIdr:
+                                          raw === ""
+                                            ? null
+                                            : Math.max(0, Math.round(Number(raw) || 0)),
+                                      });
+                                    }}
+                                    placeholder={`Auto (${formatIdr(computeTrial7DaysPriceIdr(monthlyNumeric, null))})`}
+                                    className={`${IOS_INPUT_CLASS} max-w-[200px]`}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </IosGroupedRow>
                       </>

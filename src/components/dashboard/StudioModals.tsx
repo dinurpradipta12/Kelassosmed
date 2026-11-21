@@ -33,8 +33,10 @@ import {
   PACKAGE_FEATURE_DEFINITIONS,
   ALL_FALSE_ENTITLEMENTS,
   getNormalizedProPackages,
+  computeTrial3DaysPriceIdr,
   computeTrial7DaysPriceIdr,
   formatIdr,
+  isTrialBillingCycle,
   parseIdrFromLabel,
   type LearnerProPackageItem,
   type PackageTierKind,
@@ -269,7 +271,7 @@ interface UpgradePlanModalProps {
     packageName: string;
     priceLabel: string;
     periodLabel: string;
-    billingCycle?: "7d_trial" | "30d";
+    billingCycle?: "3d_trial" | "7d_trial" | "30d";
     durationDays?: number;
     buyerName?: string;
     buyerEmail?: string;
@@ -327,7 +329,9 @@ export function UpgradePlanModal({
   const [selectedPackageId, setSelectedPackageId] = useState<string>(
     defaultPaidPkg?.id || "pkg-pro"
   );
-  const [billingCycle, setBillingCycle] = useState<"7d_trial" | "30d">("30d");
+  const [billingCycle, setBillingCycle] = useState<
+    "3d_trial" | "7d_trial" | "30d"
+  >("30d");
   const [step, setStep] = useState<"overview" | "payment">(initialStep);
   const [paymentMethod, setPaymentMethod] = useState<"qris" | "bank">("qris");
   const [buyerName, setBuyerName] = useState(defaultBuyerName);
@@ -342,15 +346,22 @@ export function UpgradePlanModal({
 
   const activeQrisUrl = selectedPkg?.qrCodeUrl || cfg.qrCodeUrl || "";
 
-  const isTrialEligibleForSelected =
-    !hasUsedTrial &&
-    !selectedPkg?.isFreeTier &&
-    selectedPkg?.enable7DayTrial !== false;
+  const anyHas3dTrial = paidPackages.some((p) => p.enable3DayTrial !== false);
+  const anyHas7dTrial = paidPackages.some((p) => p.enable7DayTrial !== false);
 
-  const effectiveCycle: "7d_trial" | "30d" =
-    billingCycle === "7d_trial" && isTrialEligibleForSelected ? "7d_trial" : "30d";
+  const effectiveCycle: "3d_trial" | "7d_trial" | "30d" =
+    !hasUsedTrial && !selectedPkg?.isFreeTier
+      ? billingCycle === "3d_trial" && selectedPkg?.enable3DayTrial !== false
+        ? "3d_trial"
+        : billingCycle === "7d_trial" && selectedPkg?.enable7DayTrial !== false
+        ? "7d_trial"
+        : "30d"
+      : "30d";
 
-  const computePackageCyclePricing = (pkg: LearnerProPackageItem, cycle: "7d_trial" | "30d") => {
+  const computePackageCyclePricing = (
+    pkg: LearnerProPackageItem,
+    cycle: "3d_trial" | "7d_trial" | "30d"
+  ) => {
     if (pkg.isFreeTier) {
       return {
         amountIdr: 0,
@@ -363,9 +374,19 @@ export function UpgradePlanModal({
       0,
       Number(pkg.monthlyPriceIdr ?? parseIdrFromLabel(pkg.priceLabel) ?? 150000)
     );
-    const useTrial =
-      cycle === "7d_trial" && !hasUsedTrial && pkg.enable7DayTrial !== false;
-    if (useTrial) {
+    if (cycle === "3d_trial" && !hasUsedTrial && pkg.enable3DayTrial !== false) {
+      const trial3Idr = computeTrial3DaysPriceIdr(
+        monthlyIdr,
+        pkg.trial3DaysPriceIdr
+      );
+      return {
+        amountIdr: trial3Idr,
+        priceText: formatIdr(trial3Idr),
+        periodText: "/ 3 hari (Trial 1×)",
+        durationDays: 3,
+      };
+    }
+    if (cycle === "7d_trial" && !hasUsedTrial && pkg.enable7DayTrial !== false) {
       const trialIdr = computeTrial7DaysPriceIdr(
         monthlyIdr,
         pkg.trial7DaysPriceIdr
@@ -750,7 +771,7 @@ export function UpgradePlanModal({
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Duration / Billing Cycle Toggle: 7-Day 1x Trial vs 30-Day Monthly */}
+          {/* Duration / Billing Cycle Toggle: 3-Day / 7-Day 1x Trial vs 30-Day Monthly */}
           <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs">
               <Clock size={14} className="text-[#4F39F6] shrink-0" />
@@ -760,25 +781,40 @@ export function UpgradePlanModal({
                 </p>
                 <p className="text-[11px] text-[#5E5E5E]">
                   {hasUsedTrial
-                    ? "Trial 7 hari (1× pakai) sudah pernah dipakai — pilihan aktif hanya 30 hari."
-                    : "Tersedia percobaan 7 hari (1× pakai member baru) atau paket bulanan 30 hari."}
+                    ? "Paket percobaan (1× pakai) sudah pernah digunakan — pilihan aktif hanya 30 hari."
+                    : "Tersedia percobaan 3 hari / 7 hari (1× pakai member baru) atau paket bulanan 30 hari."}
                 </p>
               </div>
             </div>
 
-            {!hasUsedTrial ? (
-              <div className="inline-flex rounded-xl bg-white p-1 border border-[#EAECEF] gap-1">
-                <button
-                  type="button"
-                  onClick={() => setBillingCycle("7d_trial")}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
-                    billingCycle === "7d_trial"
-                      ? "bg-emerald-600 text-white shadow-2xs"
-                      : "text-[#5E5E5E] hover:text-[#121215]"
-                  }`}
-                >
-                  Trial 7 Hari (1×)
-                </button>
+            {!hasUsedTrial && (anyHas3dTrial || anyHas7dTrial) ? (
+              <div className="inline-flex flex-wrap rounded-xl bg-white p-1 border border-[#EAECEF] gap-1">
+                {anyHas3dTrial && (
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle("3d_trial")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                      billingCycle === "3d_trial"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-[#5E5E5E] hover:text-[#121215]"
+                    }`}
+                  >
+                    Trial 3 Hari (1×)
+                  </button>
+                )}
+                {anyHas7dTrial && (
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle("7d_trial")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                      billingCycle === "7d_trial"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-[#5E5E5E] hover:text-[#121215]"
+                    }`}
+                  >
+                    Trial 7 Hari (1×)
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setBillingCycle("30d")}
@@ -888,7 +924,13 @@ export function UpgradePlanModal({
                           {pricing.periodText}
                         </span>
                       </div>
-                      {!pkg.isFreeTier && effectiveCycle === "7d_trial" && pkg.enable7DayTrial !== false && monthlyBase > 0 && (
+                      {!pkg.isFreeTier &&
+                        isTrialBillingCycle(effectiveCycle) &&
+                        ((effectiveCycle === "3d_trial" &&
+                          pkg.enable3DayTrial !== false) ||
+                          (effectiveCycle === "7d_trial" &&
+                            pkg.enable7DayTrial !== false)) &&
+                        monthlyBase > 0 && (
                         <p className="text-[10px] text-[#5E5E5E] mt-0.5">
                           Lanjut bulan berikutnya: {formatIdr(monthlyBase)} / 30 hari
                         </p>

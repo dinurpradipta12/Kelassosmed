@@ -88,11 +88,13 @@ import {
   PACKAGE_FEATURE_DEFINITIONS,
   buildPackageBenefitLines,
   buildUnlockItemKey,
+  computeTrial3DaysPriceIdr,
   computeTrial7DaysPriceIdr,
   createDefaultTierPackages,
   evaluateChapterAccess,
   evaluateCourseCardAccess,
   formatIdr,
+  isTrialBillingCycle,
   normalizeProPackages,
   parseIdrFromLabel,
   resolveLearnerAccess,
@@ -116,11 +118,13 @@ export {
   PACKAGE_FEATURE_DEFINITIONS,
   buildPackageBenefitLines,
   buildUnlockItemKey,
+  computeTrial3DaysPriceIdr,
   computeTrial7DaysPriceIdr,
   createDefaultTierPackages,
   evaluateChapterAccess,
   evaluateCourseCardAccess,
   formatIdr,
+  isTrialBillingCycle,
   parseIdrFromLabel,
   resolveLearnerAccess,
   type BillingCycle,
@@ -317,7 +321,7 @@ interface PersistedGlobalState {
   learnerSubscriptions: Record<string, "PRO" | "Free">;
   learnerPackageId: string | null;
   learnerPackageName: string | null;
-  learnerBillingCycle: "7d_trial" | "30d" | "custom" | null;
+  learnerBillingCycle: "3d_trial" | "7d_trial" | "30d" | "custom" | null;
   learnerHasUsedTrial: boolean;
   learnerUnlockedItems: LearnerUnlockedItemRecord[];
   adminPreviewTierOverride: "auto" | "free" | "basic" | "pro";
@@ -2575,7 +2579,7 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     buyerContact?: string;
     paymentMethod?: string;
     proofUrl?: string;
-    billingCycle?: "7d_trial" | "30d" | "single_item";
+    billingCycle?: "3d_trial" | "7d_trial" | "30d" | "single_item";
     durationDays?: number;
     requestType?: "subscription" | "item_unlock";
     targetItemKey?: string;
@@ -4208,7 +4212,9 @@ export function RuangSosmedProvider({
           if (!ownProReqsRes?.error && Array.isArray(ownProReqsRes?.data)) {
             ownTrialRequestDetected = (ownProReqsRes.data as any[]).some(
               (r) =>
-                /7\s*hari|trial|percobaan/i.test(
+                r.billing_cycle === "3d_trial" ||
+                r.billing_cycle === "7d_trial" ||
+                /3\s*hari|7\s*hari|trial|percobaan/i.test(
                   `${r.package_name || ""} ${r.price_label || ""}`
                 )
             );
@@ -4440,7 +4446,12 @@ export function RuangSosmedProvider({
           let activeUserPoints = 0;
           let activeUserPackageId: string | null = null;
           let activeUserPackageName: string | null = null;
-          let activeUserBillingCycle: "7d_trial" | "30d" | "custom" | null = null;
+          let activeUserBillingCycle:
+            | "3d_trial"
+            | "7d_trial"
+            | "30d"
+            | "custom"
+            | null = null;
           let activeUserHasUsedTrial = false;
           const activeLearnerEmail = String(
             ownProfile?.email || authUser?.email || ""
@@ -4559,6 +4570,7 @@ export function RuangSosmedProvider({
               ownUpMatch?.perks?.pro_billing_cycle ||
               null;
             activeUserBillingCycle =
+              rawBillingCycle === "3d_trial" ||
               rawBillingCycle === "7d_trial" ||
               rawBillingCycle === "30d" ||
               rawBillingCycle === "custom"
@@ -4567,7 +4579,7 @@ export function RuangSosmedProvider({
             activeUserHasUsedTrial = Boolean(
               ownProfile.has_used_trial ||
                 ownUpMatch?.perks?.has_used_trial ||
-                activeUserBillingCycle === "7d_trial" ||
+                isTrialBillingCycle(activeUserBillingCycle) ||
                 ownTrialRequestDetected ||
                 readLocalTrialUsed(activeLearnerEmail)
             );
@@ -9649,7 +9661,7 @@ export function RuangSosmedProvider({
       buyerContact?: string;
       paymentMethod?: string;
       proofUrl?: string;
-      billingCycle?: "7d_trial" | "30d" | "single_item";
+      billingCycle?: "3d_trial" | "7d_trial" | "30d" | "single_item";
       durationDays?: number;
       requestType?: "subscription" | "item_unlock";
       targetItemKey?: string;
@@ -9658,13 +9670,13 @@ export function RuangSosmedProvider({
       const cycle = params.billingCycle || "30d";
       const activeUserEmail = (getActiveSessionUser().email || "").trim().toLowerCase();
       if (
-        cycle === "7d_trial" &&
+        isTrialBillingCycle(cycle) &&
         (stateRef.current.learnerHasUsedTrial || readLocalTrialUsed(activeUserEmail))
       ) {
         return {
           ok: false,
           error:
-            "Paket percobaan 7 hari hanya berlaku 1× untuk member baru dan sudah digunakan pada akun Anda.",
+            "Paket percobaan (3 hari / 7 hari) hanya berlaku 1× untuk member baru dan sudah digunakan pada akun Anda.",
         };
       }
       if (!isSupabaseConfigured) {
@@ -9683,6 +9695,8 @@ export function RuangSosmedProvider({
         const duration =
           params.durationDays !== undefined
             ? params.durationDays
+            : cycle === "3d_trial"
+            ? 3
             : cycle === "7d_trial"
             ? 7
             : cycle === "single_item"
@@ -9722,6 +9736,8 @@ export function RuangSosmedProvider({
             const fallbackPkgName =
               reqType === "item_unlock" && params.targetItemTitle
                 ? `${params.packageName} • ${params.targetItemTitle}`
+                : cycle === "3d_trial"
+                ? `${params.packageName} (Trial 3 Hari)`
                 : cycle === "7d_trial"
                 ? `${params.packageName} (Trial 7 Hari)`
                 : params.packageName.trim() || "Pro";
@@ -9746,14 +9762,14 @@ export function RuangSosmedProvider({
           };
         }
 
-        if (cycle === "7d_trial") {
+        if (isTrialBillingCycle(cycle)) {
           markLocalTrialUsed(sessionEmail);
         }
 
         setState((prev) => ({
           ...prev,
           learnerHasUsedTrial:
-            prev.learnerHasUsedTrial || cycle === "7d_trial",
+            prev.learnerHasUsedTrial || isTrialBillingCycle(cycle),
           learnerNotifications: [
             {
               id: `notif-pro-pending-${Date.now()}`,

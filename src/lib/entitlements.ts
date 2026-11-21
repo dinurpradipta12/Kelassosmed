@@ -13,7 +13,11 @@ export type PackageTierKind = "free" | "basic" | "pro" | "custom";
 
 export type ModuleAccessMode = "free_only" | "limited" | "unlimited";
 
-export type BillingCycle = "7d_trial" | "30d" | "single_item";
+export type BillingCycle = "3d_trial" | "7d_trial" | "30d" | "single_item";
+
+export function isTrialBillingCycle(cycle?: string | null): boolean {
+  return cycle === "3d_trial" || cycle === "7d_trial";
+}
 
 export interface PackageFeatureDefinition {
   key: PackageFeatureKey;
@@ -126,6 +130,8 @@ export interface LearnerProPackageItem {
   tierKind?: PackageTierKind;
   isFreeTier?: boolean;
   monthlyPriceIdr?: number;
+  enable3DayTrial?: boolean;
+  trial3DaysPriceIdr?: number | null;
   enable7DayTrial?: boolean;
   trial7DaysPriceIdr?: number | null;
   entitlements?: Partial<PackageEntitlements>;
@@ -262,6 +268,23 @@ export function parseIdrFromLabel(label?: string | null): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+export function computeTrial3DaysPriceIdr(
+  monthlyPriceIdr: number,
+  manualOverride?: number | null
+): number {
+  if (
+    typeof manualOverride === "number" &&
+    Number.isFinite(manualOverride) &&
+    manualOverride > 0
+  ) {
+    return Math.round(manualOverride);
+  }
+  const cleanMonthly = Math.max(0, Math.round(Number(monthlyPriceIdr) || 0));
+  if (cleanMonthly <= 0) return 0;
+  // Proportional 3/30 = 1/10 of monthly price, rounded up to nearest Rp 1.000 (e.g. 150.000 -> 15.000)
+  return Math.ceil(((cleanMonthly * 3) / 30) / 1000) * 1000;
+}
+
 export function computeTrial7DaysPriceIdr(
   monthlyPriceIdr: number,
   manualOverride?: number | null
@@ -322,6 +345,8 @@ export function createDefaultTierPackages(): LearnerProPackageItem[] {
     tierKind: "free",
     isFreeTier: true,
     monthlyPriceIdr: 0,
+    enable3DayTrial: false,
+    trial3DaysPriceIdr: null,
     enable7DayTrial: false,
     trial7DaysPriceIdr: null,
     entitlements: { ...ALL_FALSE_ENTITLEMENTS },
@@ -361,6 +386,8 @@ export function createDefaultTierPackages(): LearnerProPackageItem[] {
     tierKind: "basic",
     isFreeTier: false,
     monthlyPriceIdr: 75000,
+    enable3DayTrial: true,
+    trial3DaysPriceIdr: null,
     enable7DayTrial: true,
     trial7DaysPriceIdr: null,
     entitlements: basicEntitlements,
@@ -393,6 +420,8 @@ export function createDefaultTierPackages(): LearnerProPackageItem[] {
     tierKind: "pro",
     isFreeTier: false,
     monthlyPriceIdr: 150000,
+    enable3DayTrial: true,
+    trial3DaysPriceIdr: null,
     enable7DayTrial: true,
     trial7DaysPriceIdr: null,
     entitlements: { ...ALL_TRUE_ENTITLEMENTS },
@@ -526,6 +555,13 @@ export function normalizePackageItem(
     tierKind: inferredTierKind,
     isFreeTier: isFree,
     monthlyPriceIdr,
+    enable3DayTrial: isFree
+      ? Boolean(pkg.enable3DayTrial)
+      : pkg.enable3DayTrial !== undefined
+      ? Boolean(pkg.enable3DayTrial)
+      : true,
+    trial3DaysPriceIdr:
+      pkg.trial3DaysPriceIdr !== undefined ? pkg.trial3DaysPriceIdr : null,
     enable7DayTrial: isFree
       ? Boolean(pkg.enable7DayTrial)
       : pkg.enable7DayTrial !== undefined
@@ -589,6 +625,7 @@ export function normalizeProPackages(
         highlighted: true,
         tierKind: "pro",
         monthlyPriceIdr: legacyMonthly,
+        enable3DayTrial: true,
         enable7DayTrial: true,
         entitlements: { ...ALL_TRUE_ENTITLEMENTS },
         moduleAccessMode: "unlimited",
@@ -626,6 +663,7 @@ export function normalizeProPackages(
               : "pro"),
           entitlements: p.entitlements || ALL_TRUE_ENTITLEMENTS,
           moduleAccessMode: p.moduleAccessMode || "unlimited",
+          enable3DayTrial: p.enable3DayTrial !== false,
           enable7DayTrial: p.enable7DayTrial !== false,
         },
         idx

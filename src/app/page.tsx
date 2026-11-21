@@ -1639,7 +1639,11 @@ function RuangSosmedStudioInner() {
             billingCycle: details?.billingCycle || "30d",
             durationDays:
               details?.durationDays ??
-              (details?.billingCycle === "7d_trial" ? 7 : 30),
+              (details?.billingCycle === "3d_trial"
+                ? 3
+                : details?.billingCycle === "7d_trial"
+                ? 7
+                : 30),
             buyerName: details?.buyerName || currentUser?.name || "Learner",
             buyerContact: details?.buyerEmail || currentUser?.email || "",
             paymentMethod: details?.paymentMethod || "qris",

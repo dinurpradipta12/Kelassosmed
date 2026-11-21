@@ -38,8 +38,10 @@ import {
 import {
   useRuangSosmedStore,
   getNormalizedProPackages,
+  computeTrial3DaysPriceIdr,
   computeTrial7DaysPriceIdr,
   formatIdr,
+  isTrialBillingCycle,
 } from "@/context/RuangSosmedStore";
 import { type ExplorerContentItem } from "@/lib/phase2-data";
 import { ModalDialog } from "@/components/ui/ModalDialog";
@@ -175,9 +177,9 @@ export function AdminLearnersDirectory({
   );
   const [renewPackageName, setRenewPackageName] = useState<string>("Pro");
   const [renewPackageId, setRenewPackageId] = useState<string>("pkg-pro");
-  const [renewBillingCycle, setRenewBillingCycle] = useState<"7d_trial" | "30d">(
-    "30d"
-  );
+  const [renewBillingCycle, setRenewBillingCycle] = useState<
+    "3d_trial" | "7d_trial" | "30d"
+  >("30d");
   const [isSavingRenewal, setIsSavingRenewal] = useState(false);
   const [quickExtendingEmail, setQuickExtendingEmail] = useState<string | null>(
     null
@@ -1431,7 +1433,7 @@ export function AdminLearnersDirectory({
     const nameLower = (member.name || "").toLowerCase().trim();
     const nextUsedTrial = Boolean(
       markTrialUsed ||
-        billingCycle === "7d_trial" ||
+        isTrialBillingCycle(billingCycle) ||
         member.hasUsedTrial
     );
 
@@ -1527,7 +1529,11 @@ export function AdminLearnersDirectory({
     setRenewPackageId(matchedPkg?.id || member.proPackageId || "pkg-pro");
     setRenewPackageName(member.proPackageName || matchedPkg?.name || "Pro");
     setRenewBillingCycle(
-      member.proBillingCycle === "7d_trial" ? "7d_trial" : "30d"
+      member.proBillingCycle === "3d_trial"
+        ? "3d_trial"
+        : member.proBillingCycle === "7d_trial"
+        ? "7d_trial"
+        : "30d"
     );
   };
 
@@ -1537,15 +1543,18 @@ export function AdminLearnersDirectory({
     dueDateIso: string;
     packageName: string;
     packageId?: string | null;
-    billingCycle?: "7d_trial" | "30d";
+    billingCycle?: "3d_trial" | "7d_trial" | "30d";
   }) => {
     const cleanEmail = (params.member.email || "").trim().toLowerCase();
     const cleanName = (params.member.name || cleanEmail).trim();
     const pkg = params.packageName.trim() || "Pro";
     const pkgId = params.packageId || params.member.proPackageId || null;
-    const cycle =
+    const durationDiff = diffCalendarDays(params.startDateIso, params.dueDateIso);
+    const cycle: "3d_trial" | "7d_trial" | "30d" =
       params.billingCycle ||
-      (diffCalendarDays(params.startDateIso, params.dueDateIso) <= 8
+      (durationDiff <= 4
+        ? "3d_trial"
+        : durationDiff <= 8
         ? "7d_trial"
         : "30d");
 
@@ -1558,7 +1567,7 @@ export function AdminLearnersDirectory({
         pkg,
         pkgId,
         cycle,
-        cycle === "7d_trial"
+        isTrialBillingCycle(cycle)
       );
       return { ok: true, usedFallback: false };
     }
@@ -1617,7 +1626,7 @@ export function AdminLearnersDirectory({
           pkg,
           pkgId,
           cycle,
-          cycle === "7d_trial"
+          isTrialBillingCycle(cycle)
         );
         return { ok: true, usedFallback: true };
       }
@@ -1634,7 +1643,7 @@ export function AdminLearnersDirectory({
       pkg,
       pkgId,
       cycle,
-      cycle === "7d_trial"
+      isTrialBillingCycle(cycle)
     );
     return { ok: true, usedFallback: false };
   };
@@ -2069,9 +2078,12 @@ export function AdminLearnersDirectory({
           <div className="space-y-2">
             {pendingProRequests.map((req) => {
               const isItemUnlock = req.request_type === "item_unlock";
-              const isTrialReq = req.billing_cycle === "7d_trial";
+              const is3dTrialReq = req.billing_cycle === "3d_trial";
+              const is7dTrialReq = req.billing_cycle === "7d_trial";
+              const isTrialReq = is3dTrialReq || is7dTrialReq;
               const reqDurationDays =
-                Number(req.duration_days) || (isTrialReq ? 7 : 30);
+                Number(req.duration_days) ||
+                (is3dTrialReq ? 3 : is7dTrialReq ? 7 : 30);
 
               return (
                 <div
@@ -2090,7 +2102,11 @@ export function AdminLearnersDirectory({
                         <span className="inline-flex items-center rounded bg-[#EEF2FF] border border-[#C7D2FE] px-1.5 py-0.5 text-[10px] font-bold text-[#4F39F6]">
                           Buka Materi Satuan
                         </span>
-                      ) : isTrialReq ? (
+                      ) : is3dTrialReq ? (
+                        <span className="inline-flex items-center rounded bg-[#FEF3C7] border border-[#F59E0B]/40 px-1.5 py-0.5 text-[10px] font-bold text-[#92400E]">
+                          Trial 3 Hari (1×)
+                        </span>
+                      ) : is7dTrialReq ? (
                         <span className="inline-flex items-center rounded bg-[#FEF3C7] border border-[#F59E0B]/40 px-1.5 py-0.5 text-[10px] font-bold text-[#92400E]">
                           Trial 7 Hari (1×)
                         </span>
@@ -2182,7 +2198,11 @@ export function AdminLearnersDirectory({
                         }
 
                         const todayIso = getTodayIsoDate();
-                        const cycle = isTrialReq ? "7d_trial" : "30d";
+                        const cycle = is3dTrialReq
+                          ? "3d_trial"
+                          : is7dTrialReq
+                          ? "7d_trial"
+                          : "30d";
                         const dueIso = addDaysToIsoDate(
                           todayIso,
                           reqDurationDays
@@ -2255,7 +2275,9 @@ export function AdminLearnersDirectory({
                     >
                       {isItemUnlock
                         ? "Setujui & Buka Materi"
-                        : isTrialReq
+                        : is3dTrialReq
+                        ? "Aktifkan Trial 3 Hari"
+                        : is7dTrialReq
                         ? "Aktifkan Trial 7 Hari"
                         : "Setujui & Aktifkan"}
                     </button>
@@ -2689,8 +2711,11 @@ export function AdminLearnersDirectory({
                                     </span>
                                     {member.hasUsedTrial && (
                                       <span className="ml-1 inline-flex items-center rounded bg-[#F8F9FB] border border-[#EAECEF] px-1.5 py-0.5 text-[9px] font-semibold text-[#64748B]">
-                                        {member.proBillingCycle === "7d_trial" &&
+                                        {member.proBillingCycle === "3d_trial" &&
                                         subInfo.status !== "free"
+                                          ? "Sedang Trial 3H"
+                                          : member.proBillingCycle === "7d_trial" &&
+                                            subInfo.status !== "free"
                                           ? "Sedang Trial 7H"
                                           : "Trial 1× terpakai"}
                                       </span>
@@ -4288,6 +4313,10 @@ export function AdminLearnersDirectory({
                           renewPackageName.toLowerCase() ===
                             pkg.name.toLowerCase();
                         const monthlyIdr = Number(pkg.monthlyPriceIdr ?? 0);
+                        const trial3Price = computeTrial3DaysPriceIdr(
+                          monthlyIdr,
+                          pkg.trial3DaysPriceIdr
+                        );
                         const trialPrice = computeTrial7DaysPriceIdr(
                           monthlyIdr,
                           pkg.trial7DaysPriceIdr
@@ -4318,7 +4347,8 @@ export function AdminLearnersDirectory({
                               {pkg.moduleAccessMode === "limited"
                                 ? `Maks ${pkg.maxModulesPerCourse} modul/kursus • `
                                 : "Semua modul penuh • "}
-                              Trial 7h: {formatIdr(trialPrice)}
+                              Trial 3h: {formatIdr(trial3Price)} • 7h:{" "}
+                              {formatIdr(trialPrice)}
                             </p>
                           </button>
                         );
@@ -4336,7 +4366,7 @@ export function AdminLearnersDirectory({
                   </p>
                   {renewModalMember.hasUsedTrial && (
                     <span className="inline-flex items-center rounded-full bg-[#FEF3C7] border border-[#F59E0B]/40 px-2 py-0.5 text-[10px] font-bold text-[#92400E]">
-                      Trial 7 hari sudah pernah dipakai akun ini
+                      Trial 1× sudah pernah dipakai akun ini
                     </span>
                   )}
                 </div>
@@ -4347,8 +4377,13 @@ export function AdminLearnersDirectory({
                       )}):`
                     : "Dihitung mulai dari Tanggal Berlangganan di bawah:"}
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
+                    {
+                      label: "+3 Hari (Trial 1×)",
+                      days: 3,
+                      cycle: "3d_trial" as const,
+                    },
                     {
                       label: "+7 Hari (Trial 1×)",
                       days: 7,
@@ -4377,7 +4412,7 @@ export function AdminLearnersDirectory({
                         className={`rounded-lg px-2.5 py-2 text-xs font-bold border transition-colors cursor-pointer ${
                           isSelectedPreset
                             ? "bg-[#4F39F6] text-white border-[#4F39F6]"
-                            : preset.cycle === "7d_trial" &&
+                            : isTrialBillingCycle(preset.cycle) &&
                               renewModalMember.hasUsedTrial
                             ? "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A]"
                             : "bg-[#FFFFFF] text-[#121215] border-[#EAECEF] hover:border-[#4F39F6] hover:text-[#4F39F6]"

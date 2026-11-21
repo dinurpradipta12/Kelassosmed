@@ -53,6 +53,7 @@ import {
   DEFAULT_LEARNER_PRO_CONFIG,
   evaluateChapterAccess,
   evaluateCourseCardAccess,
+  computeTrial3DaysPriceIdr,
   computeTrial7DaysPriceIdr,
   formatIdr,
   getNormalizedProPackages,
@@ -1708,11 +1709,21 @@ export function LearnerPortalView({
     const promoPkg =
       paidPkgs.find((p) => p.tierKind === "pro" || p.highlighted) ||
       paidPkgs[0];
-    const canOfferTrial =
+    const canOffer3dTrial =
+      !learnerHasUsedTrial && promoPkg?.enable3DayTrial !== false;
+    const canOffer7dTrial =
       !learnerHasUsedTrial && promoPkg?.enable7DayTrial !== false;
+    const canOfferTrial = canOffer3dTrial || canOffer7dTrial;
     const promoMonthlyIdr = Number(promoPkg?.monthlyPriceIdr ?? 150000);
     const promoPriceDisplay = promoPkg
-      ? canOfferTrial
+      ? canOffer3dTrial
+        ? formatIdr(
+            computeTrial3DaysPriceIdr(
+              promoMonthlyIdr,
+              promoPkg.trial3DaysPriceIdr
+            )
+          )
+        : canOffer7dTrial
         ? formatIdr(
             computeTrial7DaysPriceIdr(
               promoMonthlyIdr,
@@ -1721,7 +1732,9 @@ export function LearnerPortalView({
           )
         : formatIdr(promoMonthlyIdr)
       : activeProCfg.priceLabel;
-    const promoPeriodDisplay = canOfferTrial
+    const promoPeriodDisplay = canOffer3dTrial
+      ? "/ 3 hari trial (1×)"
+      : canOffer7dTrial
       ? "/ 7 hari trial (1×)"
       : promoPkg
       ? "/ 30 hari"
@@ -1823,7 +1836,7 @@ export function LearnerPortalView({
 
             <p className="text-center text-[10px] font-medium text-[#64748B]">
               {canOfferTrial
-                ? "Tersedia percobaan 7 hari (1× member baru) & paket 30 hari"
+                ? "Tersedia percobaan 3 / 7 hari (1× member baru) & paket 30 hari"
                 : "Bandingkan fitur Free, Basic, dan Pro secara lengkap"}
             </p>
           </div>
