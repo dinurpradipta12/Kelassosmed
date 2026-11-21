@@ -52,6 +52,11 @@ import { WikiArticleReader } from "@/components/wiki/WikiArticleReader";
 import { ModularQuizBuilder } from "@/components/quiz/ModularQuizBuilder";
 import { TrainerGradingCenter } from "@/components/quiz/TrainerGradingCenter";
 import { LearnerPortalView } from "@/components/learner/LearnerPortalView";
+import {
+  WelcomeProModal,
+  WELCOME_PRO_PREVIEW_EVENT,
+  type WelcomeProModalData,
+} from "@/components/learner/WelcomeProModal";
 import { AdminAnalyticsScreen } from "@/components/admin/AdminAnalyticsScreen";
 import { AdminLearnersDirectory } from "@/components/admin/AdminLearnersDirectory";
 import { AdminMentorInbox } from "@/components/admin/AdminMentorInbox";
@@ -289,6 +294,8 @@ function RuangSosmedStudioInner() {
   const [authModalTab, setAuthModalTab] = useState<"login" | "register">("login");
   const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [welcomeProModalData, setWelcomeProModalData] =
+    useState<WelcomeProModalData | null>(null);
 
   const handleOpenAuth = (tab: "login" | "register" = "login") => {
     setAuthModalTab(tab);
@@ -748,6 +755,124 @@ function RuangSosmedStudioInner() {
     };
   }, [currentUser]);
 
+  // Automatic celebratory Welcome PRO modal when a learner's account activates PRO / paid Basic
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !authReady ||
+      !currentUser ||
+      roleMode !== "learner"
+    ) {
+      return;
+    }
+    if (isCurrentUserAdmin && adminPreviewTierOverride !== "auto") {
+      return;
+    }
+    if (!learnerIsPro || learnerAccess.tierKind === "free") {
+      return;
+    }
+
+    const userKey = (
+      currentUser.email ||
+      currentUser.username ||
+      currentUser.name ||
+      "guest"
+    )
+      .trim()
+      .toLowerCase();
+    const resolvedPlanName =
+      learnerAccess.activePackage?.name ||
+      learnerPackageName ||
+      (learnerAccess.tierKind === "basic"
+        ? "Basic"
+        : "Ruang Sosmed Learning PRO");
+    const tierSig = `${learnerAccess.tierKind}:${
+      learnerPackageId || resolvedPlanName
+    }:${learnerAccess.billingCycle || "active"}`;
+    const storageKey = `rs_welcome_pro_seen_v1::${userKey}`;
+
+    try {
+      const seenSig = window.localStorage.getItem(storageKey);
+      if (seenSig === tierSig) return;
+      window.localStorage.setItem(storageKey, tierSig);
+    } catch {}
+
+    setWelcomeProModalData({
+      learnerName: currentUser.name || currentUser.username || "Learner",
+      planName: resolvedPlanName,
+      tierKind: learnerAccess.tierKind === "basic" ? "basic" : "pro",
+      billingCycle: learnerAccess.billingCycle,
+      isPreview: false,
+    });
+  }, [
+    authReady,
+    currentUser,
+    roleMode,
+    learnerIsPro,
+    learnerAccess.tierKind,
+    learnerAccess.activePackage?.name,
+    learnerAccess.billingCycle,
+    learnerPackageId,
+    learnerPackageName,
+    isCurrentUserAdmin,
+    adminPreviewTierOverride,
+  ]);
+
+  // Browser Console test hook for previewing the Welcome PRO modal without altering DB
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const openPreview = (opts?: Partial<WelcomeProModalData>) => {
+      const tierKind = opts?.tierKind === "basic" ? "basic" : "pro";
+      setWelcomeProModalData({
+        learnerName:
+          opts?.learnerName ||
+          currentUser?.name ||
+          currentUser?.username ||
+          "Dede",
+        planName:
+          opts?.planName ||
+          (tierKind === "basic"
+            ? "Creator Academy Basic"
+            : "Ruang Sosmed Learning PRO"),
+        tierKind,
+        billingCycle: opts?.billingCycle ?? "30d",
+        expiresAt: opts?.expiresAt ?? null,
+        isPreview: opts?.isPreview ?? true,
+      });
+    };
+
+    const handlePreviewEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<Partial<WelcomeProModalData> | undefined>;
+      openPreview(customEvent.detail);
+    };
+
+    const win = window as unknown as Record<string, unknown>;
+    win.testWelcomeProModal = (opts?: Partial<WelcomeProModalData>) => {
+      openPreview(opts);
+      return "🎉 Welcome PRO modal dibuka!";
+    };
+    win.resetWelcomeProSeen = () => {
+      let cleared = 0;
+      try {
+        Object.keys(window.localStorage).forEach((k) => {
+          if (k.startsWith("rs_welcome_pro_seen_v1::")) {
+            window.localStorage.removeItem(k);
+            cleared += 1;
+          }
+        });
+      } catch {}
+      return `Reset ${cleared} key status Welcome PRO.`;
+    };
+
+    window.addEventListener(WELCOME_PRO_PREVIEW_EVENT, handlePreviewEvent);
+    return () => {
+      window.removeEventListener(WELCOME_PRO_PREVIEW_EVENT, handlePreviewEvent);
+      delete win.testWelcomeProModal;
+      delete win.resetWelcomeProSeen;
+    };
+  }, [currentUser]);
+
   // Listen to cross-tab / live broadcast notifications
   useEffect(() => {
     if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
@@ -1055,6 +1180,20 @@ function RuangSosmedStudioInner() {
     return <div className="min-h-screen bg-[#F8F9FB]" />;
   }
 
+  const welcomeProModalNode = (
+    <WelcomeProModal
+      open={Boolean(welcomeProModalData)}
+      data={welcomeProModalData}
+      onClose={() => setWelcomeProModalData(null)}
+      onStartLearning={() => {
+        setWelcomeProModalData(null);
+        if (roleMode !== "learner") {
+          setRoleMode("learner");
+        }
+      }}
+    />
+  );
+
   // 2. Public Visitor & Under Construction Gate (When not logged in, or when Under Construction blocks non-Admin)
   if (
     !currentUser ||
@@ -1100,6 +1239,8 @@ function RuangSosmedStudioInner() {
           }}
           onShowToast={triggerToast}
         />
+
+        {welcomeProModalNode}
 
         {toastMessage && (
           <div
@@ -1712,6 +1853,8 @@ function RuangSosmedStudioInner() {
         }}
         onShowToast={triggerToast}
       />
+
+      {welcomeProModalNode}
 
       {/* Subtle Bottom-Right Toast Notification */}
       {toastMessage && (
