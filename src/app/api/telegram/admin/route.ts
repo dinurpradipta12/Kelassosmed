@@ -13,6 +13,7 @@ import {
   loadTelegramBotConfig,
   maskBotToken,
   parseAdminChatIds,
+  registerTelegramBotCommands,
   sendTelegramMessage,
   telegramApiRequest,
 } from "@/lib/telegram/server";
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
       ok: true,
       config: {
         enabled: config.enabled,
+        rawEnabled: config.rawEnabled,
         hasBotToken: Boolean(config.botToken),
         botTokenPreview: maskBotToken(config.botToken),
         adminChatId: config.adminChatId,
@@ -81,6 +83,7 @@ export async function POST(request: Request) {
       adminChatId?: string;
       webhookSecret?: string;
       webhookUrl?: string;
+      autoWebhookUrl?: string;
       notifyPayments?: boolean;
       notifyNewUsers?: boolean;
       notifyQuizSubmissions?: boolean;
@@ -150,12 +153,45 @@ export async function POST(request: Request) {
         );
       }
 
+      let webhookAutoRegistered = false;
+      let webhookInfo: unknown = null;
+      const autoUrl = String(body.autoWebhookUrl || "").trim();
+      if (
+        nextToken &&
+        /^https:\/\/(?!localhost\b|127\.0\.0\.1\b).+/i.test(autoUrl)
+      ) {
+        const currentInfo = await telegramApiRequest<{ url?: string }>(
+          nextToken,
+          "getWebhookInfo"
+        );
+        const currentUrl = currentInfo.ok ? String(currentInfo.result?.url || "") : "";
+        if (currentUrl !== autoUrl) {
+          const autoHookRes = await telegramApiRequest(nextToken, "setWebhook", {
+            url: autoUrl,
+            secret_token: nextSecret,
+            allowed_updates: ["message", "callback_query"],
+          });
+          if (autoHookRes.ok) {
+            webhookAutoRegistered = true;
+            webhookInfo = { url: autoUrl, pending_update_count: 0 };
+          } else if (currentInfo.ok) {
+            webhookInfo = currentInfo.result;
+          }
+        } else if (currentInfo.ok) {
+          webhookInfo = currentInfo.result;
+        }
+        await registerTelegramBotCommands(nextToken);
+      }
+
       return NextResponse.json(
         {
           ok: true,
-          message: "Pengaturan Bot Telegram tersimpan.",
+          message: webhookAutoRegistered
+            ? "Pengaturan tersimpan & Webhook Telegram otomatis terpasang!"
+            : "Pengaturan Bot Telegram tersimpan.",
           config: {
             enabled: payload.enabled && Boolean(nextToken && parseAdminChatIds(nextChatId).length > 0),
+            rawEnabled: payload.enabled,
             hasBotToken: Boolean(nextToken),
             botTokenPreview: maskBotToken(nextToken),
             adminChatId: nextChatId,
@@ -167,6 +203,8 @@ export async function POST(request: Request) {
             tableReady: true,
           },
           hasServiceRoleKey: hasServiceRoleKey(),
+          webhookAutoRegistered,
+          webhookInfo,
         },
         { headers: API_SECURITY_HEADERS }
       );
@@ -254,18 +292,20 @@ export async function POST(request: Request) {
         );
       }
 
-      if (!existing.webhookSecret) {
-        await dbClient
-          .from("telegram_bot_settings")
-          .upsert(
-            {
-              id: "default",
-              webhook_secret: activeSecret,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "id" }
-          );
-      }
+      await dbClient
+        .from("telegram_bot_settings")
+        .upsert(
+          {
+            id: "default",
+            bot_token: activeToken,
+            ...(typeof body.adminChatId === "string"
+              ? { admin_chat_id: body.adminChatId.trim() || null }
+              : {}),
+            webhook_secret: activeSecret,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
 
       const hookRes = await telegramApiRequest(activeToken, "setWebhook", {
         url: targetUrl,
@@ -282,6 +322,8 @@ export async function POST(request: Request) {
           { status: 400, headers: API_SECURITY_HEADERS }
         );
       }
+
+      await registerTelegramBotCommands(activeToken);
 
       return NextResponse.json(
         {

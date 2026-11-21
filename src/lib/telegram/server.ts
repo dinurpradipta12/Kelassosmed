@@ -12,6 +12,7 @@ const DEFAULT_SUPABASE_URL = "https://nigxfryaobokkvfefond.supabase.co";
 
 export interface TelegramBotConfig {
   enabled: boolean;
+  rawEnabled: boolean;
   botToken: string;
   adminChatId: string;
   adminChatIds: string[];
@@ -118,8 +119,10 @@ export async function loadTelegramBotConfig(
 
   if (!client) {
     const adminChatIds = parseAdminChatIds(envChatId);
+    const isEnabled = Boolean(envToken && adminChatIds.length > 0);
     return {
-      enabled: Boolean(envToken && adminChatIds.length > 0),
+      enabled: isEnabled,
+      rawEnabled: isEnabled,
       botToken: envToken,
       adminChatId: envChatId,
       adminChatIds,
@@ -143,8 +146,10 @@ export async function loadTelegramBotConfig(
 
     if (error) {
       const adminChatIds = parseAdminChatIds(envChatId);
+      const isEnabled = Boolean(envToken && adminChatIds.length > 0);
       return {
-        enabled: Boolean(envToken && adminChatIds.length > 0),
+        enabled: isEnabled,
+        rawEnabled: isEnabled,
         botToken: envToken,
         adminChatId: envChatId,
         adminChatIds,
@@ -164,6 +169,7 @@ export async function loadTelegramBotConfig(
 
     return {
       enabled: Boolean(data?.enabled) && Boolean(botToken && adminChatIds.length > 0),
+      rawEnabled: Boolean(data?.enabled),
       botToken,
       adminChatId,
       adminChatIds,
@@ -176,8 +182,10 @@ export async function loadTelegramBotConfig(
     };
   } catch {
     const adminChatIds = parseAdminChatIds(envChatId);
+    const isEnabled = Boolean(envToken && adminChatIds.length > 0);
     return {
-      enabled: Boolean(envToken && adminChatIds.length > 0),
+      enabled: isEnabled,
+      rawEnabled: isEnabled,
       botToken: envToken,
       adminChatId: envChatId,
       adminChatIds,
@@ -263,6 +271,19 @@ export async function telegramApiRequest<T = any>(
       description: err?.message || "Gagal menghubungi Telegram API.",
     };
   }
+}
+
+export async function registerTelegramBotCommands(botToken: string) {
+  return telegramApiRequest(botToken, "setMyCommands", {
+    commands: [
+      { command: "start", description: "Cek status bot & Chat ID Anda" },
+      { command: "myid", description: "Tampilkan Chat ID Telegram Anda" },
+      { command: "id", description: "Tampilkan Chat ID Telegram Anda" },
+      { command: "pending", description: "Lihat & konfirmasi pembayaran tertunda" },
+      { command: "stats", description: "Ringkasan member & antrean PRO" },
+      { command: "help", description: "Panduan perintah bot" },
+    ],
+  });
 }
 
 export async function sendTelegramMessage(

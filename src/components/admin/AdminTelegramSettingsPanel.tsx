@@ -23,6 +23,7 @@ interface AdminTelegramSettingsPanelProps {
 
 interface TelegramAdminConfigPayload {
   enabled: boolean;
+  rawEnabled?: boolean;
   hasBotToken: boolean;
   botTokenPreview: string;
   adminChatId: string;
@@ -57,6 +58,7 @@ export function AdminTelegramSettingsPanel({
 
   const [tableReady, setTableReady] = useState(true);
   const [hasServiceRoleKey, setHasServiceRoleKey] = useState(true);
+  const [webhookActive, setWebhookActive] = useState(false);
   const [webhookStatusText, setWebhookStatusText] = useState<string | null>(
     null
   );
@@ -92,7 +94,7 @@ export function AdminTelegramSettingsPanel({
         const json = await res.json();
         if (json?.ok && json.config) {
           const cfg = json.config as TelegramAdminConfigPayload;
-          setEnabled(Boolean(cfg.enabled));
+          setEnabled(Boolean(cfg.rawEnabled ?? cfg.enabled));
           setHasSavedToken(Boolean(cfg.hasBotToken));
           setBotTokenPreview(cfg.botTokenPreview || "");
           setAdminChatId(cfg.adminChatId || "");
@@ -104,13 +106,14 @@ export function AdminTelegramSettingsPanel({
           setTableReady(Boolean(cfg.tableReady));
           setHasServiceRoleKey(Boolean(json.hasServiceRoleKey));
 
-          if (checkWebhook && json.webhookInfo) {
-            const info = json.webhookInfo as {
+          if (checkWebhook) {
+            const info = (json.webhookInfo || {}) as {
               url?: string;
               pending_update_count?: number;
               last_error_message?: string;
             };
             if (info.url) {
+              setWebhookActive(true);
               setWebhookStatusText(
                 `Aktif: ${info.url} (Pending: ${info.pending_update_count ?? 0})${
                   info.last_error_message
@@ -119,6 +122,7 @@ export function AdminTelegramSettingsPanel({
                 }`
               );
             } else {
+              setWebhookActive(false);
               setWebhookStatusText("Webhook belum terpasang di server Telegram.");
             }
           }
@@ -132,7 +136,7 @@ export function AdminTelegramSettingsPanel({
   );
 
   useEffect(() => {
-    void loadConfig(false);
+    void loadConfig(true);
   }, [loadConfig]);
 
   const callAdminAction = async (payload: Record<string, unknown>) => {
@@ -155,12 +159,19 @@ export function AdminTelegramSettingsPanel({
   const handleSave = async () => {
     setSaving(true);
     try {
+      const cleanWebhookUrl = webhookUrl.trim();
+      const autoWebhookUrl = /^https:\/\/(?!localhost\b|127\.0\.0\.1\b).+/i.test(
+        cleanWebhookUrl
+      )
+        ? cleanWebhookUrl
+        : undefined;
       const res = await callAdminAction({
         action: "save",
         enabled,
         botToken: botTokenInput.trim() || undefined,
         adminChatId,
         webhookSecret,
+        autoWebhookUrl,
         notifyPayments,
         notifyNewUsers,
         notifyContentIssues,
@@ -172,12 +183,28 @@ export function AdminTelegramSettingsPanel({
       }
       setBotTokenInput("");
       if (res.config) {
+        setEnabled(Boolean(res.config.rawEnabled ?? res.config.enabled));
         setHasSavedToken(Boolean(res.config.hasBotToken));
         setBotTokenPreview(res.config.botTokenPreview || "");
         setWebhookSecret(res.config.webhookSecret || "");
         setTableReady(Boolean(res.config.tableReady));
       }
-      onShowToast("✅ Pengaturan Bot Telegram berhasil disimpan!");
+      if (res.webhookAutoRegistered && cleanWebhookUrl) {
+        setWebhookActive(true);
+        setWebhookStatusText(`Aktif: ${cleanWebhookUrl}`);
+      } else if (res.webhookInfo?.url) {
+        setWebhookActive(true);
+        setWebhookStatusText(
+          `Aktif: ${res.webhookInfo.url} (Pending: ${
+            res.webhookInfo.pending_update_count ?? 0
+          })`
+        );
+      }
+      onShowToast(
+        res.message
+          ? `✅ ${res.message}`
+          : "✅ Pengaturan Bot Telegram berhasil disimpan!"
+      );
     } finally {
       setSaving(false);
     }
@@ -230,6 +257,7 @@ export function AdminTelegramSettingsPanel({
       if (res.webhookSecret) {
         setWebhookSecret(res.webhookSecret);
       }
+      setWebhookActive(true);
       setWebhookStatusText(`Aktif: ${webhookUrl}`);
       onShowToast("✅ Webhook 2-arah Telegram berhasil dipasang!");
     } finally {
@@ -248,6 +276,7 @@ export function AdminTelegramSettingsPanel({
         onShowToast(res?.error || "Gagal menghapus webhook.");
         return;
       }
+      setWebhookActive(false);
       setWebhookStatusText("Webhook dihapus.");
       onShowToast("Webhook Telegram dinonaktifkan.");
     } finally {
@@ -303,6 +332,31 @@ export function AdminTelegramSettingsPanel({
         </div>
       )}
 
+      {hasSavedToken && hasServiceRoleKey && !loading && !webhookActive && (
+        <div className="flex items-start gap-2.5 rounded-2xl bg-[#EFF6FF] border border-[#BFDBFE] px-4 py-3 text-xs text-[#1E3A8A]">
+          <Link2 size={16} className="shrink-0 mt-0.5 text-[#2563EB]" />
+          <div className="flex-1 space-y-1.5">
+            <p className="font-bold">
+              Webhook Telegram Belum Terpasang — Bot Belum Bisa Membalas <code>/start</code> atau <code>/myid</code>
+            </p>
+            <p className="text-[11px] leading-relaxed">
+              Token bot sudah tersimpan, tetapi Telegram belum terhubung ke URL webhook server Anda. Klik tombol di bawah untuk memasang webhook, lalu ketik <code>/start</code> atau <code>/myid</code> ke bot Anda di Telegram.
+            </p>
+            <div>
+              <button
+                type="button"
+                disabled={hooking}
+                onClick={() => void handleRegisterWebhook()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-50 px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
+              >
+                <Link2 size={11} />
+                <span>{hooking ? "Memasang..." : "Pasang Webhook Otomatis Sekarang"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Bot Credentials Card */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between px-3">
@@ -311,8 +365,10 @@ export function AdminTelegramSettingsPanel({
           </p>
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-              enabled && hasSavedToken
+              enabled && hasSavedToken && adminChatId.trim()
                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : hasSavedToken && !adminChatId.trim()
+                ? "bg-amber-50 text-amber-800 border border-amber-200"
                 : "bg-slate-100 text-slate-600"
             }`}
           >
@@ -320,8 +376,10 @@ export function AdminTelegramSettingsPanel({
             <span>
               {loading
                 ? "Memuat..."
-                : enabled && hasSavedToken
+                : enabled && hasSavedToken && adminChatId.trim()
                 ? "Bot Aktif"
+                : hasSavedToken && !adminChatId.trim()
+                ? "Butuh Admin Chat ID"
                 : "Belum Aktif"}
             </span>
           </span>
@@ -395,7 +453,7 @@ export function AdminTelegramSettingsPanel({
                 Admin Chat ID
               </label>
               <p className="text-[11px] text-slate-500">
-                Pisahkan dengan koma jika lebih dari 1 admin
+                Ketik <code>/myid</code> atau <code>/id</code> di bot setelah webhook aktif (pisahkan koma jika &gt;1 admin)
               </p>
             </div>
             <div className="sm:col-span-8">
@@ -571,7 +629,7 @@ export function AdminTelegramSettingsPanel({
             Buat bot baru via <strong>@BotFather</strong> di Telegram dengan perintah <code>/newbot</code>, lalu salin <strong>Bot Token</strong>.
           </li>
           <li>
-            Buka bot baru Anda lalu tekan <strong>Start</strong>. Untuk melihat <strong>Admin Chat ID</strong>, Anda bisa cek via <strong>@userinfobot</strong> atau ketik <code>/id</code> setelah webhook terpasang.
+            Buka bot baru Anda lalu tekan <strong>Start</strong>. Untuk melihat <strong>Admin Chat ID</strong>, Anda bisa cek via <strong>@userinfobot</strong> atau ketik <code>/myid</code> / <code>/id</code> setelah webhook terpasang.
           </li>
           <li>
             Centang <strong>Aktifkan Integrasi Bot Telegram</strong>, masukkan Token &amp; Chat ID, klik <strong>Simpan Pengaturan Bot</strong>, lalu tes dengan <strong>Kirim Pesan Tes</strong>.

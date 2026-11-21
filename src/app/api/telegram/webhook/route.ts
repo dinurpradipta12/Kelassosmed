@@ -172,7 +172,7 @@ export async function POST(request: Request) {
       const chatId = msg.chat.id;
       const command = msg.text.trim().split(/\s+/)[0].toLowerCase().split("@")[0];
 
-      if (command === "/id") {
+      if (command === "/id" || command === "/myid") {
         await sendTelegramMessage(
           config.botToken,
           chatId,
@@ -190,7 +190,16 @@ export async function POST(request: Request) {
         await sendTelegramMessage(
           config.botToken,
           chatId,
-          "⛔ Chat ini belum terdaftar sebagai Admin Chat ID pada Ruang Sosmed 2.0.\nKetik <code>/id</code> untuk menyalin Chat ID Anda."
+          [
+            "👋 <b>Bot Ruang Sosmed 2.0 Terhubung!</b>",
+            "",
+            "Chat ini belum terdaftar sebagai <b>Admin Chat ID</b>.",
+            "",
+            "🆔 <b>Chat ID Telegram Anda:</b>",
+            `<code>${chatId}</code>`,
+            "",
+            "Salin angka di atas lalu tempel di <b>Admin Studio → Pengaturan → Bot Telegram &amp; Notifikasi → Admin Chat ID</b>, kemudian klik <b>Simpan Pengaturan Bot</b>.",
+          ].join("\n")
         );
         return NextResponse.json({ ok: true }, { headers: API_SECURITY_HEADERS });
       }
@@ -205,7 +214,7 @@ export async function POST(request: Request) {
             "Perintah tersedia:",
             "• /pending — Lihat &amp; konfirmasi pembayaran tertunda",
             "• /stats — Ringkasan member &amp; antrean PRO",
-            "• /id — Tampilkan Chat ID saat ini",
+            "• /myid atau /id — Tampilkan Chat ID saat ini",
             "• /help — Tampilkan panduan ini",
           ].join("\n")
         );
