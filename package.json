@@ -4,12 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "rm -rf .next/standalone .next/static .next/server .next/BUILD_ID && next build",
     "start": "next start",
     "lint": "next lint",
-    "build:cf": "opennextjs-cloudflare build",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "build:cf": "rm -rf .next/standalone .next/static .next/server .next/BUILD_ID .open-next && opennextjs-cloudflare build",
+    "preview": "rm -rf .next/standalone .next/static .next/server .next/BUILD_ID .open-next && opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "rm -rf .next/standalone .next/static .next/server .next/BUILD_ID .open-next && opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.20.17",
