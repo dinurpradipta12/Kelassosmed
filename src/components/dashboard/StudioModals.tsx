@@ -284,6 +284,7 @@ interface UpgradePlanModalProps {
   activePackageName?: string | null;
   activeTierKind?: PackageTierKind;
   preselectedPackageId?: string;
+  initialBillingCycle?: "3d_trial" | "7d_trial" | "30d";
   canTestFreeToggle?: boolean;
   previewTier?: "auto" | "free" | "basic" | "pro";
   onSelectPreviewTier?: (tier: "auto" | "free" | "basic" | "pro") => void;
@@ -305,6 +306,7 @@ export function UpgradePlanModal({
   activePackageName = null,
   activeTierKind = "free",
   preselectedPackageId,
+  initialBillingCycle,
   canTestFreeToggle = false,
   previewTier = "auto",
   onSelectPreviewTier,
@@ -419,8 +421,28 @@ export function UpgradePlanModal({
           : (freshPaid.find((p) => p.highlighted) ||
               freshPaid[freshPaid.length - 1] ||
               freshPkgs[0])?.id || "pkg-pro";
+      const targetPkg =
+        freshPkgs.find((p) => p.id === targetPre) ||
+        freshPaid[0] ||
+        freshPkgs[0];
+      const nextCycle: "3d_trial" | "7d_trial" | "30d" =
+        hasUsedTrial || targetPkg?.isFreeTier
+          ? "30d"
+          : initialBillingCycle === "3d_trial" &&
+            targetPkg?.enable3DayTrial !== false
+          ? "3d_trial"
+          : initialBillingCycle === "7d_trial" &&
+            targetPkg?.enable7DayTrial !== false
+          ? "7d_trial"
+          : initialBillingCycle === "30d"
+          ? "30d"
+          : targetPkg?.enable3DayTrial !== false
+          ? "3d_trial"
+          : targetPkg?.enable7DayTrial !== false
+          ? "7d_trial"
+          : "30d";
       setSelectedPackageId(targetPre);
-      setBillingCycle((prev) => (hasUsedTrial ? "30d" : prev));
+      setBillingCycle(nextCycle);
       setStep(isProActive && activeTierKind === "pro" ? "overview" : initialStep);
       setPaymentMethod("qris");
       setBuyerName(defaultBuyerName || "");
@@ -432,6 +454,7 @@ export function UpgradePlanModal({
   }, [
     open,
     initialStep,
+    initialBillingCycle,
     isProActive,
     hasUsedTrial,
     activeTierKind,
@@ -477,7 +500,13 @@ export function UpgradePlanModal({
     const lines = [
       "Halo Admin Ruang Sosmed 2.0,",
       `Saya telah melakukan pembayaran paket *${selectedPkg.name}* (${selectedPkg.badge || cfg.badgeText})`,
-      `Durasi: *${effectiveCycle === "7d_trial" ? "Percobaan 7 Hari (1×)" : "Langganan 30 Hari (1 Bulan)"}*`,
+      `Durasi: *${
+        effectiveCycle === "3d_trial"
+          ? "Percobaan 3 Hari (1×)"
+          : effectiveCycle === "7d_trial"
+          ? "Percobaan 7 Hari (1×)"
+          : "Langganan 30 Hari (1 Bulan)"
+      }*`,
       `Nominal: *${selectedPricing.priceText} ${selectedPricing.periodText}*`,
       `Metode: *${paymentMethod === "qris" ? "Scan QRIS" : `Transfer ${cfg.bankName}`}*`,
       buyerName.trim() ? `Nama: ${buyerName.trim()}` : null,
@@ -535,6 +564,11 @@ export function UpgradePlanModal({
               <span>Ganti Paket / Lihat Perbandingan</span>
             </button>
             <div className="flex items-center gap-1.5">
+              {effectiveCycle === "3d_trial" && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                  Trial 3 Hari (1×)
+                </span>
+              )}
               {effectiveCycle === "7d_trial" && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
                   Trial 7 Hari (1×)
@@ -547,10 +581,119 @@ export function UpgradePlanModal({
             </div>
           </div>
 
+          {/* Interactive Trial vs Monthly Cycle Switcher directly inside Payment step */}
+          {(() => {
+            const canPkg3d =
+              !hasUsedTrial && selectedPkg.enable3DayTrial !== false;
+            const canPkg7d =
+              !hasUsedTrial && selectedPkg.enable7DayTrial !== false;
+            const monthlyBase = Math.max(
+              0,
+              Number(
+                selectedPkg.monthlyPriceIdr ??
+                  parseIdrFromLabel(selectedPkg.priceLabel) ??
+                  150000
+              )
+            );
+            const t3Price = computeTrial3DaysPriceIdr(
+              monthlyBase,
+              selectedPkg.trial3DaysPriceIdr
+            );
+            const t7Price = computeTrial7DaysPriceIdr(
+              monthlyBase,
+              selectedPkg.trial7DaysPriceIdr
+            );
+            if (!canPkg3d && !canPkg7d) return null;
+            return (
+              <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="font-bold text-[#121215]">
+                    Pilih Durasi Pembayaran:
+                  </span>
+                  <span className="text-[10px] font-semibold text-emerald-700">
+                    Trial 1× berlaku khusus member baru
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  {canPkg3d && (
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle("3d_trial")}
+                      className={`rounded-lg px-2.5 py-2 text-left border transition-colors cursor-pointer ${
+                        effectiveCycle === "3d_trial"
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                          : "bg-white text-[#121215] border-[#EAECEF] hover:border-emerald-400"
+                      }`}
+                    >
+                      <p className="text-[11px] font-bold">Trial 3 Hari (1×)</p>
+                      <p
+                        className={`text-[10px] font-semibold tabular-nums ${
+                          effectiveCycle === "3d_trial"
+                            ? "text-emerald-100"
+                            : "text-emerald-700"
+                        }`}
+                      >
+                        {formatIdr(t3Price)}
+                      </p>
+                    </button>
+                  )}
+                  {canPkg7d && (
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle("7d_trial")}
+                      className={`rounded-lg px-2.5 py-2 text-left border transition-colors cursor-pointer ${
+                        effectiveCycle === "7d_trial"
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                          : "bg-white text-[#121215] border-[#EAECEF] hover:border-emerald-400"
+                      }`}
+                    >
+                      <p className="text-[11px] font-bold">Trial 7 Hari (1×)</p>
+                      <p
+                        className={`text-[10px] font-semibold tabular-nums ${
+                          effectiveCycle === "7d_trial"
+                            ? "text-emerald-100"
+                            : "text-emerald-700"
+                        }`}
+                      >
+                        {formatIdr(t7Price)}
+                      </p>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setBillingCycle("30d")}
+                    className={`rounded-lg px-2.5 py-2 text-left border transition-colors cursor-pointer ${
+                      effectiveCycle === "30d"
+                        ? "bg-[#4F39F6] text-white border-[#4F39F6] shadow-2xs"
+                        : "bg-white text-[#121215] border-[#EAECEF] hover:border-[#4F39F6]/50"
+                    }`}
+                  >
+                    <p className="text-[11px] font-bold">30 Hari (Bulanan)</p>
+                    <p
+                      className={`text-[10px] font-semibold tabular-nums ${
+                        effectiveCycle === "30d"
+                          ? "text-indigo-100"
+                          : "text-[#4F39F6]"
+                      }`}
+                    >
+                      {formatIdr(monthlyBase)}
+                    </p>
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="rounded-xl bg-[#FFFBEB] border border-[#FDE68A] p-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#92400E]">
-                Total Pembayaran ({effectiveCycle === "7d_trial" ? "Trial 7 Hari" : "30 Hari / 1 Bulan"})
+                Total Pembayaran (
+                {effectiveCycle === "3d_trial"
+                  ? "Trial 3 Hari"
+                  : effectiveCycle === "7d_trial"
+                  ? "Trial 7 Hari"
+                  : "30 Hari / 1 Bulan"}
+                )
               </p>
               <p className="text-xl font-extrabold text-[#121215]">
                 {selectedPricing.priceText}
@@ -558,6 +701,23 @@ export function UpgradePlanModal({
                   {selectedPricing.periodText}
                 </span>
               </p>
+              {isTrialBillingCycle(effectiveCycle) ? (
+                <p className="text-[10px] font-medium text-[#78350F] mt-1">
+                  Khusus member baru (1× pakai) • Bulan berikutnya{" "}
+                  {formatIdr(
+                    Number(
+                      selectedPkg.monthlyPriceIdr ??
+                        parseIdrFromLabel(selectedPkg.priceLabel) ??
+                        150000
+                    )
+                  )}{" "}
+                  / 30 hari
+                </p>
+              ) : hasUsedTrial ? (
+                <p className="text-[10px] font-medium text-[#78350F] mt-1">
+                  Trial 1× sudah pernah digunakan — berlaku tarif langganan 30 hari.
+                </p>
+              ) : null}
             </div>
             <div className="text-right text-[11px] text-[#78350F]">
               <p className="font-bold">{selectedPkg.badge}</p>

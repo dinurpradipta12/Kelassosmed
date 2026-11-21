@@ -277,6 +277,11 @@ function RuangSosmedStudioInner() {
   const [upgradeModalStep, setUpgradeModalStep] = useState<
     "overview" | "payment"
   >("overview");
+  const [upgradePreselectedPackageId, setUpgradePreselectedPackageId] =
+    useState<string | undefined>(undefined);
+  const [upgradeInitialCycle, setUpgradeInitialCycle] = useState<
+    "3d_trial" | "7d_trial" | "30d" | undefined
+  >(undefined);
   const [gradingQuiz, setGradingQuiz] = useState<UngradedQuizItem | null>(null);
   const [assigningItem, setAssigningItem] =
     useState<ExplorerContentItem | null>(null);
@@ -1143,10 +1148,14 @@ function RuangSosmedStudioInner() {
         <LearnerPortalView
           currentUser={currentUser}
           onOpenUpgradeModal={() => {
+            setUpgradePreselectedPackageId(undefined);
+            setUpgradeInitialCycle(undefined);
             setUpgradeModalStep("overview");
             setUpgradeModalOpen(true);
           }}
-          onStartUpgradePayment={() => {
+          onStartUpgradePayment={(opts) => {
+            setUpgradePreselectedPackageId(opts?.packageId);
+            setUpgradeInitialCycle(opts?.billingCycle);
             setUpgradeModalStep("payment");
             setUpgradeModalOpen(true);
           }}
@@ -1623,6 +1632,8 @@ function RuangSosmedStudioInner() {
         activePackageId={learnerPackageId || learnerAccess.activePackage?.id}
         activePackageName={learnerPackageName || learnerAccess.activePackage?.name}
         activeTierKind={learnerAccess.tierKind}
+        preselectedPackageId={upgradePreselectedPackageId}
+        initialBillingCycle={upgradeInitialCycle}
         canTestFreeToggle={isCurrentUserAdmin}
         previewTier={adminPreviewTierOverride}
         onSelectPreviewTier={(tier) => setAdminPreviewTier(tier)}

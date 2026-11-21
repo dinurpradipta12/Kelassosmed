@@ -78,7 +78,10 @@ import {
 interface LearnerPortalViewProps {
   currentUser?: AuthenticatedUser | null;
   onOpenUpgradeModal?: () => void;
-  onStartUpgradePayment?: () => void;
+  onStartUpgradePayment?: (opts?: {
+    packageId?: string;
+    billingCycle?: "3d_trial" | "7d_trial" | "30d";
+  }) => void;
   onShowToast: (msg: string) => void;
   onSwitchToAdmin?: () => void;
   onLogout?: () => void;
@@ -979,6 +982,9 @@ export function LearnerPortalView({
   // Right-side Learner PRO Push Promo Panel state + 5-minute recurring reminder while !learnerIsPro
   const [proPushOpen, setProPushOpen] = useState<boolean>(true);
   const [proPanelHiddenAttr, setProPanelHiddenAttr] = useState<boolean>(false);
+  const [promoBillingCycle, setPromoBillingCycle] = useState<
+    "3d_trial" | "7d_trial" | "30d" | null
+  >(null);
 
   useEffect(() => {
     if (learnerIsPro) {
@@ -1714,16 +1720,29 @@ export function LearnerPortalView({
     const canOffer7dTrial =
       !learnerHasUsedTrial && promoPkg?.enable7DayTrial !== false;
     const canOfferTrial = canOffer3dTrial || canOffer7dTrial;
+    const activePromoCycle: "3d_trial" | "7d_trial" | "30d" = learnerHasUsedTrial
+      ? "30d"
+      : promoBillingCycle === "3d_trial" && canOffer3dTrial
+      ? "3d_trial"
+      : promoBillingCycle === "7d_trial" && canOffer7dTrial
+      ? "7d_trial"
+      : promoBillingCycle === "30d"
+      ? "30d"
+      : canOffer3dTrial
+      ? "3d_trial"
+      : canOffer7dTrial
+      ? "7d_trial"
+      : "30d";
     const promoMonthlyIdr = Number(promoPkg?.monthlyPriceIdr ?? 150000);
     const promoPriceDisplay = promoPkg
-      ? canOffer3dTrial
+      ? activePromoCycle === "3d_trial"
         ? formatIdr(
             computeTrial3DaysPriceIdr(
               promoMonthlyIdr,
               promoPkg.trial3DaysPriceIdr
             )
           )
-        : canOffer7dTrial
+        : activePromoCycle === "7d_trial"
         ? formatIdr(
             computeTrial7DaysPriceIdr(
               promoMonthlyIdr,
@@ -1732,13 +1751,14 @@ export function LearnerPortalView({
           )
         : formatIdr(promoMonthlyIdr)
       : activeProCfg.priceLabel;
-    const promoPeriodDisplay = canOffer3dTrial
-      ? "/ 3 hari trial (1×)"
-      : canOffer7dTrial
-      ? "/ 7 hari trial (1×)"
-      : promoPkg
-      ? "/ 30 hari"
-      : activeProCfg.bannerPeriodLabel;
+    const promoPeriodDisplay =
+      activePromoCycle === "3d_trial"
+        ? "/ 3 hari trial (1×)"
+        : activePromoCycle === "7d_trial"
+        ? "/ 7 hari trial (1×)"
+        : promoPkg
+        ? "/ 30 hari"
+        : activeProCfg.bannerPeriodLabel;
     const promoFeatures =
       promoPkg?.features && promoPkg.features.length > 0
         ? promoPkg.features
@@ -1775,25 +1795,69 @@ export function LearnerPortalView({
             {activeProCfg.bannerHeading}
           </h2>
 
-          {/* Single-Baseline Price Card (Zero Button Inside) */}
-          <div className="rounded-xl bg-white/95 px-3.5 py-2.5 border border-[#F59E0B]/30 shadow-2xs flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#92400E]">
-                {promoPkg?.name || "Learner Pass"} • Free / Basic / Pro
-              </p>
-              <div className="flex items-baseline gap-1 mt-0.5 whitespace-nowrap">
-                <span className="text-lg font-black tracking-tight text-[#121215] tabular-nums">
-                  {promoPriceDisplay}
-                </span>
-                <span className="text-[11px] font-semibold text-[#78350F]">
-                  {promoPeriodDisplay}
-                </span>
+          {/* Single-Baseline Price Card + Quick Trial Cycle Switcher */}
+          <div className="rounded-xl bg-white/95 px-3.5 py-2.5 border border-[#F59E0B]/30 shadow-2xs space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#92400E]">
+                  {promoPkg?.name || "Learner Pass"} • Free / Basic / Pro
+                </p>
+                <div className="flex items-baseline gap-1 mt-0.5 whitespace-nowrap">
+                  <span className="text-lg font-black tracking-tight text-[#121215] tabular-nums">
+                    {promoPriceDisplay}
+                  </span>
+                  <span className="text-[11px] font-semibold text-[#78350F]">
+                    {promoPeriodDisplay}
+                  </span>
+                </div>
               </div>
+
+              <span className="shrink-0 rounded-full bg-[#FEF3C7] border border-[#F59E0B]/35 px-2.5 py-1 text-[10px] font-bold text-[#92400E]">
+                {activePromoCycle === "30d" ? "Bulanan" : "Trial 1×"}
+              </span>
             </div>
 
-            <span className="shrink-0 rounded-full bg-[#FEF3C7] border border-[#F59E0B]/35 px-2.5 py-1 text-[10px] font-bold text-[#92400E]">
-              {canOfferTrial ? "Trial 1×" : "Bulanan"}
-            </span>
+            {canOfferTrial && (
+              <div className="flex flex-wrap items-center gap-1 pt-1.5 border-t border-[#FDE68A]/70">
+                {canOffer3dTrial && (
+                  <button
+                    type="button"
+                    onClick={() => setPromoBillingCycle("3d_trial")}
+                    className={`rounded-md px-2 py-1 text-[10px] font-bold transition-colors cursor-pointer ${
+                      activePromoCycle === "3d_trial"
+                        ? "bg-[#121215] text-white"
+                        : "bg-[#FFFBEB] text-[#92400E] hover:bg-[#FEF3C7]"
+                    }`}
+                  >
+                    3 Hari Trial
+                  </button>
+                )}
+                {canOffer7dTrial && (
+                  <button
+                    type="button"
+                    onClick={() => setPromoBillingCycle("7d_trial")}
+                    className={`rounded-md px-2 py-1 text-[10px] font-bold transition-colors cursor-pointer ${
+                      activePromoCycle === "7d_trial"
+                        ? "bg-[#121215] text-white"
+                        : "bg-[#FFFBEB] text-[#92400E] hover:bg-[#FEF3C7]"
+                    }`}
+                  >
+                    7 Hari Trial
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPromoBillingCycle("30d")}
+                  className={`rounded-md px-2 py-1 text-[10px] font-bold transition-colors cursor-pointer ${
+                    activePromoCycle === "30d"
+                      ? "bg-[#4F39F6] text-white"
+                      : "bg-[#F8F9FB] text-[#5E5E5E] hover:bg-[#EAECEF]"
+                  }`}
+                >
+                  30 Hari
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1825,7 +1889,10 @@ export function LearnerPortalView({
               type="button"
               onClick={() =>
                 onStartUpgradePayment
-                  ? onStartUpgradePayment()
+                  ? onStartUpgradePayment({
+                      packageId: promoPkg?.id,
+                      billingCycle: activePromoCycle,
+                    })
                   : onOpenUpgradeModal?.()
               }
               className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] py-2.5 px-4 text-xs font-bold text-white shadow-[0_2px_8px_rgba(79,57,246,0.28)] transition-all cursor-pointer"
