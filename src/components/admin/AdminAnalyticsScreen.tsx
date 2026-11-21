@@ -1,18 +1,29 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Download,
-  TrendingUp,
   Award,
-  Users,
-  CheckCircle2,
-  Star,
-  ClipboardCheck,
   BarChart3,
+  CheckCircle2,
+  ClipboardCheck,
+  Download,
+  Eye,
+  FolderOpen,
+  RefreshCw,
+  Star,
+  TrendingUp,
+  Users,
+  Zap,
 } from "lucide-react";
 import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
 import { OfficialCertificateModal } from "@/components/certificate/OfficialCertificateModal";
+import { ModalDialog } from "@/components/ui/ModalDialog";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  formatIndoDate,
+  isMissingSubDateColumnError,
+  isProSubscriptionActive,
+} from "@/lib/subscription-utils";
 
 interface AdminAnalyticsScreenProps {
   onOpenGradingCenter: () => void;
@@ -20,41 +31,133 @@ interface AdminAnalyticsScreenProps {
   onOpenCertificateStudio?: () => void;
 }
 
-const COMPLETION_TIME_SERIES = [
-  { label: "May '26", completionPct: 61, enrolled: 94 },
-  { label: "Jun '26", completionPct: 66, enrolled: 108 },
-  { label: "Jul '26", completionPct: 70, enrolled: 116 },
-  { label: "Aug '26", completionPct: 74, enrolled: 125 },
-  { label: "Sep '26", completionPct: 79, enrolled: 134 },
-  { label: "Oct '26", completionPct: 84, enrolled: 142 },
-];
+interface AnalyticsProfileRow {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  role: string | null;
+  job_title: string | null;
+  subscription_tier: string | null;
+  pro_expires_at?: string | null;
+  pro_package_name?: string | null;
+  total_points: number | null;
+  created_at: string | null;
+}
 
-const QUIZ_SCORE_DISTRIBUTION = [
-  {
-    band: "90% – 100% (Distinction)",
-    learnersCount: 54,
-    percentage: 38,
-    color: "#10B981",
-  },
-  {
-    band: "80% – 89% (Passed)",
-    learnersCount: 61,
-    percentage: 43,
-    color: "#4F39F6",
-  },
-  {
-    band: "70% – 79% (Near Threshold)",
-    learnersCount: 17,
-    percentage: 12,
-    color: "#F59E0B",
-  },
-  {
-    band: "< 70% (Retake Scheduled)",
-    learnersCount: 10,
-    percentage: 7,
-    color: "#EF4444",
-  },
-];
+interface AnalyticsEnrollmentRow {
+  id: string;
+  learner_id: string;
+  content_id: string;
+  status: string | null;
+  progress_percent: number | null;
+  completed_chapter_ids: string[] | null;
+  assigned_at: string | null;
+  updated_at: string | null;
+}
+
+interface AnalyticsSubmissionRow {
+  id: string;
+  content_id: string;
+  learner_id: string;
+  answers_json: unknown;
+  score_percent: number | null;
+  grading_status: string | null;
+  mentor_feedback: string | null;
+  submitted_at: string | null;
+  graded_at: string | null;
+}
+
+interface AnalyticsContentRow {
+  id: string;
+  title: string | null;
+  type: string | null;
+  folder_name: string | null;
+  status: string | null;
+}
+
+interface CompiledAnalyticsLearner {
+  id: string;
+  rank: number;
+  name: string;
+  email: string;
+  role: string;
+  initials: string;
+  avatarUrl?: string;
+  avatarBg: string;
+  avatarText: string;
+  isPro: boolean;
+  packageName?: string | null;
+  points: number;
+  folders: string[];
+  cohortLabel: string;
+  enrolledCoursesCount: number;
+  completedChapters: number;
+  totalChapters: number;
+  completionPct: number;
+  submissionsCount: number;
+  avgQuizScore: number | null;
+  certificateEligible: boolean;
+  credentialId: string;
+  createdAt?: string | null;
+}
+
+interface ParsedSubmissionAnswer {
+  questionTitle: string;
+  learnerResponse: string;
+  maxPoints?: number;
+  awardedPoints?: number;
+}
+
+let analyticsProfilesHasSubDateCols = true;
+
+function getInitials(name: string): string {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "LN";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function buildCredentialId(id: string, createdAt?: string | null): string {
+  const year = createdAt ? new Date(createdAt).getFullYear() : 2026;
+  const safeYear = Number.isFinite(year) && year > 2020 ? year : 2026;
+  const cleanSuffix = (id || "0001")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(-4)
+    .toUpperCase()
+    .padStart(4, "0");
+  return `RS2-${safeYear}-${cleanSuffix}`;
+}
+
+function parseAnswersJson(raw: unknown): ParsedSubmissionAnswer[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((entry): entry is Record<string, unknown> =>
+      Boolean(entry && typeof entry === "object")
+    )
+    .map((entry, idx) => ({
+      questionTitle:
+        typeof entry.questionTitle === "string" && entry.questionTitle.trim()
+          ? entry.questionTitle.trim()
+          : typeof entry.prompt === "string" && entry.prompt.trim()
+          ? entry.prompt.trim()
+          : `Pertanyaan #${idx + 1}`,
+      learnerResponse:
+        typeof entry.learnerResponse === "string"
+          ? entry.learnerResponse
+          : typeof entry.answer === "string"
+          ? entry.answer
+          : typeof entry.response === "string"
+          ? entry.response
+          : JSON.stringify(entry),
+      maxPoints:
+        typeof entry.maxPoints === "number" ? entry.maxPoints : undefined,
+      awardedPoints:
+        typeof entry.awardedPoints === "number"
+          ? entry.awardedPoints
+          : undefined,
+    }));
+}
 
 export function AdminAnalyticsScreen({
   onOpenGradingCenter,
@@ -65,14 +168,26 @@ export function AdminAnalyticsScreen({
     leaderboard,
     assignees,
     explorerItems,
-    gradingSubmissions,
+    courseCurriculums,
     cohortProjects,
-    certificateUnlocked,
+    learnerSubscriptions,
+    resolveUserAvatar,
+    resolveUserPoints,
   } = useRuangSosmedStore();
 
-  const hasData = leaderboard.length > 0;
-
   const [selectedCohort, setSelectedCohort] = useState("All Cohorts");
+  const [chartTab, setChartTab] = useState<"courses" | "signups">("courses");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [dbProfiles, setDbProfiles] = useState<AnalyticsProfileRow[]>([]);
+  const [dbEnrollments, setDbEnrollments] = useState<AnalyticsEnrollmentRow[]>(
+    []
+  );
+  const [dbSubmissions, setDbSubmissions] = useState<AnalyticsSubmissionRow[]>(
+    []
+  );
+  const [dbContents, setDbContents] = useState<AnalyticsContentRow[]>([]);
+
   const [certPreviewLearner, setCertPreviewLearner] = useState<{
     name: string;
     role: string;
@@ -80,118 +195,646 @@ export function AdminAnalyticsScreen({
     scoreLabel: string;
   } | null>(null);
 
-  // Trenning Reference Quiz Report Matrix & Individual Quiz Result Modal (ref_14, ref_14a, ref_14b)
-  const [quizReportTab, setQuizReportTab] = useState<"overview" | "questions">("overview");
-  const [selectedQuizResultLearner, setSelectedQuizResultLearner] = useState<{
-    name: string;
-    role: string;
-    accuracy: number;
-    points: number;
-  } | null>(null);
-  const [selectedGridQuestionNum, setSelectedGridQuestionNum] = useState<number>(4);
+  const [selectedSubmission, setSelectedSubmission] =
+    useState<AnalyticsSubmissionRow | null>(null);
+
+  const fetchLiveAnalytics = useCallback(async (showSpinner = false) => {
+    if (!isSupabaseConfigured) return;
+    if (showSpinner) setIsRefreshing(true);
+
+    try {
+      const fetchProfiles = async () => {
+        if (analyticsProfilesHasSubDateCols) {
+          const res = await supabase
+            .from("profiles")
+            .select(
+              "id, full_name, email, avatar_url, role, job_title, subscription_tier, pro_expires_at, pro_package_name, total_points, created_at"
+            )
+            .order("created_at", { ascending: false })
+            .limit(300);
+          if (!res.error) return res;
+          if (isMissingSubDateColumnError(res.error)) {
+            analyticsProfilesHasSubDateCols = false;
+          } else {
+            return res;
+          }
+        }
+        return supabase
+          .from("profiles")
+          .select(
+            "id, full_name, email, avatar_url, role, job_title, subscription_tier, total_points, created_at"
+          )
+          .order("created_at", { ascending: false })
+          .limit(300);
+      };
+
+      const [profilesRes, enrollRes, subRes, contentsRes] = await Promise.all([
+        fetchProfiles(),
+        supabase
+          .from("enrollments")
+          .select(
+            "id, learner_id, content_id, status, progress_percent, completed_chapter_ids, assigned_at, updated_at"
+          )
+          .limit(1000),
+        supabase
+          .from("submissions")
+          .select(
+            "id, content_id, learner_id, answers_json, score_percent, grading_status, mentor_feedback, submitted_at, graded_at"
+          )
+          .order("submitted_at", { ascending: false })
+          .limit(500),
+        supabase
+          .from("contents")
+          .select("id, title, type, folder_name, status")
+          .limit(500),
+      ]);
+
+      if (Array.isArray(profilesRes.data)) {
+        setDbProfiles(profilesRes.data as AnalyticsProfileRow[]);
+      }
+      if (Array.isArray(enrollRes.data)) {
+        setDbEnrollments(enrollRes.data as AnalyticsEnrollmentRow[]);
+      }
+      if (Array.isArray(subRes.data)) {
+        setDbSubmissions(subRes.data as AnalyticsSubmissionRow[]);
+      }
+      if (Array.isArray(contentsRes.data)) {
+        setDbContents(contentsRes.data as AnalyticsContentRow[]);
+      }
+    } catch {
+      // Graceful fallback if offline
+    } finally {
+      if (showSpinner) setIsRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!selectedQuizResultLearner) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setSelectedQuizResultLearner(null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedQuizResultLearner]);
+    void fetchLiveAnalytics(false);
+    if (typeof window === "undefined") return;
 
-  // Merge leaderboard & assignees for Most Active Learners table
-  const mostActiveLearners = leaderboard.map((learner, idx) => {
-    const matchedAssignee = assignees.find(
-      (a) => a.name.toLowerCase() === learner.name.toLowerCase()
+    const handlePointsUpdated = (ev: Event) => {
+      const detail = (ev as CustomEvent<{
+        newTotal?: number;
+        learnerEmail?: string;
+        learnerName?: string;
+      }>).detail;
+      if (detail && typeof detail.newTotal === "number") {
+        const targetEmail = (detail.learnerEmail || "").trim().toLowerCase();
+        const targetName = (detail.learnerName || "").trim().toLowerCase();
+        setDbProfiles((prev) =>
+          prev.map((p) => {
+            const pEmail = (p.email || "").trim().toLowerCase();
+            const pName = (p.full_name || "").trim().toLowerCase();
+            if (
+              (targetEmail && pEmail === targetEmail) ||
+              (targetName && pName === targetName)
+            ) {
+              return { ...p, total_points: Math.max(0, detail.newTotal!) };
+            }
+            return p;
+          })
+        );
+      }
+      window.setTimeout(() => {
+        void fetchLiveAnalytics(false);
+      }, 450);
+    };
+
+    window.addEventListener("ruang_sosmed_points_awarded", handlePointsUpdated);
+    let bc: BroadcastChannel | null = null;
+    if ("BroadcastChannel" in window) {
+      try {
+        bc = new BroadcastChannel("ruang_sosmed_channel");
+        bc.onmessage = (event) => {
+          if (event.data?.type === "USER_POINTS_UPDATED") {
+            void fetchLiveAnalytics(false);
+          }
+        };
+      } catch {}
+    }
+
+    return () => {
+      window.removeEventListener(
+        "ruang_sosmed_points_awarded",
+        handlePointsUpdated
+      );
+      try {
+        bc?.close();
+      } catch {}
+    };
+  }, [fetchLiveAnalytics]);
+
+  // Content Lookup Map (excluding __SYSTEM_% meta rows)
+  const contentById = useMemo(() => {
+    const map = new Map<string, AnalyticsContentRow>();
+    dbContents.forEach((c) => {
+      if (!c.id) return;
+      if (String(c.title || "").startsWith("__SYSTEM_")) return;
+      map.set(c.id, c);
+    });
+    return map;
+  }, [dbContents]);
+
+  const activeCatalogItems = useMemo(
+    () =>
+      (explorerItems || []).filter(
+        (item) =>
+          !item.isArchived &&
+          item.type !== "Folder" &&
+          !String(item.title || "").startsWith("__SYSTEM_")
+      ),
+    [explorerItems]
+  );
+
+  const getCourseChapterCountByTitle = useCallback(
+    (title?: string | null): number => {
+      if (!title) return 0;
+      const key = title.trim().toLowerCase();
+      const secs = courseCurriculums?.[key] ?? courseCurriculums?.[title];
+      if (Array.isArray(secs) && secs.length > 0) {
+        return secs.reduce((sum, s) => sum + (s.chapters?.length || 0), 0);
+      }
+      return 0;
+    },
+    [courseCurriculums]
+  );
+
+  // Deduplicated folder filter options from real contents & cohorts
+  const cohortOptions = useMemo(() => {
+    const set = new Set<string>();
+    (cohortProjects || []).forEach((p) => {
+      const n = (p.name || "").trim();
+      if (n) set.add(n);
+    });
+    dbContents.forEach((c) => {
+      if (String(c.title || "").startsWith("__SYSTEM_")) return;
+      const fn = (c.folder_name || "").trim();
+      if (fn) set.add(fn);
+    });
+    activeCatalogItems.forEach((item) => {
+      const fn = (item.folderName || "").trim();
+      if (fn) set.add(fn);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [cohortProjects, dbContents, activeCatalogItems]);
+
+  // Compile 100% Real Learners (live Supabase profiles authoritative, fallback to store only when offline/empty)
+  const realLearners = useMemo<CompiledAnalyticsLearner[]>(() => {
+    const nonAdminProfiles = dbProfiles.filter(
+      (p) => String(p.role || "").trim().toLowerCase() !== "admin"
     );
-    const completedCh = matchedAssignee?.completedChapters ?? 0;
-    const totalCh = matchedAssignee?.totalChapters ?? (completedCh > 0 ? completedCh : 1);
-    const learnerSubs = gradingSubmissions.filter(
-      (s) =>
-        s.learner.name.toLowerCase() === learner.name.toLowerCase() &&
-        s.status === "Passed"
+
+    let rawList: Omit<CompiledAnalyticsLearner, "rank">[] = [];
+
+    if (nonAdminProfiles.length > 0) {
+      rawList = nonAdminProfiles.map((p) => {
+        const name =
+          (p.full_name || "").trim() ||
+          (p.email || "").split("@")[0] ||
+          "Learner";
+        const emailLower = (p.email || "").trim().toLowerCase();
+        const nameLower = name.toLowerCase();
+
+        const storeSubOverride =
+          learnerSubscriptions?.[name] ??
+          learnerSubscriptions?.[nameLower] ??
+          (emailLower ? learnerSubscriptions?.[emailLower] : undefined);
+
+        const isPro =
+          storeSubOverride !== undefined
+            ? storeSubOverride === "PRO"
+            : isProSubscriptionActive(p.subscription_tier, p.pro_expires_at);
+
+        // Real points directly from Supabase `profiles.total_points` (0 stays 0)
+        const points = Math.max(0, Number(p.total_points ?? 0));
+
+        // Real avatar synced via Store + Supabase `profiles.avatar_url`
+        const avatarUrl =
+          resolveUserAvatar(name, p.email || undefined, p.id) ||
+          (typeof p.avatar_url === "string" && p.avatar_url.trim()
+            ? p.avatar_url.trim()
+            : undefined);
+
+        const lbMatch = leaderboard.find(
+          (l) =>
+            l.name.trim().toLowerCase() === nameLower ||
+            (emailLower && l.name.trim().toLowerCase() === emailLower)
+        );
+
+        // Real enrollments & submissions joined by `learner_id`
+        const userEnrollments = dbEnrollments.filter(
+          (e) => e.learner_id === p.id
+        );
+        const userSubmissions = dbSubmissions.filter(
+          (s) => s.learner_id === p.id
+        );
+
+        const folderSet = new Set<string>();
+        let completedChapters = 0;
+        let totalChapters = 0;
+
+        userEnrollments.forEach((e) => {
+          const content = contentById.get(e.content_id);
+          const fName =
+            (content?.folder_name || "").trim() ||
+            (content?.title || "").trim();
+          if (fName) folderSet.add(fName);
+
+          const doneCount = Array.isArray(e.completed_chapter_ids)
+            ? e.completed_chapter_ids.length
+            : 0;
+          completedChapters += doneCount;
+
+          const curCount = getCourseChapterCountByTitle(content?.title);
+          totalChapters += curCount > 0 ? curCount : doneCount;
+        });
+
+        // Also check store explorerItems `assignedLearners` for folder associations
+        activeCatalogItems.forEach((item) => {
+          const assigned = item.assignedLearners || [];
+          const isMatch = assigned.some((a) => {
+            const cleanA = a.trim().toLowerCase();
+            return cleanA === nameLower || (emailLower && cleanA === emailLower);
+          });
+          if (isMatch && item.folderName?.trim()) {
+            folderSet.add(item.folderName.trim());
+          }
+        });
+
+        const folders = Array.from(folderSet);
+        const cohortLabel =
+          folders.length === 0
+            ? "Belum ada kelas"
+            : folders.length === 1
+            ? folders[0]
+            : `${folders[0]} (+${folders.length - 1})`;
+
+        const completionPct =
+          userEnrollments.length > 0
+            ? Math.round(
+                userEnrollments.reduce(
+                  (sum, e) =>
+                    sum +
+                    Math.max(0, Math.min(100, Number(e.progress_percent || 0))),
+                  0
+                ) / userEnrollments.length
+              )
+            : 0;
+
+        const validScores = userSubmissions
+          .map((s) => Number(s.score_percent))
+          .filter((n) => Number.isFinite(n));
+        const avgQuizScore =
+          validScores.length > 0
+            ? Math.round(
+                validScores.reduce((a, b) => a + b, 0) / validScores.length
+              )
+            : null;
+
+        return {
+          id: p.id,
+          name,
+          email: p.email || "",
+          role: p.job_title || "Social Media Specialist",
+          initials: getInitials(name),
+          avatarUrl,
+          avatarBg: lbMatch?.avatarBg || "#EEF2FF",
+          avatarText: lbMatch?.avatarText || "#4F39F6",
+          isPro,
+          packageName: p.pro_package_name || null,
+          points,
+          folders,
+          cohortLabel,
+          enrolledCoursesCount: userEnrollments.length,
+          completedChapters,
+          totalChapters,
+          completionPct,
+          submissionsCount: userSubmissions.length,
+          avgQuizScore,
+          certificateEligible:
+            userEnrollments.length > 0 && completionPct >= 100,
+          credentialId: buildCredentialId(p.id, p.created_at),
+          createdAt: p.created_at,
+        };
+      });
+    } else if (leaderboard.length > 0) {
+      // Offline / unconfigured fallback without hardcoded dummy scores/dates
+      rawList = leaderboard.map((student, idx) => {
+        const key = student.name.trim().toLowerCase();
+        const matchedAssignee = assignees.find(
+          (a) => a.name.trim().toLowerCase() === key
+        );
+        const completedCh = matchedAssignee?.completedChapters ?? 0;
+        const totalCh = matchedAssignee?.totalChapters ?? 0;
+        const completionPct =
+          totalCh > 0
+            ? Math.min(100, Math.round((completedCh / totalCh) * 100))
+            : 0;
+        const isPro =
+          (learnerSubscriptions?.[student.name] ??
+            learnerSubscriptions?.[key]) === "PRO";
+        const points =
+          resolveUserPoints(student.name) ??
+          Math.max(0, Number(student.points ?? 0));
+
+        const folders = Array.from(
+          new Set(
+            activeCatalogItems
+              .filter(
+                (i) =>
+                  i.folderName &&
+                  (i.assignedLearners || []).some(
+                    (a) => a.trim().toLowerCase() === key
+                  )
+              )
+              .map((i) => i.folderName!.trim())
+          )
+        );
+
+        return {
+          id: matchedAssignee?.id || `local-${idx}-${key}`,
+          name: student.name,
+          email: "",
+          role: student.role || "Social Media Specialist",
+          initials: student.initials || getInitials(student.name),
+          avatarUrl: resolveUserAvatar(student.name) || undefined,
+          avatarBg: student.avatarBg || "#EEF2FF",
+          avatarText: student.avatarText || "#4F39F6",
+          isPro,
+          packageName: null,
+          points,
+          folders,
+          cohortLabel: folders[0] || "Belum ada kelas",
+          enrolledCoursesCount: folders.length,
+          completedChapters: completedCh,
+          totalChapters: totalCh,
+          completionPct,
+          submissionsCount: 0,
+          avgQuizScore: null,
+          certificateEligible: completionPct >= 100 && totalCh > 0,
+          credentialId: buildCredentialId(`local${idx + 1}`, null),
+          createdAt: null,
+        };
+      });
+    }
+
+    return rawList
+      .sort(
+        (a, b) =>
+          b.completionPct - a.completionPct ||
+          b.points - a.points ||
+          a.name.localeCompare(b.name)
+      )
+      .map((item, idx) => ({ ...item, rank: idx + 1 }));
+  }, [
+    dbProfiles,
+    dbEnrollments,
+    dbSubmissions,
+    contentById,
+    activeCatalogItems,
+    getCourseChapterCountByTitle,
+    leaderboard,
+    assignees,
+    learnerSubscriptions,
+    resolveUserAvatar,
+    resolveUserPoints,
+  ]);
+
+  const learnerById = useMemo(() => {
+    const map = new Map<string, CompiledAnalyticsLearner>();
+    realLearners.forEach((l) => map.set(l.id, l));
+    return map;
+  }, [realLearners]);
+
+  // Cohort / Folder Filter Applied Consistently Across Tables & Charts
+  const filteredLearners = useMemo(() => {
+    if (selectedCohort === "All Cohorts") return realLearners;
+    return realLearners
+      .filter((l) =>
+        l.folders.some(
+          (f) => f.toLowerCase() === selectedCohort.toLowerCase()
+        )
+      )
+      .map((item, idx) => ({ ...item, rank: idx + 1 }));
+  }, [realLearners, selectedCohort]);
+
+  const filteredLearnerIds = useMemo(
+    () => new Set(filteredLearners.map((l) => l.id)),
+    [filteredLearners]
+  );
+
+  const filteredEnrollments = useMemo(() => {
+    return dbEnrollments.filter((e) => {
+      if (selectedCohort === "All Cohorts") return true;
+      const content = contentById.get(e.content_id);
+      const matchFolder =
+        (content?.folder_name || "").trim().toLowerCase() ===
+        selectedCohort.toLowerCase();
+      return matchFolder || filteredLearnerIds.has(e.learner_id);
+    });
+  }, [dbEnrollments, selectedCohort, contentById, filteredLearnerIds]);
+
+  const filteredSubmissions = useMemo(() => {
+    return dbSubmissions.filter((s) => {
+      if (selectedCohort === "All Cohorts") return true;
+      const content = contentById.get(s.content_id);
+      const matchFolder =
+        (content?.folder_name || "").trim().toLowerCase() ===
+        selectedCohort.toLowerCase();
+      return matchFolder || filteredLearnerIds.has(s.learner_id);
+    });
+  }, [dbSubmissions, selectedCohort, contentById, filteredLearnerIds]);
+
+  // KPI Summary Calculations (100% Real Data)
+  const kpiStats = useMemo(() => {
+    const totalLearners = filteredLearners.length;
+    const proCount = filteredLearners.filter((l) => l.isPro).length;
+    const freeCount = Math.max(0, totalLearners - proCount);
+    const totalPoints = filteredLearners.reduce(
+      (sum, l) => sum + (l.points || 0),
+      0
     );
-    const avgQuizScore =
-      learnerSubs.length > 0
+    const progressingCount = filteredLearners.filter(
+      (l) => l.completedChapters > 0 || l.completionPct > 0
+    ).length;
+
+    const avgCompletionPct =
+      totalLearners > 0
         ? Math.round(
-            learnerSubs.reduce((acc, s) => {
-              const totMax =
-                s.questionsAndAnswers.reduce((m, q) => m + q.maxPoints, 0) || 1;
-              const totAw = s.questionsAndAnswers.reduce(
-                (m, q) => m + q.awardedPoints,
-                0
-              );
-              return acc + Math.round((totAw / totMax) * 100);
-            }, 0) / learnerSubs.length
+            filteredLearners.reduce((sum, l) => sum + l.completionPct, 0) /
+              totalLearners
           )
         : 0;
-    const credentialId = `RS2-2026-849${idx + 2}`;
-    const defaultCohortName =
-      cohortProjects[idx % Math.max(1, cohortProjects.length)]?.name ||
-      "Ruang Sosmed Class";
+
+    const validSubmissionScores = filteredSubmissions
+      .map((s) => Number(s.score_percent))
+      .filter((n) => Number.isFinite(n));
+    const avgQuizScore =
+      validSubmissionScores.length > 0
+        ? Math.round(
+            validSubmissionScores.reduce((a, b) => a + b, 0) /
+              validSubmissionScores.length
+          )
+        : null;
+
+    const eligibleCertCount = filteredLearners.filter(
+      (l) => l.certificateEligible
+    ).length;
 
     return {
-      ...learner,
-      completedChapters: completedCh,
-      totalChapters: totalCh,
-      completionPct: totalCh > 0 ? Math.min(100, Math.round((completedCh / totalCh) * 100)) : 0,
+      totalLearners,
+      proCount,
+      freeCount,
+      totalPoints,
+      progressingCount,
+      avgCompletionPct,
       avgQuizScore,
-      credentialId,
-      cohort: defaultCohortName,
+      eligibleCertCount,
     };
-  });
+  }, [filteredLearners, filteredSubmissions]);
 
-  const liveAvgCompletionPct =
-    mostActiveLearners.length > 0
-      ? Math.round(
-          mostActiveLearners.reduce((sum, l) => sum + l.completionPct, 0) /
-            mostActiveLearners.length
-        )
-      : 0;
+  // Chart 1A: Course Enrollment Progress Breakdown
+  const courseProgressStats = useMemo(() => {
+    const map = new Map<
+      string,
+      { contentId: string; title: string; count: number; totalPct: number }
+    >();
+    filteredEnrollments.forEach((e) => {
+      const content = contentById.get(e.content_id);
+      const title =
+        (content?.title || "").trim() ||
+        `Materi (${e.content_id.slice(0, 6)})`;
+      const prev = map.get(e.content_id) || {
+        contentId: e.content_id,
+        title,
+        count: 0,
+        totalPct: 0,
+      };
+      prev.count += 1;
+      prev.totalPct += Math.max(
+        0,
+        Math.min(100, Number(e.progress_percent || 0))
+      );
+      map.set(e.content_id, prev);
+    });
+    return Array.from(map.values())
+      .map((entry) => ({
+        ...entry,
+        avgPct: entry.count > 0 ? Math.round(entry.totalPct / entry.count) : 0,
+      }))
+      .sort((a, b) => b.count - a.count || b.avgPct - a.avgPct)
+      .slice(0, 6);
+  }, [filteredEnrollments, contentById]);
 
-  const liveAvgQuizScorePct =
-    mostActiveLearners.length > 0
-      ? Math.round(
-          mostActiveLearners.reduce((sum, l) => sum + l.avgQuizScore, 0) /
-            mostActiveLearners.length
-        )
-      : 0;
+  // Chart 1B: Real Monthly Member Signups
+  const monthlySignups = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; label: string; count: number }
+    >();
+    filteredLearners.forEach((l) => {
+      if (!l.createdAt) return;
+      const dt = new Date(l.createdAt);
+      if (Number.isNaN(dt.getTime())) return;
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`;
+      const label = new Intl.DateTimeFormat("id-ID", {
+        month: "short",
+        year: "2-digit",
+      }).format(dt);
+      const prev = map.get(key) || { key, label, count: 0 };
+      prev.count += 1;
+      map.set(key, prev);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .slice(-6);
+  }, [filteredLearners]);
 
-  const activeProgressingCount = mostActiveLearners.filter(
-    (l) => l.completedChapters > 0
-  ).length;
-
-  const hasProgressHistory = mostActiveLearners.some(
-    (l) => l.completedChapters > 0
+  const maxSignupCount = useMemo(
+    () => Math.max(1, ...monthlySignups.map((m) => m.count)),
+    [monthlySignups]
   );
-  const hasQuizSubmissions = gradingSubmissions.length > 0 || liveAvgQuizScorePct > 0;
+
+  // Chart 2: Real Quiz Score Distribution
+  const scoreDistribution = useMemo(() => {
+    const total = filteredSubmissions.length;
+    const bands = [
+      {
+        band: "90% – 100% (Distinction)",
+        count: 0,
+        color: "#10B981",
+      },
+      {
+        band: "80% – 89% (Lulus)",
+        count: 0,
+        color: "#4F39F6",
+      },
+      {
+        band: "70% – 79% (Mendekati Batas)",
+        count: 0,
+        color: "#F59E0B",
+      },
+      {
+        band: "< 70% (Perlu Remedial)",
+        count: 0,
+        color: "#EF4444",
+      },
+    ];
+    filteredSubmissions.forEach((s) => {
+      const score = Number(s.score_percent || 0);
+      if (score >= 90) bands[0].count += 1;
+      else if (score >= 80) bands[1].count += 1;
+      else if (score >= 70) bands[2].count += 1;
+      else bands[3].count += 1;
+    });
+
+    const passedCount = filteredSubmissions.filter(
+      (s) =>
+        String(s.grading_status || "").toLowerCase() === "passed" ||
+        Number(s.score_percent || 0) >= 80
+    ).length;
+
+    return {
+      total,
+      passedCount,
+      passRatePct: total > 0 ? Math.round((passedCount / total) * 100) : 0,
+      bands: bands.map((b) => ({
+        ...b,
+        percentage: total > 0 ? Math.round((b.count / total) * 100) : 0,
+      })),
+    };
+  }, [filteredSubmissions]);
 
   const handleExportCsvReport = () => {
     const headers = [
       "Rank",
-      "Learner Name",
-      "Job Title",
-      "Cohort",
-      "Completed Chapters",
-      "Completion Rate (%)",
-      "Average Quiz Score (%)",
+      "Nama Learner",
+      "Email",
+      "Role / Pekerjaan",
+      "Tier",
+      "Program / Folder",
+      "Bab Selesai",
+      "Progress (%)",
+      "Rata-rata Nilai Kuis (%)",
       "Mastery Points",
-      "Credential ID",
+      "Status Sertifikat",
     ];
 
-    const rows = mostActiveLearners.map((l) => [
+    const rows = filteredLearners.map((l) => [
       l.rank,
       `"${l.name}"`,
+      `"${l.email}"`,
       `"${l.role}"`,
-      `"${l.cohort}"`,
+      l.isPro ? "PRO" : "Free",
+      `"${l.cohortLabel}"`,
       `${l.completedChapters}/${l.totalChapters}`,
       `${l.completionPct}%`,
-      `${l.avgQuizScore}%`,
+      l.avgQuizScore !== null ? `${l.avgQuizScore}%` : "Belum ada",
       l.points,
-      l.credentialId,
+      l.certificateEligible ? `Eligible (${l.credentialId})` : "Belum tuntas",
     ]);
 
     const csvContent =
@@ -203,294 +846,391 @@ export function AdminAnalyticsScreen({
     link.setAttribute("href", encodedUri);
     link.setAttribute(
       "download",
-      `ruang_sosmed_2_0_analytics_${new Date().toISOString().slice(0, 10)}.csv`
+      `ruang_sosmed_analytics_${new Date().toISOString().slice(0, 10)}.csv`
     );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    onShowToast(
-      "Exported learner analytics report (ruang_sosmed_2_0_analytics.csv)."
-    );
+    onShowToast("Laporan analitik live berhasil diekspor ke CSV.");
   };
 
   return (
-    <div className="w-full px-4 sm:px-5 pt-5 pb-14 space-y-6">
+    <div className="rs-dashboard-container w-full px-4 sm:px-5 pt-5 pb-14 space-y-6">
       {/* Top Header Row */}
       <header className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-md bg-[#4F39F6]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#4F39F6] mb-1.5">
             <BarChart3 size={12} />
-            <span>Ruang Sosmed 2.0 Intelligence</span>
+            <span>Ruang Sosmed 2.0 • Live Intelligence</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-[#121215]">
             Learning Analytics &amp; Cohort Performance
           </h1>
           <p className="text-xs text-[#5E5E5E] mt-0.5">
-            Track course completion velocity, quiz score distributions, and
-            verified certificate issuance across cohorts.
+            Seluruh metrik, foto profil, poin member, progres kelas, dan laporan kuis disinkronkan langsung dari database.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <select
-            aria-label="Filter analytics by cohort"
+            aria-label="Filter analytics berdasarkan folder atau kelas"
             value={selectedCohort}
             onChange={(e) => setSelectedCohort(e.target.value)}
-            className="rounded-lg bg-[#FFFFFF] px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none cursor-pointer"
+            className="rounded-xl bg-[#FFFFFF] px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none cursor-pointer"
           >
-            <option value="All Cohorts">All Cohorts ({leaderboard.length} Learners)</option>
-            {cohortProjects.map((proj) => (
-              <option key={proj.id} value={proj.name}>
-                {proj.name}
+            <option value="All Cohorts">
+              Semua Program ({realLearners.length} Member)
+            </option>
+            {cohortOptions.map((folder) => (
+              <option key={folder} value={folder}>
+                {folder}
               </option>
             ))}
           </select>
 
           <button
             type="button"
+            onClick={() => void fetchLiveAnalytics(true)}
+            disabled={isRefreshing}
+            aria-label="Muat ulang data analitik"
+            title="Muat ulang data live dari database"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#FFFFFF] hover:bg-[#F8F9FB] border border-[#EAECEF] text-[#475569] hover:text-[#4F39F6] transition-colors cursor-pointer disabled:opacity-60"
+          >
+            <RefreshCw
+              size={14}
+              className={isRefreshing ? "animate-spin" : ""}
+            />
+          </button>
+
+          <button
+            type="button"
             onClick={onOpenGradingCenter}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#F8F9FB] px-3.5 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#FFFFFF] hover:bg-[#F8F9FB] px-3.5 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
           >
             <ClipboardCheck size={14} className="text-[#F97316]" />
-            <span>Open Grading Center</span>
+            <span>Grading Center</span>
           </button>
 
           <button
             type="button"
             onClick={handleExportCsvReport}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white shadow-[0_2px_8px_rgba(79,57,246,0.25)] transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white shadow-[0_2px_8px_rgba(79,57,246,0.25)] transition-all cursor-pointer"
           >
             <Download size={14} />
-            <span>Export CSV Report</span>
+            <span>Export CSV</span>
           </button>
         </div>
       </header>
 
-      {/* 4 Summary Metric KPI Cards */}
-      <section
-        aria-label="Key Performance Indicators"
-        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
-      >
-        <div className="rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#5E5E5E]">
-              Course Completion Rate
-            </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#10B981]/10 text-[#10B981]">
-              <CheckCircle2 size={16} />
-            </span>
+      {/* 4 Real KPI Cards */}
+      <section aria-label="Key Performance Indicators" className="rs-dash-kpi-grid">
+        <div className="rounded-2xl bg-[#FFFFFF] p-4 sm:p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-[#64748B]">
+              Rata-rata Progres Kelas
+            </p>
+            <p className="mt-1.5 text-2xl font-black text-[#121215] tabular-nums">
+              {kpiStats.avgCompletionPct}%
+            </p>
+            <p className="mt-1 text-[11px] font-medium text-[#059669] flex items-center gap-1 truncate">
+              <TrendingUp size={12} className="shrink-0" />
+              <span>
+                {kpiStats.totalLearners > 0
+                  ? `${kpiStats.progressingCount} dari ${kpiStats.totalLearners} member mulai belajar`
+                  : "Belum ada member"}
+              </span>
+            </p>
           </div>
-          <p className="mt-3 text-2xl font-extrabold text-[#121215] tabular-nums">
-            {liveAvgCompletionPct}%
-          </p>
-          <p className="mt-1 text-[11px] font-semibold text-[#10B981] flex items-center gap-1">
-            <TrendingUp size={12} />
-            <span>
-              {hasData
-                ? `${activeProgressingCount} of ${leaderboard.length} learners progressing`
-                : "Belum ada data cohort"}
-            </span>
-          </p>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#10B981]">
+            <CheckCircle2 size={18} />
+          </span>
         </div>
 
-        <div className="rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#5E5E5E]">
-              Average Quiz Score
-            </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#4F39F6]/10 text-[#4F39F6]">
-              <BarChart3 size={16} />
-            </span>
+        <div className="rounded-2xl bg-[#FFFFFF] p-4 sm:p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-[#64748B]">
+              Rata-rata Nilai Kuis
+            </p>
+            <p className="mt-1.5 text-2xl font-black text-[#121215] tabular-nums">
+              {kpiStats.avgQuizScore !== null ? `${kpiStats.avgQuizScore}%` : "—"}
+            </p>
+            <p className="mt-1 text-[11px] text-[#64748B] truncate tabular-nums">
+              {filteredSubmissions.length > 0
+                ? `${filteredSubmissions.length} submission dinilai`
+                : "Belum ada submission kuis"}
+            </p>
           </div>
-          <p className="mt-3 text-2xl font-extrabold text-[#121215] tabular-nums">
-            {liveAvgQuizScorePct}%
-          </p>
-          <p className="mt-1 text-[11px] text-[#5E5E5E]">
-            {explorerItems.length > 0 ? (
-              <>
-                Pass threshold: <strong className="text-[#121215]">80%</strong> across{" "}
-                {explorerItems.length} item{explorerItems.length !== 1 ? "s" : ""}
-              </>
-            ) : (
-              "Belum ada data nilai kuis"
-            )}
-          </p>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#4F39F6]">
+            <BarChart3 size={18} />
+          </span>
         </div>
 
-        <div className="rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#5E5E5E]">
-              Active Cohort Learners
-            </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0EA5E9]/10 text-[#0EA5E9]">
-              <Users size={16} />
-            </span>
+        <div className="rounded-2xl bg-[#FFFFFF] p-4 sm:p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-[#64748B]">
+              Member &amp; Poin Aktif
+            </p>
+            <p className="mt-1.5 text-2xl font-black text-[#121215] tabular-nums">
+              {kpiStats.totalLearners}
+            </p>
+            <p className="mt-1 text-[11px] font-medium text-[#0284C7] truncate tabular-nums">
+              {kpiStats.proCount} PRO • {kpiStats.freeCount} Free •{" "}
+              {kpiStats.totalPoints.toLocaleString()} pts
+            </p>
           </div>
-          <p className="mt-3 text-2xl font-extrabold text-[#121215] tabular-nums">
-            {leaderboard.length}
-          </p>
-          <p className="mt-1 text-[11px] text-[#5E5E5E]">
-            {hasData
-              ? `Terdaftar di ${cohortProjects.length} project / cohort`
-              : "Belum ada murid aktif terdaftar"}
-          </p>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E0F2FE] text-[#0284C7]">
+            <Users size={18} />
+          </span>
         </div>
 
-        <div className="rounded-xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#5E5E5E]">
-              Verified Certificates Issued
-            </span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FEF3C7] text-[#D97706]">
-              <Award size={16} />
-            </span>
+        <div className="rounded-2xl bg-[#FFFFFF] p-4 sm:p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-[#64748B]">
+              Sertifikat Siap Terbit
+            </p>
+            <p className="mt-1.5 text-2xl font-black text-[#B45309] tabular-nums">
+              {kpiStats.eligibleCertCount}
+            </p>
+            <p className="mt-1 text-[11px] font-medium text-[#D97706] truncate">
+              {kpiStats.eligibleCertCount > 0
+                ? "Member tuntas 100% materi"
+                : "Belum ada member tuntas 100%"}
+            </p>
           </div>
-          <p className="mt-3 text-2xl font-extrabold text-[#121215] tabular-nums">
-            {certificateUnlocked ? 1 : 0}
-          </p>
-          <p className="mt-1 text-[11px] font-semibold text-[#D97706]">
-            {certificateUnlocked ? "Credential Series: RS2-2026-0001" : "Belum ada sertifikat terbit"}
-          </p>
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FEF3C7] text-[#D97706]">
+            <Award size={18} />
+          </span>
         </div>
       </section>
 
-      {/* 2-Column Charts: Course Completion Rate Over Time & Average Quiz Score Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left 7 Cols: Course Completion Rate Over Time */}
-        <section
-          aria-label="Course Completion Rate Over Time"
-          className="lg:col-span-7 rounded-xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex flex-col justify-between"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-5">
+      {/* 2-Column Live Charts */}
+      <section
+        aria-label="Grafik Progres dan Nilai Live"
+        className="rs-dash-charts-grid"
+      >
+        {/* Left Chart: Per-Course Progress OR Real Monthly Signups */}
+        <article className="rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] rs-admin-card flex flex-col justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-bold text-[#121215]">
-                Course Completion Rate Over Time
+                {chartTab === "courses"
+                  ? "Progres Belajar Per Materi 📚"
+                  : "Pertumbuhan Member Terdaftar 📈"}
               </h2>
-              <p className="text-xs text-[#5E5E5E]">
-                6-month completion progression across {selectedCohort}
+              <p className="text-[11px] text-[#64748B]">
+                {chartTab === "courses"
+                  ? `Data live enrollment pada filter ${
+                      selectedCohort === "All Cohorts"
+                        ? "Semua Program"
+                        : selectedCohort
+                    }`
+                  : "Jumlah pendaftaran member nyata berdasarkan bulan bergabung"}
               </p>
             </div>
-            <span className="rounded-md bg-[#10B981]/10 border border-[#10B981]/25 px-2.5 py-1 text-xs font-bold text-[#059669]">
-              Peak: {liveAvgCompletionPct}%
-            </span>
+            <div
+              role="group"
+              aria-label="Pilih mode grafik kiri"
+              className="inline-flex rounded-lg bg-[#F8F9FB] p-0.5 border border-[#EAECEF]"
+            >
+              <button
+                type="button"
+                onClick={() => setChartTab("courses")}
+                aria-pressed={chartTab === "courses"}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                  chartTab === "courses"
+                    ? "bg-[#4F39F6] text-white"
+                    : "text-[#64748B] hover:text-[#121215]"
+                }`}
+              >
+                Per Materi
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartTab("signups")}
+                aria-pressed={chartTab === "signups"}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                  chartTab === "signups"
+                    ? "bg-[#4F39F6] text-white"
+                    : "text-[#64748B] hover:text-[#121215]"
+                }`}
+              >
+                Pendaftaran
+              </button>
+            </div>
           </div>
 
-          {/* Interactive Bar + Trendline Chart */}
-          {hasProgressHistory ? (
-            <>
-              <div className="grid grid-cols-6 gap-3 items-end h-48 pt-6 px-2 border-b border-[#EAECEF]">
-                {COMPLETION_TIME_SERIES.map((point) => (
+          {chartTab === "courses" ? (
+            courseProgressStats.length === 0 ? (
+              <div className="py-10 flex flex-col items-center justify-center text-center p-6 rounded-xl bg-[#F8F9FB] border border-dashed border-[#CBD5E1]">
+                <FolderOpen size={24} className="text-[#9CA3AF] mb-2" />
+                <p className="text-xs font-bold text-[#121215]">
+                  Belum Ada Aktivitas Enrollment Kelas
+                </p>
+                <p className="text-[11px] text-[#64748B] mt-1 max-w-sm">
+                  Progres per kursus akan terisi otomatis saat member mulai mengakses atau menyelesaikan bab kelas.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {courseProgressStats.map((course) => (
                   <div
-                    key={point.label}
-                    className="flex flex-col items-center gap-2 h-full justify-end group"
+                    key={course.contentId}
+                    className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] px-3.5 py-2.5 space-y-1.5"
                   >
-                    <span className="text-[11px] font-bold text-[#4F39F6] tabular-nums">
-                      {point.completionPct}%
-                    </span>
-                    <div
-                      className="w-full max-w-[44px] rounded-t-lg transition-all duration-300 group-hover:opacity-90"
-                      style={{
-                        height: `${point.completionPct}%`,
-                        background:
-                          point.label === "Oct '26"
-                            ? "linear-gradient(180deg, #4F39F6 0%, #6366F1 100%)"
-                            : "linear-gradient(180deg, #C7D2FE 0%, #E0E7FF 100%)",
-                      }}
-                      title={`${point.label}: ${point.completionPct}% completion (${point.enrolled} learners)`}
+                    <div className="flex items-center justify-between gap-2 text-xs font-bold">
+                      <span className="text-[#121215] truncate">
+                        {course.title}
+                      </span>
+                      <span className="text-[#4F39F6] shrink-0 tabular-nums">
+                        {course.avgPct}% • {course.count} peserta
+                      </span>
+                    </div>
+                    <progress
+                      value={course.avgPct}
+                      max={100}
+                      aria-label={`Rata-rata progres ${course.title}: ${course.avgPct}%`}
+                      className="rs-progress-bar"
+                      style={
+                        {
+                          "--bar-height": "7px",
+                          "--progress-bar-fill": "#4F39F6",
+                        } as React.CSSProperties
+                      }
                     />
                   </div>
                 ))}
               </div>
-
-              <div className="grid grid-cols-6 gap-3 pt-2.5 text-center">
-                {COMPLETION_TIME_SERIES.map((point) => (
-                  <div key={point.label}>
-                    <p className="text-xs font-semibold text-[#121215]">
-                      {point.label}
-                    </p>
-                    <p className="text-[10px] text-[#9CA3AF]">
-                      {point.enrolled} enrolled
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="h-56 flex flex-col items-center justify-center text-center p-6 border border-dashed border-[#EAECEF] rounded-lg">
-              <BarChart3 size={24} className="text-[#9CA3AF] mb-2" />
-              <p className="text-xs font-semibold text-[#121215]">Belum Ada Riwayat Progres Cohort</p>
-              <p className="text-[11px] text-[#5E5E5E] mt-1 max-w-sm">
-                Grafik progres akan aktif secara otomatis seiring peserta menyelesaikan bab dan modul pembelajaran.
+            )
+          ) : monthlySignups.length === 0 ? (
+            <div className="py-10 flex flex-col items-center justify-center text-center p-6 rounded-xl bg-[#F8F9FB] border border-dashed border-[#CBD5E1]">
+              <Users size={24} className="text-[#9CA3AF] mb-2" />
+              <p className="text-xs font-bold text-[#121215]">
+                Belum Ada Data Tanggal Pendaftaran
+              </p>
+              <p className="text-[11px] text-[#64748B] mt-1">
+                Grafik tren pendaftaran muncul otomatis setelah member terdaftar di Supabase.
               </p>
             </div>
+          ) : (
+            <div className="space-y-3 pt-2">
+              <div
+                className="grid gap-3 items-end h-44 px-2 border-b border-[#EAECEF]"
+                style={{
+                  gridTemplateColumns: `repeat(${monthlySignups.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {monthlySignups.map((m) => {
+                  const heightPct = Math.max(
+                    18,
+                    Math.round((m.count / maxSignupCount) * 100)
+                  );
+                  return (
+                    <div
+                      key={m.key}
+                      className="flex flex-col items-center justify-end gap-1.5 h-full"
+                    >
+                      <span className="text-xs font-extrabold text-[#4F39F6] tabular-nums">
+                        {m.count}
+                      </span>
+                      <div
+                        className="w-full max-w-[42px] rounded-t-xl transition-all"
+                        style={{
+                          height: `${heightPct}%`,
+                          background:
+                            "linear-gradient(180deg, #4F39F6 0%, #6366F1 100%)",
+                        }}
+                        title={`${m.label}: ${m.count} member baru`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div
+                className="grid gap-3 text-center"
+                style={{
+                  gridTemplateColumns: `repeat(${monthlySignups.length}, minmax(0, 1fr))`,
+                }}
+              >
+                {monthlySignups.map((m) => (
+                  <p
+                    key={`lbl-${m.key}`}
+                    className="text-[11px] font-semibold text-[#475569] truncate"
+                  >
+                    {m.label}
+                  </p>
+                ))}
+              </div>
+            </div>
           )}
-        </section>
+        </article>
 
-        {/* Right 5 Cols: Average Quiz Score Distribution */}
-        <section
-          aria-label="Average Quiz Score Distribution"
-          className="lg:col-span-5 rounded-xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] flex flex-col justify-between"
-        >
-          <div className="mb-4">
+        {/* Right Chart: Real Quiz Score Distribution */}
+        <article className="rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] rs-admin-card flex flex-col justify-between gap-4">
+          <div>
             <h2 className="text-sm font-bold text-[#121215]">
-              Average Quiz Score Distribution
+              Distribusi Nilai Kuis &amp; Tugas 🎯
             </h2>
-            <p className="text-xs text-[#5E5E5E]">
-              {hasQuizSubmissions
-                ? `Breakdown of ${gradingSubmissions.length} quiz submissions across Ruang Sosmed 2.0`
-                : "Belum ada submission kuis dari murid"}
+            <p className="text-[11px] text-[#64748B]">
+              {scoreDistribution.total > 0
+                ? `Berdasarkan ${scoreDistribution.total} submission nyata di database`
+                : "Menunggu submission kuis atau tugas nyata dari learner"}
             </p>
           </div>
 
-          {hasQuizSubmissions ? (
-            <div className="space-y-4 my-auto">
-              {QUIZ_SCORE_DISTRIBUTION.map((item) => (
+          {scoreDistribution.total === 0 ? (
+            <div className="py-10 flex flex-col items-center justify-center text-center p-6 rounded-xl bg-[#F8F9FB] border border-dashed border-[#CBD5E1] my-auto">
+              <ClipboardCheck size={24} className="text-[#9CA3AF] mb-2" />
+              <p className="text-xs font-bold text-[#121215]">
+                Belum Ada Submission Kuis / Tugas
+              </p>
+              <p className="text-[11px] text-[#64748B] mt-1 max-w-xs">
+                Tidak ada angka dummy ditampilkan. Grafik ini otomatis terisi saat learner mengirim kuis atau tugas.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3 my-auto">
+              {scoreDistribution.bands.map((item) => (
                 <div key={item.band} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-[#121215]">
                       {item.band}
                     </span>
                     <span className="font-bold text-[#5E5E5E] tabular-nums">
-                      {item.learnersCount} learners ({item.percentage}%)
+                      {item.count} ({item.percentage}%)
                     </span>
                   </div>
-                  <div className="h-2.5 w-full rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${item.percentage}%`,
-                        backgroundColor: item.color,
-                      }}
-                    />
-                  </div>
+                  <progress
+                    value={item.percentage}
+                    max={100}
+                    aria-label={`${item.band}: ${item.count} submission`}
+                    className="rs-progress-bar"
+                    style={
+                      {
+                        "--bar-height": "8px",
+                        "--progress-bar-fill": item.color,
+                      } as React.CSSProperties
+                    }
+                  />
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="py-12 flex flex-col items-center justify-center text-center p-6 border border-dashed border-[#EAECEF] rounded-lg my-auto">
-              <ClipboardCheck size={24} className="text-[#9CA3AF] mb-2" />
-              <p className="text-xs font-semibold text-[#121215]">Belum Ada Submission Kuis</p>
-              <p className="text-[11px] text-[#5E5E5E] mt-1">
-                Distribusi nilai akan terakumulasi otomatis saat kuis pertama selesai dinilai.
-              </p>
-            </div>
           )}
 
-          <div className="mt-5 pt-3.5 border-t border-[#EAECEF] flex items-center justify-between text-xs">
-            <span className="text-[#5E5E5E]">First-Attempt Pass Rate</span>
-            <span className="font-bold text-[#10B981]">
-              {hasQuizSubmissions
-                ? `${liveAvgQuizScorePct}% (${gradingSubmissions.filter((s) => s.status === "Passed").length} / ${gradingSubmissions.length})`
-                : "0.0% (0 / 0)"}
+          <div className="pt-3 border-t border-[#EAECEF] flex items-center justify-between text-xs">
+            <span className="text-[#5E5E5E]">Rasio Kelulusan (≥ 80%)</span>
+            <span className="font-bold text-[#10B981] tabular-nums">
+              {scoreDistribution.total > 0
+                ? `${scoreDistribution.passRatePct}% (${scoreDistribution.passedCount} / ${scoreDistribution.total})`
+                : "0% (0 / 0)"}
             </span>
           </div>
-        </section>
-      </div>
+        </article>
+      </section>
 
-      {/* Most Active Learners Table (Responsive Table per modern-web-guidance) */}
-      <section className="rounded-xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      {/* Table 1: Real Most Active Learners & Certificate Eligibility */}
+      <article className="rounded-2xl bg-[#FFFFFF] p-5 sm:p-6 border border-[#EAECEF] rs-admin-card space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2
               id="most-active-learners-caption"
@@ -499,18 +1239,17 @@ export function AdminAnalyticsScreen({
               Most Active Learners &amp; Certificate Eligibility
             </h2>
             <p className="text-xs text-[#5E5E5E]">
-              Live-synced with Learner Portal classroom completions and quiz
-              scores.
+              Tersinkron real-time dengan foto profil, saldo poin, progres kelas, dan nilai kuis member di Supabase.
             </p>
           </div>
 
           <button
             type="button"
             onClick={handleExportCsvReport}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:bg-[#EAECEF]/60 px-3 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#F8F9FB] hover:bg-[#EAECEF]/60 px-3 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] cursor-pointer"
           >
             <Download size={13} />
-            <span>Download Table CSV</span>
+            <span>Download CSV</span>
           </button>
         </div>
 
@@ -523,20 +1262,20 @@ export function AdminAnalyticsScreen({
           <table
             style={
               {
-                "--label-2": '"Cohort"',
-                "--label-3": '"Chapter Progress"',
-                "--label-4": '"Avg Quiz Score"',
+                "--label-2": '"Program / Folder"',
+                "--label-3": '"Progres Materi"',
+                "--label-4": '"Nilai Kuis"',
                 "--label-5": '"Mastery Points"',
-                "--label-6": '"Certificate"',
+                "--label-6": '"Sertifikat"',
               } as React.CSSProperties
             }
           >
             <thead>
               <tr className="border-b border-[#EAECEF] bg-[#F8F9FB] text-left text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
                 <th className="py-3 px-4 rounded-tl-lg">Learner</th>
-                <th className="py-3 px-4">Cohort</th>
-                <th className="py-3 px-4">Course Progress</th>
-                <th className="py-3 px-4">Avg Quiz Score</th>
+                <th className="py-3 px-4">Program / Folder</th>
+                <th className="py-3 px-4">Progres Materi</th>
+                <th className="py-3 px-4">Nilai Kuis</th>
                 <th className="py-3 px-4">Mastery Points</th>
                 <th className="py-3 px-4 text-right rounded-tr-lg">
                   Official Certificate
@@ -544,419 +1283,384 @@ export function AdminAnalyticsScreen({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EAECEF] text-xs">
-              {mostActiveLearners.length === 0 ? (
+              {filteredLearners.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-xs text-[#9CA3AF]">
-                    Belum ada data learner terdaftar di cohort. Silakan undang murid atau mulai terbitkan kursus.
+                  <td
+                    colSpan={6}
+                    className="py-10 text-center text-xs text-[#9CA3AF]"
+                  >
+                    Belum ada member terdaftar pada filter program ini.
                   </td>
                 </tr>
               ) : (
-                mostActiveLearners.map((learner) => (
-                <tr
-                  key={learner.name}
-                  className="hover:bg-[#F8F9FB]/80 transition-colors"
-                >
-                  <th
-                    scope="row"
-                    className="py-3.5 px-4 font-semibold text-[#121215] text-left"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-5 text-xs font-bold text-[#9CA3AF]">
-                        #{learner.rank}
-                      </span>
-                      <span
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                        style={{
-                          backgroundColor: learner.avatarBg,
-                          color: learner.avatarText,
-                        }}
-                      >
-                        {learner.initials}
-                      </span>
-                      <div>
-                        <p className="font-bold text-[#121215]">
-                          {learner.name}
-                        </p>
-                        <p className="text-[11px] font-normal text-[#5E5E5E]">
-                          {learner.role}
-                        </p>
-                      </div>
-                    </div>
-                  </th>
-
-                  <td className="py-3.5 px-4 text-[#5E5E5E] font-medium">
-                    <span className="rounded-md bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-1 text-[11px] font-semibold text-[#121215]">
-                      {learner.cohort}
-                    </span>
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <div className="flex items-center gap-2.5 min-w-[140px]">
-                      <div className="flex-1 h-2 rounded-full bg-[#F8F9FB] border border-[#EAECEF] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-[#10B981]"
-                          style={{ width: `${learner.completionPct}%` }}
-                        />
-                      </div>
-                      <span className="font-bold text-[#121215] tabular-nums">
-                        {learner.completedChapters}/{learner.totalChapters} (
-                        {learner.completionPct}%)
-                      </span>
-                    </div>
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <span className="rounded-md bg-[#10B981]/10 border border-[#10B981]/25 px-2 py-0.5 text-xs font-bold text-[#059669] tabular-nums">
-                      {learner.avgQuizScore}%
-                    </span>
-                  </td>
-
-                  <td className="py-3.5 px-4">
-                    <span className="inline-flex items-center gap-1 font-bold text-[#B45309] tabular-nums">
-                      <Star
-                        size={12}
-                        className="text-[#F59E0B]"
-                        fill="#F59E0B"
-                      />
-                      {learner.points.toLocaleString()} pts
-                    </span>
-                  </td>
-
-                  <td className="py-3.5 px-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCertPreviewLearner({
-                          name: learner.name,
-                          role: learner.role,
-                          credentialId: learner.credentialId,
-                          scoreLabel: `${learner.avgQuizScore}% Mastery Score • Rank #${learner.rank}`,
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#FEF3C7]/70 hover:bg-[#FEF3C7] border border-[#F59E0B]/40 px-3 py-1.5 text-xs font-bold text-[#B45309] transition-colors cursor-pointer"
+                filteredLearners.map((learner) => (
+                  <tr key={learner.id} className="transition-colors">
+                    <th
+                      scope="row"
+                      className="py-3.5 px-4 font-semibold text-[#121215] text-left"
                     >
-                      <Award size={13} />
-                      <span>View Certificate ({learner.credentialId})</span>
-                    </button>
-                  </td>
-                </tr>
-              )))}
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-5 text-xs font-bold text-[#9CA3AF] tabular-nums">
+                          #{learner.rank}
+                        </span>
+                        {learner.avatarUrl ? (
+                          <img
+                            src={learner.avatarUrl}
+                            alt={learner.name}
+                            className="h-8 w-8 shrink-0 rounded-full object-cover border border-[#EAECEF]"
+                          />
+                        ) : (
+                          <span
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                            style={{
+                              backgroundColor: learner.avatarBg,
+                              color: learner.avatarText,
+                            }}
+                          >
+                            {learner.initials}
+                          </span>
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-bold text-[#121215] truncate">
+                              {learner.name}
+                            </p>
+                            {learner.isPro && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-[#FEF3C7] px-1.5 py-0.5 text-[9px] font-extrabold text-[#B45309] shrink-0">
+                                <Zap size={9} fill="currentColor" />
+                                PRO
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] font-normal text-[#5E5E5E] truncate">
+                            {learner.role}
+                          </p>
+                        </div>
+                      </div>
+                    </th>
+
+                    <td className="py-3.5 px-4 font-medium">
+                      <span className="inline-flex items-center rounded-lg bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-1 text-[11px] font-semibold text-[#121215]">
+                        {learner.cohortLabel}
+                      </span>
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-2.5 min-w-[140px]">
+                        <progress
+                          value={learner.completionPct}
+                          max={100}
+                          aria-label={`Progres ${learner.name}: ${learner.completionPct}%`}
+                          className="rs-progress-bar flex-1"
+                          style={
+                            {
+                              "--bar-height": "7px",
+                              "--progress-bar-fill": "#10B981",
+                            } as React.CSSProperties
+                          }
+                        />
+                        <span className="font-bold text-[#121215] tabular-nums shrink-0">
+                          {learner.completedChapters}/{learner.totalChapters} (
+                          {learner.completionPct}%)
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      {learner.avgQuizScore !== null ? (
+                        <span className="rounded-md bg-[#ECFDF5] border border-[#A7F3D0] px-2 py-0.5 text-xs font-bold text-[#059669] tabular-nums">
+                          {learner.avgQuizScore}%
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold text-[#9CA3AF]">
+                          —
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="py-3.5 px-4">
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-[#FEF3C7] border border-[#FDE68A] px-2 py-0.5 text-xs font-bold text-[#B45309] tabular-nums">
+                        <Star
+                          size={11}
+                          className="text-[#F59E0B]"
+                          fill="#F59E0B"
+                        />
+                        <span>{learner.points.toLocaleString()} pts</span>
+                      </span>
+                    </td>
+
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCertPreviewLearner({
+                            name: learner.name,
+                            role: learner.role,
+                            credentialId: learner.credentialId,
+                            scoreLabel: `${
+                              learner.avgQuizScore !== null
+                                ? `${learner.avgQuizScore}% Quiz Score`
+                                : `${learner.completionPct}% Progres`
+                            } • Rank #${learner.rank}`,
+                          })
+                        }
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                          learner.certificateEligible
+                            ? "bg-[#FEF3C7] hover:bg-[#FDE68A] border-[#F59E0B]/40 text-[#B45309]"
+                            : "bg-[#F8F9FB] hover:bg-[#EEF2FF] border-[#EAECEF] text-[#475569] hover:text-[#4F39F6]"
+                        }`}
+                      >
+                        <Award size={13} />
+                        <span>
+                          {learner.certificateEligible
+                            ? `Siap Terbit (${learner.credentialId})`
+                            : "Preview Sertifikat"}
+                        </span>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
-      </section>
+      </article>
 
-      {/* Trenning Quiz Report Analytics & Question Matrix (ref_14, ref_14a, ref_14b) */}
-      <section className="rounded-xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4">
+      {/* Table 2: Real Quiz & Assignment Submissions Report (Zero Dummy Matrix) */}
+      <article className="rounded-2xl bg-[#FFFFFF] p-5 sm:p-6 border border-[#EAECEF] rs-admin-card space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-[#121215]">
-              Quiz Report Matrix — Social Media &amp; Design Heuristics Assessment
+            <h2
+              id="live-submissions-report-caption"
+              className="text-base font-bold text-[#121215]"
+            >
+              Laporan Submission Kuis &amp; Tugas (Live Database)
             </h2>
             <p className="text-xs text-[#5E5E5E]">
-              Inspect per-question accuracy across learners or click any learner row to open their 1–20 Question Grid &amp; Grading Modal.
+              Menampilkan kiriman jawaban nyata dari tabel{" "}
+              <code className="font-mono text-[11px]">submissions</code> — tidak menggunakan data simulasi.
             </p>
           </div>
 
-          <div className="inline-flex rounded-lg bg-[#F8F9FB] p-1 border border-[#EAECEF]">
-            <button
-              type="button"
-              onClick={() => setQuizReportTab("overview")}
-              className={`rounded-md px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
-                quizReportTab === "overview"
-                  ? "bg-[#FFFFFF] text-[#4F39F6] shadow-2xs"
-                  : "text-[#5E5E5E]"
-              }`}
-            >
-              Overview Matrix
-            </button>
-            <button
-              type="button"
-              onClick={() => setQuizReportTab("questions")}
-              className={`rounded-md px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
-                quizReportTab === "questions"
-                  ? "bg-[#FFFFFF] text-[#4F39F6] shadow-2xs"
-                  : "text-[#5E5E5E]"
-              }`}
-            >
-              Questions Breakdown
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onOpenGradingCenter}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#F8F9FB] hover:bg-[#EEF2FF] border border-[#EAECEF] px-3 py-1.5 text-xs font-bold text-[#4F39F6] cursor-pointer"
+          >
+            <ClipboardCheck size={13} />
+            <span>Buka Grading Center</span>
+          </button>
         </div>
 
-        {quizReportTab === "overview" ? (
-          <div className="overflow-x-auto rounded-xl border border-[#EAECEF]">
-            <table className="w-full text-left border-collapse text-xs">
+        {filteredSubmissions.length === 0 ? (
+          <div className="rounded-xl bg-[#F8F9FB] border border-dashed border-[#CBD5E1] p-6 text-center space-y-2">
+            <ClipboardCheck size={24} className="mx-auto text-[#9CA3AF]" />
+            <p className="text-xs font-bold text-[#121215]">
+              Belum Ada Submission Kuis atau Tugas yang Masuk
+            </p>
+            <p className="text-[11px] text-[#64748B] max-w-md mx-auto">
+              Saat learner mengerjakan kuis atau mengirim tugas di Portal Learner, detail jawaban, nilai, dan status evaluasinya otomatis muncul di tabel ini.
+            </p>
+          </div>
+        ) : (
+          <div
+            tabIndex={0}
+            role="region"
+            aria-labelledby="live-submissions-report-caption"
+            className="table-wrapper"
+          >
+            <table
+              style={
+                {
+                  "--label-2": '"Materi / Kuis"',
+                  "--label-3": '"Tanggal"',
+                  "--label-4": '"Status"',
+                  "--label-5": '"Nilai"',
+                  "--label-6": '"Detail"',
+                } as React.CSSProperties
+              }
+            >
               <thead>
-                <tr className="bg-[#F8F9FB] text-[#5E5E5E] border-b border-[#EAECEF]">
-                  <th className="py-3 px-4 font-bold">Learner</th>
-                  <th className="py-3 px-3 font-bold">Accuracy</th>
-                  <th className="py-3 px-3 text-center font-bold">No.1 (100%)</th>
-                  <th className="py-3 px-3 text-center font-bold">No.2 (0%)</th>
-                  <th className="py-3 px-3 text-center font-bold">No.3 (70%)</th>
-                  <th className="py-3 px-3 text-center font-bold">No.4 (65%)</th>
-                  <th className="py-3 px-3 text-center font-bold">No.5 (75%)</th>
-                  <th className="py-3 px-4 text-right font-bold">Detail</th>
+                <tr className="border-b border-[#EAECEF] bg-[#F8F9FB] text-left text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                  <th className="py-3 px-4 rounded-tl-lg">Learner</th>
+                  <th className="py-3 px-4">Materi / Kuis</th>
+                  <th className="py-3 px-4">Tanggal Kirim</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Nilai</th>
+                  <th className="py-3 px-4 text-right rounded-tr-lg">
+                    Aksi
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#EAECEF]">
-                {mostActiveLearners.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-10 text-center text-xs text-[#9CA3AF]">
-                      Belum ada data laporan kuis dari peserta.
-                    </td>
-                  </tr>
-                ) : (
-                  mostActiveLearners.map((learner) => {
-                    const cells = ["ok", "ok", "ok", "rev", "ok"];
-                    return (
-                      <tr
-                        key={`qm-${learner.name}`}
-                        onClick={() =>
-                          setSelectedQuizResultLearner({
-                            name: learner.name,
-                            role: learner.role,
-                            accuracy: learner.avgQuizScore,
-                            points: learner.points,
-                          })
-                        }
-                        className="hover:bg-[#F8F9FB] cursor-pointer transition-colors"
+              <tbody className="divide-y divide-[#EAECEF] text-xs">
+                {filteredSubmissions.map((sub) => {
+                  const learner = learnerById.get(sub.learner_id);
+                  const content = contentById.get(sub.content_id);
+                  const learnerName = learner?.name || "Member";
+                  const statusLower = String(
+                    sub.grading_status || "pending_review"
+                  ).toLowerCase();
+                  const statusLabel =
+                    statusLower === "passed"
+                      ? "Lulus"
+                      : statusLower === "revision_requested"
+                      ? "Revisi"
+                      : "Menunggu Review";
+
+                  return (
+                    <tr key={sub.id} className="transition-colors">
+                      <th
+                        scope="row"
+                        className="py-3 px-4 font-semibold text-[#121215] text-left"
                       >
-                        <td className="py-3 px-4 font-bold text-[#121215]">
-                          {learner.name}
-                          <span className="block text-[10px] font-normal text-[#5E5E5E]">
-                            {learner.role}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 font-bold text-[#10B981]">
-                          {learner.avgQuizScore}%
-                        </td>
-                        {cells.map((c, cIdx) => (
-                          <td key={cIdx} className="py-3 px-3 text-center">
-                            {c === "ok" && (
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#10B981]/15 text-[#059669] font-bold">
-                                ✓
-                              </span>
-                            )}
-                            {c === "rev" && (
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#0EA5E9]/15 text-[#0284C7] font-bold">
-                                ?
-                              </span>
-                            )}
-                          </td>
-                        ))}
-                        <td className="py-3 px-4 text-right">
-                          <span className="rounded-lg bg-[#4F39F6]/10 px-2.5 py-1 text-[11px] font-bold text-[#4F39F6]">
-                            Inspect 1–20 Grid
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                        <div className="flex items-center gap-2.5">
+                          {learner?.avatarUrl ? (
+                            <img
+                              src={learner.avatarUrl}
+                              alt={learnerName}
+                              className="h-7 w-7 rounded-full object-cover border border-[#EAECEF] shrink-0"
+                            />
+                          ) : (
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF2FF] text-[10px] font-bold text-[#4F39F6]">
+                              {learner?.initials || getInitials(learnerName)}
+                            </span>
+                          )}
+                          <span className="truncate">{learnerName}</span>
+                        </div>
+                      </th>
+                      <td className="py-3 px-4 font-semibold text-[#121215]">
+                        {content?.title || "Kuis / Tugas"}
+                      </td>
+                      <td className="py-3 px-4 text-[#64748B]">
+                        {sub.submitted_at
+                          ? formatIndoDate(sub.submitted_at)
+                          : "—"}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                            statusLower === "passed"
+                              ? "bg-[#ECFDF5] text-[#059669]"
+                              : statusLower === "revision_requested"
+                              ? "bg-[#FEF2F2] text-[#DC2626]"
+                              : "bg-[#FEF3C7] text-[#B45309]"
+                          }`}
+                        >
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-extrabold text-[#121215] tabular-nums">
+                        {Number(sub.score_percent || 0)}%
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSubmission(sub)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#F8F9FB] hover:bg-[#EEF2FF] border border-[#EAECEF] px-2.5 py-1 text-[11px] font-bold text-[#4F39F6] cursor-pointer"
+                        >
+                          <Eye size={12} />
+                          <span>Lihat Jawaban</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        ) : (
-          <div className="space-y-2.5">
-            {[
-              { no: "No. 1", title: "What is the primary purpose of a Design System?", type: "Multiple choice", acc: 100 },
-              { no: "No. 2", title: "Identify the anomalous retention drop in Ads Manager", type: "Hotspot", acc: 35 },
-              { no: "No. 3", title: "Fill in the Blank: Usability Heuristics Principles", type: "Fill in the blank", acc: 70 },
-              { no: "No. 4", title: "Explain the 10 Usability Heuristics in UI Design", type: "Open-ended essay", acc: 65 },
-              { no: "No. 5", title: "Select the highest-contrast typography hierarchy card", type: "Image Multiple Choice", acc: 75 },
-            ].map((qItem) => (
-              <div
-                key={qItem.no}
-                className="rounded-xl bg-[#F8F9FB] p-3.5 border border-[#EAECEF] flex flex-wrap items-center justify-between gap-3"
-              >
-                <div>
-                  <span className="text-[11px] font-bold text-[#4F39F6]">
-                    {qItem.no} • {qItem.type}
-                  </span>
-                  <p className="text-xs font-bold text-[#121215] mt-0.5">
-                    {qItem.title}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-32 h-2 rounded-full bg-[#FFFFFF] border border-[#EAECEF] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[#10B981]"
-                      style={{ width: `${qItem.acc}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-extrabold text-[#121215] w-12 text-right">
-                    {qItem.acc}%
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
         )}
-      </section>
+      </article>
 
-      {/* Individual Learner Quiz Result & 1–20 Question Grid Modal (ref_14a, ref_14b) */}
-      {selectedQuizResultLearner && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Individual Learner Quiz Result"
-          onClick={() => setSelectedQuizResultLearner(null)}
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-4xl rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col cursor-default"
-          >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#EAECEF]">
-              <div>
-                <h2 className="text-base font-bold text-[#121215]">
-                  {selectedQuizResultLearner.name} — Quiz Result &amp; Question Matrix
-                </h2>
-                <p className="text-xs text-[#5E5E5E]">
-                  {selectedQuizResultLearner.role} • Accuracy:{" "}
-                  <strong className="text-[#10B981]">
-                    {selectedQuizResultLearner.accuracy}%
-                  </strong>{" "}
-                  ({selectedQuizResultLearner.points} / 200 pts)
+      {/* Real Submission Inspection Modal */}
+      <ModalDialog
+        open={Boolean(selectedSubmission)}
+        onClose={() => setSelectedSubmission(null)}
+        titleId="live-submission-detail-title"
+        title={
+          selectedSubmission
+            ? `Detail Submission — ${
+                learnerById.get(selectedSubmission.learner_id)?.name || "Learner"
+              }`
+            : "Detail Submission"
+        }
+        subtitle={
+          selectedSubmission
+            ? `${
+                contentById.get(selectedSubmission.content_id)?.title ||
+                "Kuis / Tugas"
+              } • Nilai: ${Number(selectedSubmission.score_percent || 0)}%`
+            : undefined
+        }
+        maxWidthClass="max-w-2xl"
+      >
+        {selectedSubmission && (
+          <div className="space-y-4">
+            {(() => {
+              const answers = parseAnswersJson(selectedSubmission.answers_json);
+              if (answers.length === 0) {
+                return (
+                  <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-4 text-xs text-[#64748B]">
+                    Tidak ada rincian jawaban per soal yang tersimpan pada submission ini.
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2.5 max-h-[55vh] overflow-y-auto scrollable-region pr-1">
+                  {answers.map((ans, idx) => (
+                    <div
+                      key={`sub-ans-${idx}`}
+                      className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3.5 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-[#121215]">
+                          {idx + 1}. {ans.questionTitle}
+                        </span>
+                        {ans.maxPoints !== undefined && (
+                          <span className="text-[11px] font-bold text-[#4F39F6] tabular-nums shrink-0">
+                            {ans.awardedPoints ?? 0} / {ans.maxPoints} pts
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#475569] leading-relaxed">
+                        {ans.learnerResponse || "—"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {selectedSubmission.mentor_feedback && (
+              <div className="rounded-xl bg-[#EEF2FF] border border-[#C7D2FE] p-3.5 text-xs text-[#121215]">
+                <p className="font-bold text-[#4F39F6] mb-0.5">
+                  Catatan Mentor:
                 </p>
+                <p>{selectedSubmission.mentor_feedback}</p>
               </div>
+            )}
+
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setSelectedQuizResultLearner(null)}
-                className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#5E5E5E] hover:bg-[#F8F9FB] cursor-pointer"
+                onClick={() => {
+                  setSelectedSubmission(null);
+                  onOpenGradingCenter();
+                }}
+                className="rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white cursor-pointer"
               >
-                ✕ Close
+                Buka Grading Center
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedSubmission(null)}
+                className="rounded-xl bg-[#F8F9FB] hover:bg-[#EAECEF] border border-[#EAECEF] px-4 py-2 text-xs font-bold text-[#121215] cursor-pointer"
+              >
+                Tutup
               </button>
             </div>
-
-            <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-12 gap-6">
-              {/* Left 5 Cols: 1–20 Colored Question Grid + Legend (ref_14a) */}
-              <div className="md:col-span-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-[#121215]">
-                  Question Navigator (1–20)
-                </p>
-                <div className="grid grid-cols-5 gap-2">
-                  {Array.from({ length: 20 }, (_, i) => i + 1).map((num) => {
-                    const status =
-                      num === 2 || num === 14
-                        ? "incorrect"
-                        : num === 4 || num === 9
-                        ? "review"
-                        : num === 7 || num === 15
-                        ? "half"
-                        : num === 19
-                        ? "skipped"
-                        : "correct";
-                    const colorClasses =
-                      status === "correct"
-                        ? "bg-[#10B981]/15 text-[#059669] border-[#10B981]/40"
-                        : status === "half"
-                        ? "bg-[#F59E0B]/15 text-[#D97706] border-[#F59E0B]/40"
-                        : status === "review"
-                        ? "bg-[#0EA5E9]/15 text-[#0284C7] border-[#0EA5E9]/40"
-                        : status === "incorrect"
-                        ? "bg-[#EF4444]/15 text-[#EF4444] border-[#EF4444]/40"
-                        : "bg-[#F8F9FB] text-[#9CA3AF] border-[#EAECEF]";
-                    return (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setSelectedGridQuestionNum(num)}
-                        className={`h-9 rounded-lg border text-xs font-bold transition-all cursor-pointer ${colorClasses} ${
-                          selectedGridQuestionNum === num
-                            ? "ring-2 ring-[#4F39F6]"
-                            : ""
-                        }`}
-                      >
-                        {num}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Color Legend */}
-                <div className="rounded-xl bg-[#F8F9FB] p-3.5 border border-[#EAECEF] grid grid-cols-2 gap-2 text-[11px] font-semibold text-[#5E5E5E]">
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-[#10B981]" />
-                    Correct (13)
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-[#F59E0B]" />
-                    Half Correct (2)
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-[#0EA5E9]" />
-                    Need Review (2)
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-[#EF4444]" />
-                    Incorrect (2)
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-[#9CA3AF]" />
-                    Skipped (1)
-                  </span>
-                </div>
-              </div>
-
-              {/* Right 7 Cols: Question Response & Open-Ended Grading Card (ref_14b) */}
-              <div className="md:col-span-7 space-y-4">
-                <div className="rounded-xl bg-[#F8F9FB] p-4 border border-[#EAECEF] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-md bg-[#0EA5E9]/15 px-2.5 py-0.5 text-[11px] font-bold text-[#0284C7]">
-                      Question #{selectedGridQuestionNum} • Open-Ended / Visual Review
-                    </span>
-                    <span className="text-xs font-bold text-[#121215]">
-                      Max 20 Points
-                    </span>
-                  </div>
-
-                  <p className="text-xs font-bold text-[#121215]">
-                    Explain the 10 Usability Heuristics in UI Design and how they reduce cognitive load in mobile interfaces.
-                  </p>
-
-                  <div className="rounded-lg bg-[#FFFFFF] p-3 border border-[#EAECEF] text-xs text-[#121215] leading-relaxed">
-                    <p className="text-[10px] font-bold uppercase text-[#9CA3AF] mb-1">
-                      Learner Response ({selectedQuizResultLearner.name}):
-                    </p>
-                     Jakob Nielsen&apos;s 10 usability heuristics act as foundational rules of thumb—specifically visibility of system status, match between system and real world, and error prevention—ensuring users never have to memorize state across screens.
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#EAECEF]">
-                    <span className="text-xs font-semibold text-[#5E5E5E]">
-                      Trainer Evaluation &amp; Score:
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onShowToast(
-                            `Marked Q#${selectedGridQuestionNum} as Correct (+20 pts) for ${selectedQuizResultLearner.name}.`
-                          );
-                        }}
-                        className="rounded-lg bg-[#10B981] px-3 py-1.5 text-xs font-bold text-white cursor-pointer"
-                      >
-                        ✓ Mark Correct (20 pts)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedQuizResultLearner(null);
-                          onOpenGradingCenter();
-                        }}
-                        className="rounded-lg bg-[#FFFFFF] px-3 py-1.5 text-xs font-semibold text-[#121215] border border-[#EAECEF] hover:border-[#4F39F6] cursor-pointer"
-                      >
-                        Add Feedback in Grading Center
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ModalDialog>
 
       {/* Official Certificate Modal */}
       <OfficialCertificateModal

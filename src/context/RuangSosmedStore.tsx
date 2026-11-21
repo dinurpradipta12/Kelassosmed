@@ -4427,7 +4427,7 @@ export function RuangSosmedProvider({
               name: resolvedName,
               username: up.username,
             }).forEach((k) => {
-              if (!(k in dbPointsFromTables) || upCleanPts > dbPointsFromTables[k]) {
+              if (!(k in dbPointsFromTables)) {
                 dbPointsFromTables[k] = upCleanPts;
               }
             });
@@ -4518,40 +4518,9 @@ export function RuangSosmedProvider({
           })();
 
           if (authUserId && ownProfile) {
-            const ownUpPts = (() => {
-              if (!Array.isArray(userProfilesRes.data)) return 0;
-              const ownUp = userProfilesRes.data.find(
-                (up: any) =>
-                  up.user_id === authUserId ||
-                  (activeLearnerEmail &&
-                    String(up.email || "").toLowerCase().trim() === activeLearnerEmail)
-              );
-              const val = Number(ownUp?.perks?.total_points ?? ownUp?.perks?.points ?? 0);
-              return Number.isFinite(val) ? Math.max(0, val) : 0;
-            })();
-            const dbActivePts = Math.max(
-              Number(ownProfile.total_points || 0),
-              ownUpPts
-            );
-            if (activeLockMatch !== null) {
-              activeUserPoints = activeLockMatch;
-            } else if (
-              dbActivePts === 0 &&
-              prev.learnerPoints > 0 &&
-              !backfilledInitialPointsRef.current
-            ) {
-              activeUserPoints = prev.learnerPoints;
-              backfilledInitialPointsRef.current = true;
-              void persistUserPointsToSupabase({
-                id: ownProfile.id,
-                email: activeLearnerEmail,
-                name: activeLearnerName,
-                username: getActiveSessionUser().username,
-                newPoints: prev.learnerPoints,
-              });
-            } else {
-              activeUserPoints = dbActivePts;
-            }
+            const dbActivePts = Math.max(0, Number(ownProfile.total_points ?? 0));
+            activeUserPoints =
+              activeLockMatch !== null ? activeLockMatch : dbActivePts;
             const ownExplicitlyExpired =
               Boolean(ownProfile.pro_expires_at) &&
               !isProSubscriptionActive(
@@ -4797,16 +4766,41 @@ export function RuangSosmedProvider({
               });
             }
 
-            if (
-              !nextLeaderboard.some(
-                (l) => l.name.toLowerCase() === lrn.name.toLowerCase()
-              )
-            ) {
+            const lrnKeys = normalizeAvatarKeys({
+              id: lrn.id,
+              email: lrn.email,
+              name: lrn.name,
+            });
+            const nowLockCheckMs = Date.now();
+            let lockedPts: number | null = null;
+            for (const k of lrnKeys) {
+              const lock = recentPointLocksRef.current.get(k);
+              if (lock && lock.expiresAt > nowLockCheckMs) {
+                lockedPts = lock.value;
+                break;
+              }
+            }
+            const authoritativePts =
+              lockedPts !== null
+                ? lockedPts
+                : Math.max(0, Number(lrn.points ?? 0));
+
+            const existingLbIdx = nextLeaderboard.findIndex(
+              (l) => l.name.toLowerCase() === lrn.name.toLowerCase()
+            );
+            if (existingLbIdx >= 0) {
+              nextLeaderboard[existingLbIdx] = {
+                ...nextLeaderboard[existingLbIdx],
+                role: lrn.jobTitle || nextLeaderboard[existingLbIdx].role,
+                points: authoritativePts,
+                initials,
+              };
+            } else {
               nextLeaderboard.push({
                 rank: nextLeaderboard.length + 1,
                 name: lrn.name,
                 role: lrn.jobTitle,
-                points: lrn.points,
+                points: authoritativePts,
                 initials,
                 avatarBg: "#EEF2FF",
                 avatarText: "#4F39F6",
@@ -6083,11 +6077,9 @@ export function RuangSosmedProvider({
               nextUserPointsMap[k] = val;
             }
           });
-          if (activeUserPoints > 0) {
+          if (authUserId && ownProfile) {
             activeUserKeys.forEach((k) => {
-              if ((nextUserPointsMap[k] ?? 0) < activeUserPoints) {
-                nextUserPointsMap[k] = activeUserPoints;
-              }
+              nextUserPointsMap[k] = activeUserPoints;
             });
           }
           recentPointLocksRef.current.forEach((lock, key) => {

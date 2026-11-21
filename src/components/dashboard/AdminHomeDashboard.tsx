@@ -180,6 +180,7 @@ export function AdminHomeDashboard({
     maintenanceConfig,
     userPointsMap,
     resolveUserAvatar,
+    resolveUserPoints,
   } = useRuangSosmedStore();
 
   // Interactive UI controls
@@ -332,6 +333,55 @@ export function AdminHomeDashboard({
 
   useEffect(() => {
     void fetchLiveStudioSnapshot(false);
+    if (typeof window === "undefined") return;
+    const handlePointsUpdated = (ev: Event) => {
+      const detail = (ev as CustomEvent<{
+        newTotal?: number;
+        learnerEmail?: string;
+        learnerName?: string;
+      }>).detail;
+      if (detail && typeof detail.newTotal === "number") {
+        const targetEmail = (detail.learnerEmail || "").trim().toLowerCase();
+        const targetName = (detail.learnerName || "").trim().toLowerCase();
+        setLiveProfiles((prev) =>
+          prev.map((p) => {
+            const pEmail = (p.email || "").trim().toLowerCase();
+            const pName = (p.full_name || "").trim().toLowerCase();
+            if (
+              (targetEmail && pEmail === targetEmail) ||
+              (targetName && pName === targetName)
+            ) {
+              return { ...p, total_points: Math.max(0, detail.newTotal!) };
+            }
+            return p;
+          })
+        );
+      }
+      window.setTimeout(() => {
+        void fetchLiveStudioSnapshot(false);
+      }, 450);
+    };
+    window.addEventListener("ruang_sosmed_points_awarded", handlePointsUpdated);
+    let bc: BroadcastChannel | null = null;
+    if ("BroadcastChannel" in window) {
+      try {
+        bc = new BroadcastChannel("ruang_sosmed_channel");
+        bc.onmessage = (event) => {
+          if (event.data?.type === "USER_POINTS_UPDATED") {
+            void fetchLiveStudioSnapshot(false);
+          }
+        };
+      } catch {}
+    }
+    return () => {
+      window.removeEventListener(
+        "ruang_sosmed_points_awarded",
+        handlePointsUpdated
+      );
+      try {
+        bc?.close();
+      } catch {}
+    };
   }, [fetchLiveStudioSnapshot]);
 
   // ---------------------------------------------------------------------------
@@ -502,15 +552,7 @@ export function AdminHomeDashboard({
             (emailLower && l.name.trim().toLowerCase() === emailLower)
         );
 
-        const mappedPts =
-          (emailLower ? userPointsMap?.[emailLower] : undefined) ??
-          userPointsMap?.[nameLower] ??
-          userPointsMap?.[name];
-        const pts = Math.max(
-          Number(p.total_points || 0),
-          Number(mappedPts || 0),
-          Number(lbMatch?.points || 0)
-        );
+        const pts = Math.max(0, Number(p.total_points ?? 0));
 
         return {
           id: p.id || `prof-${idx}`,
@@ -543,10 +585,8 @@ export function AdminHomeDashboard({
       const isPro =
         (learnerSubscriptions?.[student.name] ??
           learnerSubscriptions?.[key]) === "PRO";
-      const pts = Math.max(
-        Number(student.points || 0),
-        Number(userPointsMap?.[key] ?? userPointsMap?.[student.name] ?? 0)
-      );
+      const pts =
+        resolveUserPoints(student.name) ?? Math.max(0, Number(student.points ?? 0));
       list.push({
         id: `lb-${idx}-${key}`,
         name: student.name,

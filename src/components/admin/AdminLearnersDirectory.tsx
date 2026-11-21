@@ -503,10 +503,7 @@ export function AdminLearnersDirectory({
             completedChapters: completedCh,
             totalChapters: totalChCount,
             avgQuizScore: avgQuiz,
-            points: Math.max(
-              Number(p.total_points || 0),
-              Number(upMatch?.perks?.total_points ?? upMatch?.perks?.points ?? 0)
-            ),
+            points: Math.max(0, Number(p.total_points ?? 0)),
             credentialId: `RS2-2026-850${idx + 1}`,
             subscriptionTier: tierVal,
             proStartedAt: resolvedStartedAt,
