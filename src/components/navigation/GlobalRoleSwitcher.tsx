@@ -143,6 +143,11 @@ export function GlobalRoleSwitcher({
           {isAdmin && (
             <AdminFloatingNotificationButton
               onNavigateLearners={onNavigateLearners}
+              userKey={
+                currentUser?.email ||
+                currentUser?.username ||
+                currentUser?.name
+              }
             />
           )}
 

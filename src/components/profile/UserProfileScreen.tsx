@@ -27,6 +27,7 @@ import {
   X,
   Sparkles,
   Eye,
+  Volume2,
 } from "lucide-react";
 import { RumiMascotIllustration } from "@/components/learner/RumiEvolutionMascot";
 import {
@@ -34,6 +35,7 @@ import {
   RUMI_PREFS_EVENT,
   clampIdleSeconds,
   loadRumiAssistantPrefs,
+  playRumiNotificationSound,
   saveRumiAssistantPrefs,
   type RumiAssistantPrefs,
   type RumiAssistantSize,
@@ -1432,8 +1434,8 @@ export function UserProfileScreen({
                       <div
                         className={`transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
                           rumiPreviewPeek
-                            ? "translate-x-[42%] -rotate-12 scale-[0.84]"
-                            : "translate-x-0 rotate-0 scale-100"
+                            ? "translate-x-[60%] translate-y-[10%] -rotate-[20deg] scale-[0.80]"
+                            : "translate-x-0 translate-y-0 rotate-0 scale-100"
                         }`}
                       >
                         <RumiMascotIllustration
@@ -1622,6 +1624,51 @@ export function UserProfileScreen({
                           }`}
                         >
                           {rumiPrefs.autoBubble ? "Aktif" : "Bisukan"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Notify via Rumi Toggle + Distinct Rumi Sound Preview */}
+                    <div className="rounded-lg bg-[#FFFFFF] border border-[#EAECEF] px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-[#121215]">
+                          Sampaikan Notifikasi Masuk Lewat Rumi
+                        </p>
+                        <p className="text-[10px] text-[#5E5E5E] leading-relaxed mt-0.5">
+                          {rumiPrefs.notifyViaRumi
+                            ? "Aktif: Modal notifikasi biasa dimatikan; Rumi muncul dari sembunyi dengan suara khasnya saat ada notifikasi baru."
+                            : "Nonaktif: Kembali memakai modal notifikasi standar dengan bunyi notifikasi biasa."}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => playRumiNotificationSound("celebrate")}
+                          title="Dengarkan bunyi notifikasi khas Rumi"
+                          className="inline-flex items-center gap-1 rounded-full border border-[#EAECEF] bg-[#F8F9FB] hover:border-[#4F39F6] px-2.5 py-1 text-[11px] font-semibold text-[#4F39F6] transition-colors cursor-pointer"
+                        >
+                          <Volume2 size={11} />
+                          <span>Tes Suara</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateRumiPrefs(
+                              {
+                                notifyViaRumi: !rumiPrefs.notifyViaRumi,
+                              },
+                              !rumiPrefs.notifyViaRumi
+                                ? "Notifikasi kini disampaikan langsung oleh Rumi dengan suara khasnya!"
+                                : "Notifikasi dikembalikan ke modal floating standar."
+                            )
+                          }
+                          className={`rounded-full px-3 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
+                            rumiPrefs.notifyViaRumi
+                              ? "bg-[#4F39F6] text-white"
+                              : "bg-[#EAECEF] text-[#5E5E5E]"
+                          }`}
+                        >
+                          {rumiPrefs.notifyViaRumi ? "Aktif" : "Nonaktif"}
                         </button>
                       </div>
                     </div>

@@ -42,6 +42,11 @@ import {
   type LearnerNotificationEventType,
 } from "@/lib/phase5-data";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
+import {
+  RUMI_DELIVER_NOTIF_EVENT,
+  isRumiNotificationModeActive,
+  type RumiDeliveredNotificationPayload,
+} from "@/lib/rumi-assistant-prefs";
 
 const LEARNER_SEEN_POPUP_IDS_KEY = "ruang_sosmed_learner_seen_popup_ids_v1";
 const LEARNER_NOTIF_MUTED_KEY = "ruang_sosmed_learner_notif_muted_v1";
@@ -269,6 +274,12 @@ export function LearnerTopNavbar({
   const deferredPopupsRef = useRef<LearnerNotification[]>([]);
   const isMutedRef = useRef(isMuted);
   isMutedRef.current = isMuted;
+  const learnerUserKey =
+    (currentUser?.email || currentUser?.username || currentUser?.name || "")
+      .trim()
+      .toLowerCase() || "guest";
+  const learnerUserKeyRef = useRef(learnerUserKey);
+  learnerUserKeyRef.current = learnerUserKey;
 
   useEffect(() => {
     setMounted(true);
@@ -508,14 +519,6 @@ export function LearnerTopNavbar({
 
   const showPopupCard = useCallback((notif: LearnerNotification) => {
     const evType = inferLearnerNotifEventType(notif);
-    setActivePopups((prev) => {
-      if (prev.some((p) => p.id === notif.id)) return prev;
-      return [{ ...notif, eventType: evType }, ...prev].slice(
-        0,
-        MAX_LEARNER_POPUPS
-      );
-    });
-
     const announceText = `${notif.title}: ${notif.body}`;
     setLiveAnnouncement(announceText);
     if (typeof document !== "undefined") {
@@ -528,6 +531,39 @@ export function LearnerTopNavbar({
         } catch {}
       }
     }
+
+    if (
+      typeof window !== "undefined" &&
+      isRumiNotificationModeActive(learnerUserKeyRef.current) &&
+      (window as unknown as { __rsRumiAssistantMounted?: boolean })
+        .__rsRumiAssistantMounted === true
+    ) {
+      window.dispatchEvent(
+        new CustomEvent<RumiDeliveredNotificationPayload>(
+          RUMI_DELIVER_NOTIF_EVENT,
+          {
+            detail: {
+              id: notif.id,
+              role: "learner",
+              title: notif.title,
+              message: notif.body,
+              eventType: evType,
+              createdAt: notif.createdAt,
+              muted: isMutedRef.current,
+            },
+          }
+        )
+      );
+      return;
+    }
+
+    setActivePopups((prev) => {
+      if (prev.some((p) => p.id === notif.id)) return prev;
+      return [{ ...notif, eventType: evType }, ...prev].slice(
+        0,
+        MAX_LEARNER_POPUPS
+      );
+    });
 
     if (!isMutedRef.current) {
       playLearnerNotifChime(evType);

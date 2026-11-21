@@ -20,9 +20,15 @@ import {
   useRuangSosmedStore,
   type AdminActivityNotification,
 } from "@/context/RuangSosmedStore";
+import {
+  RUMI_DELIVER_NOTIF_EVENT,
+  isRumiNotificationModeActive,
+  type RumiDeliveredNotificationPayload,
+} from "@/lib/rumi-assistant-prefs";
 
 interface AdminFloatingNotificationButtonProps {
   onNavigateLearners?: () => void;
+  userKey?: string | null;
 }
 
 const SEEN_POPUP_IDS_KEY = "ruang_sosmed_admin_seen_popup_ids_v1";
@@ -114,6 +120,7 @@ function playSubtleNotifChime(eventType: AdminActivityNotification["eventType"])
  */
 export function AdminFloatingNotificationButton({
   onNavigateLearners,
+  userKey,
 }: AdminFloatingNotificationButtonProps) {
   const {
     adminNotifications,
@@ -149,6 +156,8 @@ export function AdminFloatingNotificationButton({
   const deferredPopupsRef = useRef<AdminActivityNotification[]>([]);
   const isMutedRef = useRef(isMuted);
   isMutedRef.current = isMuted;
+  const userKeyRef = useRef(userKey);
+  userKeyRef.current = userKey;
 
   useEffect(() => {
     setMounted(true);
@@ -201,11 +210,6 @@ export function AdminFloatingNotificationButton({
   };
 
   const showPopupCard = useCallback((notif: AdminActivityNotification) => {
-    setActivePopups((prev) => {
-      if (prev.some((p) => p.id === notif.id)) return prev;
-      return [notif, ...prev].slice(0, MAX_VISIBLE_POPUPS);
-    });
-
     const announceText = `${notif.message} Actions available`;
     setLiveAnnouncement(announceText);
     if (typeof document !== "undefined") {
@@ -218,6 +222,39 @@ export function AdminFloatingNotificationButton({
         } catch {}
       }
     }
+
+    if (
+      typeof window !== "undefined" &&
+      isRumiNotificationModeActive(userKeyRef.current) &&
+      (window as unknown as { __rsRumiAssistantMounted?: boolean })
+        .__rsRumiAssistantMounted === true
+    ) {
+      window.dispatchEvent(
+        new CustomEvent<RumiDeliveredNotificationPayload>(
+          RUMI_DELIVER_NOTIF_EVENT,
+          {
+            detail: {
+              id: notif.id,
+              role: "admin",
+              title:
+                notif.eventType === "pro_subscribed"
+                  ? "Upgrade PRO Baru! ⚡"
+                  : "Member Baru Mendaftar! 👋",
+              message: notif.message,
+              eventType: notif.eventType,
+              createdAt: notif.createdAt,
+              muted: isMutedRef.current,
+            },
+          }
+        )
+      );
+      return;
+    }
+
+    setActivePopups((prev) => {
+      if (prev.some((p) => p.id === notif.id)) return prev;
+      return [notif, ...prev].slice(0, MAX_VISIBLE_POPUPS);
+    });
 
     if (!isMutedRef.current) {
       playSubtleNotifChime(notif.eventType);

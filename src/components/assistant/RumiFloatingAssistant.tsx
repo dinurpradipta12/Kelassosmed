@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Bell,
   ChevronRight,
   EyeOff,
   HelpCircle,
@@ -23,11 +24,14 @@ import {
 } from "@/lib/rumi-assistant-guide";
 import {
   DEFAULT_RUMI_ASSISTANT_PREFS,
+  RUMI_DELIVER_NOTIF_EVENT,
   RUMI_PREFS_EVENT,
   loadRumiAssistantPrefs,
+  playRumiNotificationSound,
   saveRumiAssistantPrefs,
   type RumiAssistantPrefs,
   type RumiAssistantSize,
+  type RumiDeliveredNotificationPayload,
 } from "@/lib/rumi-assistant-prefs";
 import type { RumiEvolutionStage, RumiXpProfileState } from "@/lib/rumi-xp";
 
@@ -89,6 +93,9 @@ export function RumiFloatingAssistant({
   const [isHopping, setIsHopping] = useState(false);
   const [peekGreeting, setPeekGreeting] = useState(false);
   const [bubbleMessage, setBubbleMessage] = useState<string | null>(null);
+  const [activeNotifBubble, setActiveNotifBubble] =
+    useState<RumiDeliveredNotificationPayload | null>(null);
+  const [forceRevealForNotif, setForceRevealForNotif] = useState(false);
   const [selectedFaqIndex, setSelectedFaqIndex] = useState<number | null>(null);
   const [scrolledPastHero, setScrolledPastHero] = useState(false);
 
@@ -96,6 +103,7 @@ export function RumiFloatingAssistant({
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const peekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastActivityStampRef = useRef<number>(0);
 
   // Sync per-user preferences from localStorage + listen for changes from Profile
@@ -204,7 +212,13 @@ export function RumiFloatingAssistant({
       return;
     }
 
-    if (!isVisibleOnPage || isOpen || isHovered || isHiding) {
+    if (
+      !isVisibleOnPage ||
+      isOpen ||
+      isHovered ||
+      isHiding ||
+      forceRevealForNotif
+    ) {
       return;
     }
 
@@ -248,7 +262,64 @@ export function RumiFloatingAssistant({
     isOpen,
     isHovered,
     isHiding,
+    forceRevealForNotif,
   ]);
+
+  // Register global Rumi Assistant mount state & deliver live notifications through Rumi
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const win = window as unknown as { __rsRumiAssistantMounted?: boolean };
+    if (!prefsLoaded || !prefs.enabled) {
+      win.__rsRumiAssistantMounted = false;
+      return;
+    }
+    win.__rsRumiAssistantMounted = true;
+    return () => {
+      win.__rsRumiAssistantMounted = false;
+    };
+  }, [prefsLoaded, prefs.enabled]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleDeliveredNotif = (e: Event) => {
+      const detail = (e as CustomEvent<RumiDeliveredNotificationPayload>)
+        .detail;
+      if (!detail || !prefsLoaded || !prefs.enabled || !prefs.notifyViaRumi) {
+        return;
+      }
+      if (detail.role !== roleMode) {
+        return;
+      }
+
+      setIsHiding(false);
+      setBubbleMessage(null);
+      setPeekGreeting(false);
+      setForceRevealForNotif(true);
+      setActiveNotifBubble(detail);
+      triggerHop();
+
+      if (!detail.muted) {
+        const isCelebrate =
+          detail.eventType === "pro_subscribed" ||
+          detail.eventType === "pro_activated";
+        playRumiNotificationSound(isCelebrate ? "celebrate" : "standard");
+      }
+
+      if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+      notifTimerRef.current = setTimeout(() => {
+        setActiveNotifBubble(null);
+        setForceRevealForNotif(false);
+      }, 8000);
+    };
+
+    window.addEventListener(RUMI_DELIVER_NOTIF_EVENT, handleDeliveredNotif);
+    return () => {
+      window.removeEventListener(
+        RUMI_DELIVER_NOTIF_EVENT,
+        handleDeliveredNotif
+      );
+    };
+  }, [prefsLoaded, prefs.enabled, prefs.notifyViaRumi, roleMode, triggerHop]);
 
   useEffect(() => {
     return () => {
@@ -256,6 +327,7 @@ export function RumiFloatingAssistant({
       if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
       if (hopTimerRef.current) clearTimeout(hopTimerRef.current);
       if (peekTimerRef.current) clearTimeout(peekTimerRef.current);
+      if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
     };
   }, []);
 
@@ -269,6 +341,11 @@ export function RumiFloatingAssistant({
   let displayMood: RumiMascotMood = liveMood.mood;
   if (isHiding) {
     displayMood = "peeking";
+  } else if (activeNotifBubble) {
+    const isCelebrate =
+      activeNotifBubble.eventType === "pro_subscribed" ||
+      activeNotifBubble.eventType === "pro_activated";
+    displayMood = isCelebrate ? "excited" : "reminder";
   } else if (peekGreeting) {
     displayMood = "excited";
   } else if (activeFaq?.reactionMood) {
@@ -296,8 +373,15 @@ export function RumiFloatingAssistant({
     setIsHovered(false);
   };
 
+  const dismissActiveNotifBubble = () => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    setActiveNotifBubble(null);
+    setForceRevealForNotif(false);
+  };
+
   const handleToggleOpen = () => {
     setBubbleMessage(null);
+    dismissActiveNotifBubble();
     if (isHiding) {
       setIsHiding(false);
       triggerHop();
@@ -311,6 +395,7 @@ export function RumiFloatingAssistant({
     e?.stopPropagation();
     setIsOpen(false);
     setBubbleMessage(null);
+    dismissActiveNotifBubble();
     setPeekGreeting(false);
     setIsHovered(false);
     setIsHiding(true);
@@ -525,8 +610,39 @@ export function RumiFloatingAssistant({
         </section>
       )}
 
+      {/* Live Notification Delivered by Rumi (replaces default popup modal when notifyViaRumi is active) */}
+      {!isOpen && !isHiding && activeNotifBubble && (
+        <div
+          role="status"
+          className="rs-rumi-bubble-in mr-4 mb-2 w-[min(290px,calc(100vw-2rem))] rounded-2xl rounded-br-sm border border-[#4F39F6]/30 bg-[#FFFFFF] px-3.5 py-3 shadow-[0_14px_34px_rgba(79,57,246,0.18)]"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="space-y-1 min-w-0">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] border border-[#4F39F6]/20 px-2 py-0.5 text-[10px] font-bold text-[#4F39F6]">
+                <Bell size={10} />
+                <span>Notifikasi Baru</span>
+              </span>
+              <p className="text-xs font-bold text-[#121215] leading-snug">
+                {activeNotifBubble.title}
+              </p>
+              <p className="text-[11px] font-medium text-[#5E5E5E] leading-relaxed break-words">
+                {activeNotifBubble.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={dismissActiveNotifBubble}
+              aria-label="Tutup notifikasi Rumi"
+              className="shrink-0 rounded p-0.5 text-[#9CA3AF] hover:bg-[#F8F9FB] hover:text-[#121215] cursor-pointer"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Speech Bubble (Auto 4.8s on page enter / sleepy reminder / peek-a-boo) */}
-      {!isOpen && !isHiding && (bubbleMessage || peekGreeting) && (
+      {!isOpen && !isHiding && !activeNotifBubble && (bubbleMessage || peekGreeting) && (
         <div
           role="status"
           className="rs-rumi-bubble-in mr-4 mb-2 max-w-[260px] rounded-2xl rounded-br-sm border border-[#EAECEF] bg-[#FFFFFF] px-3 py-2.5 shadow-[0_10px_28px_rgba(16,15,17,0.14)]"
@@ -576,8 +692,8 @@ export function RumiFloatingAssistant({
         onMouseLeave={handleMouseLeaveMascot}
         className={`group relative flex items-center transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] will-change-transform ${
           isHiding
-            ? "translate-x-[38%] -rotate-12 scale-[0.86]"
-            : "pr-4 translate-x-0 rotate-0 scale-100"
+            ? "translate-x-[60%] translate-y-[10%] -rotate-[20deg] scale-[0.80]"
+            : "pr-4 translate-x-0 translate-y-0 rotate-0 scale-100"
         }`}
       >
         {/* Subtle manual hide chip visible only on standby hover */}
@@ -609,7 +725,7 @@ export function RumiFloatingAssistant({
         >
           <span
             className={
-              roleMode === "learner" && effectiveStage <= 2
+              !isHiding && roleMode === "learner" && effectiveStage <= 2
                 ? "block scale-[1.22] -translate-y-1.5"
                 : "block"
             }

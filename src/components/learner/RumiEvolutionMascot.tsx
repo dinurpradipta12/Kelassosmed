@@ -157,37 +157,62 @@ function RumiVisorFace({
   }
 
   const eyeShiftX = mood === "peeking" ? -2.2 : mood === "focused" ? -1.2 : 0;
+  const peekLeftOffset = mood === "peeking" ? -2.0 : 0;
+  const peekRightOffset = mood === "peeking" ? -1.4 : 0;
+  const peekMouthShift = mood === "peeking" ? -3.0 : 0;
 
   return (
     <>
       <g className="rs-rumi-eyes">
-        <circle cx={leftEyeX} cy={eyeY} r={glowR} fill={eyeGlow} fillOpacity="0.25" />
-        <circle cx={rightEyeX} cy={eyeY} r={glowR} fill={eyeGlow} fillOpacity="0.25" />
-        <ellipse
-          cx={leftEyeX}
-          cy={eyeY}
-          rx={mood === "peeking" ? eyeRx * 1.05 : eyeRx}
-          ry={mood === "peeking" ? eyeRy * 1.04 : eyeRy}
-          fill={eyeFill}
-        />
-        <ellipse
-          cx={rightEyeX}
-          cy={eyeY}
-          rx={mood === "peeking" ? eyeRx * 1.05 : eyeRx}
-          ry={mood === "peeking" ? eyeRy * 1.04 : eyeRy}
-          fill={eyeFill}
-        />
-        <circle cx={leftEyeX + 1.5 + eyeShiftX} cy={eyeY - 1.9} r="1.75" fill={catchColor} />
-        <circle cx={rightEyeX + 1.5 + eyeShiftX} cy={eyeY - 1.9} r="1.75" fill={catchColor} />
         <circle
-          cx={leftEyeX - 1.5 + eyeShiftX}
+          cx={leftEyeX + peekLeftOffset}
+          cy={eyeY}
+          r={glowR}
+          fill={eyeGlow}
+          fillOpacity="0.25"
+        />
+        <circle
+          cx={rightEyeX + peekRightOffset}
+          cy={eyeY}
+          r={glowR}
+          fill={eyeGlow}
+          fillOpacity="0.25"
+        />
+        <ellipse
+          cx={leftEyeX + peekLeftOffset}
+          cy={eyeY}
+          rx={mood === "peeking" ? eyeRx * 1.05 : eyeRx}
+          ry={mood === "peeking" ? eyeRy * 1.04 : eyeRy}
+          fill={eyeFill}
+        />
+        <ellipse
+          cx={rightEyeX + peekRightOffset}
+          cy={eyeY}
+          rx={mood === "peeking" ? eyeRx * 1.05 : eyeRx}
+          ry={mood === "peeking" ? eyeRy * 1.04 : eyeRy}
+          fill={eyeFill}
+        />
+        <circle
+          cx={leftEyeX + peekLeftOffset + 1.5 + eyeShiftX}
+          cy={eyeY - 1.9}
+          r="1.75"
+          fill={catchColor}
+        />
+        <circle
+          cx={rightEyeX + peekRightOffset + 1.5 + eyeShiftX}
+          cy={eyeY - 1.9}
+          r="1.75"
+          fill={catchColor}
+        />
+        <circle
+          cx={leftEyeX + peekLeftOffset - 1.5 + eyeShiftX}
           cy={eyeY + 2}
           r="0.88"
           fill="#FFFFFF"
           fillOpacity="0.9"
         />
         <circle
-          cx={rightEyeX - 1.5 + eyeShiftX}
+          cx={rightEyeX + peekRightOffset - 1.5 + eyeShiftX}
           cy={eyeY + 2}
           r="0.88"
           fill="#FFFFFF"
@@ -197,7 +222,7 @@ function RumiVisorFace({
 
       {mood === "peeking" ? (
         <path
-          d={`M${midX - 5.2} ${mouthY + 0.4} Q${midX - 2.4} ${mouthY + 3.8} ${midX} ${mouthY + 1} Q${midX + 2.4} ${mouthY + 3.8} ${midX + 5.2} ${mouthY + 0.4}`}
+          d={`M${midX + peekMouthShift - 5.2} ${mouthY + 0.4} Q${midX + peekMouthShift - 2.4} ${mouthY + 3.8} ${midX + peekMouthShift} ${mouthY + 1} Q${midX + peekMouthShift + 2.4} ${mouthY + 3.8} ${midX + peekMouthShift + 5.2} ${mouthY + 0.4}`}
           fill="none"
           stroke={mouthStroke}
           strokeWidth="2.4"
