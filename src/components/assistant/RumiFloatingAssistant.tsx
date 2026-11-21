@@ -52,10 +52,16 @@ interface RumiFloatingAssistantProps {
   onShowToast?: (msg: string) => void;
 }
 
-const SIZE_CLASSES: Record<RumiAssistantSize, string> = {
+const LEARNER_SIZE_CLASSES: Record<RumiAssistantSize, string> = {
+  sm: "w-28 h-28 sm:w-36 sm:h-36",
+  md: "w-36 h-36 sm:w-48 sm:h-48",
+  lg: "w-44 h-44 sm:w-56 sm:h-56",
+};
+
+const ADMIN_SIZE_CLASSES: Record<RumiAssistantSize, string> = {
   sm: "w-24 h-24 sm:w-28 sm:h-28",
-  md: "w-28 h-28 sm:w-36 sm:h-36",
-  lg: "w-36 h-36 sm:w-44 sm:h-44",
+  md: "w-32 h-32 sm:w-40 sm:h-40",
+  lg: "w-40 h-40 sm:w-48 sm:h-48",
 };
 
 export function RumiFloatingAssistant({
@@ -318,7 +324,10 @@ export function RumiFloatingAssistant({
     );
   };
 
-  const sizeClass = SIZE_CLASSES[prefs.size] || SIZE_CLASSES.md;
+  const sizeClass =
+    roleMode === "learner"
+      ? LEARNER_SIZE_CLASSES[prefs.size] || LEARNER_SIZE_CLASSES.md
+      : ADMIN_SIZE_CLASSES[prefs.size] || ADMIN_SIZE_CLASSES.md;
   const mascotVariant = roleMode === "admin" ? "admin-superior" : "learner";
   const effectiveStage: RumiEvolutionStage =
     roleMode === "admin" ? 5 : learnerStage;
@@ -346,7 +355,7 @@ export function RumiFloatingAssistant({
                   stage={effectiveStage}
                   variant={mascotVariant}
                   mood={displayMood}
-                  sizeClass="w-14 h-14"
+                  sizeClass="w-16 h-16"
                 />
               </div>
               <div className="min-w-0">
@@ -567,7 +576,7 @@ export function RumiFloatingAssistant({
         onMouseLeave={handleMouseLeaveMascot}
         className={`group relative flex items-center transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] will-change-transform ${
           isHiding
-            ? "translate-x-[42%] -rotate-12 scale-[0.84]"
+            ? "translate-x-[38%] -rotate-12 scale-[0.86]"
             : "pr-4 translate-x-0 rotate-0 scale-100"
         }`}
       >
@@ -598,12 +607,20 @@ export function RumiFloatingAssistant({
             isHopping ? "rs-rumi-hop" : ""
           } ${isHiding ? "rs-rumi-peek-breathe" : ""}`}
         >
-          <RumiMascotIllustration
-            stage={effectiveStage}
-            variant={mascotVariant}
-            mood={displayMood}
-            sizeClass={sizeClass}
-          />
+          <span
+            className={
+              roleMode === "learner" && effectiveStage <= 2
+                ? "block scale-[1.22] -translate-y-1.5"
+                : "block"
+            }
+          >
+            <RumiMascotIllustration
+              stage={effectiveStage}
+              variant={mascotVariant}
+              mood={displayMood}
+              sizeClass={sizeClass}
+            />
+          </span>
         </button>
       </div>
     </div>
