@@ -39,7 +39,9 @@ export function AuthModal({
   initialTab = "login",
 }: AuthModalProps) {
   const { maintenanceConfig, pushAdminNotification } = useRuangSosmedStore();
-  const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
+  const [activeTab, setActiveTab] = useState<"login" | "register" | "resend">(
+    initialTab
+  );
 
   // Sync tab whenever modal opens or initialTab prop changes
   useEffect(() => {
@@ -68,6 +70,7 @@ export function AuthModal({
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [folderAccessCode, setFolderAccessCode] = useState("");
+  const [resendEmailInput, setResendEmailInput] = useState("");
 
   // Loading & Feedback State
   const [loading, setLoading] = useState(false);
@@ -79,6 +82,27 @@ export function AuthModal({
   const [resendingConfirm, setResendingConfirm] = useState(false);
 
   if (!open) return null;
+
+  const formatAuthError = (err: unknown, fallback: string): string => {
+    const msg =
+      err instanceof Error
+        ? err.message
+        : typeof err === "object" && err !== null && "message" in err
+        ? String((err as { message?: unknown }).message || "")
+        : String(err || "");
+    const lower = msg.toLowerCase();
+    if (
+      lower.includes("failed to fetch") ||
+      lower.includes("networkerror") ||
+      lower.includes("load failed") ||
+      lower.includes("network request failed") ||
+      lower.includes("aborterror") ||
+      lower.includes("timed out")
+    ) {
+      return "Koneksi ke server autentikasi terganggu. Pastikan internet aktif lalu coba lagi.";
+    }
+    return msg || fallback;
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,7 +220,9 @@ export function AuthModal({
           "Email belum dikonfirmasi. Silakan periksa inbox email Anda untuk memverifikasi."
         );
       } else {
-        setErrorMessage(msg || "Gagal masuk. Silakan coba beberapa saat lagi.");
+        setErrorMessage(
+          formatAuthError(err, "Gagal masuk. Silakan coba beberapa saat lagi.")
+        );
       }
     } finally {
       setLoading(false);
@@ -324,32 +350,43 @@ export function AuthModal({
       }
     } catch (err: any) {
       setErrorMessage(
-        err?.message || "Terjadi kesalahan saat mendaftar. Silakan coba lagi."
+        formatAuthError(
+          err,
+          "Terjadi kesalahan saat mendaftar. Silakan coba lagi."
+        )
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResendConfirmation = async () => {
-    if (!pendingConfirmEmail || !isSupabaseConfigured || resendingConfirm) {
+  const resendSignupConfirmationEmail = async (rawEmail: string) => {
+    const cleanEmail = rawEmail.trim();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setErrorMessage(
+        "Masukkan alamat email yang valid untuk mengirim ulang verifikasi."
+      );
+      return;
+    }
+    if (!isSupabaseConfigured || resendingConfirm) {
       return;
     }
     setResendingConfirm(true);
     try {
       const { error } = await supabase.auth.resend({
         type: "signup",
-        email: pendingConfirmEmail,
+        email: cleanEmail,
         options: {
           emailRedirectTo: getAuthRedirectUrl(),
         },
       });
       if (error) throw error;
+      setPendingConfirmEmail(cleanEmail);
       setErrorMessage(null);
       setSuccessMessage(
-        `Email verifikasi baru telah dikirim ke ${pendingConfirmEmail}. Pastikan Anda membuka link dari email terbaru.`
+        `Email verifikasi baru telah dikirim ke ${cleanEmail}. Periksa inbox/spam Anda dan buka link dari email terbaru.`
       );
-      onShowToast(`Email verifikasi dikirim ulang ke ${pendingConfirmEmail}`);
+      onShowToast(`Email verifikasi dikirim ulang ke ${cleanEmail}`);
     } catch (err: any) {
       const msg = String(err?.message || "");
       const lower = msg.toLowerCase();
@@ -363,12 +400,42 @@ export function AuthModal({
         );
       } else {
         setErrorMessage(
-          msg || "Gagal mengirim ulang email verifikasi. Silakan coba lagi nanti."
+          formatAuthError(
+            err,
+            "Gagal mengirim ulang email verifikasi. Silakan coba lagi nanti."
+          )
         );
       }
     } finally {
       setResendingConfirm(false);
     }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!pendingConfirmEmail) return;
+    await resendSignupConfirmationEmail(pendingConfirmEmail);
+  };
+
+  const handleResendFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    await resendSignupConfirmationEmail(resendEmailInput);
+  };
+
+  const openResendTab = () => {
+    const candidateEmail =
+      (pendingConfirmEmail && pendingConfirmEmail.includes("@")
+        ? pendingConfirmEmail
+        : "") ||
+      (identifier.trim().includes("@") ? identifier.trim() : "");
+    if (candidateEmail) {
+      setResendEmailInput(candidateEmail);
+    }
+    setActiveTab("resend");
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setPendingConfirmEmail(null);
   };
 
   return (
@@ -403,15 +470,21 @@ export function AuthModal({
           </button>
         </div>
 
-        {/* Modal Context Title (Differentiated for Login vs Register) */}
+        {/* Modal Context Title (Differentiated for Login, Register, and Resend) */}
         <div className="px-6 pt-5 pb-1">
           <h2 id="auth-modal-title" className="text-lg font-bold text-[#121215]">
-            {activeTab === "login" ? "Masuk ke Akun" : "Daftar Akun Baru"}
+            {activeTab === "login"
+              ? "Masuk ke Akun"
+              : activeTab === "register"
+              ? "Daftar Akun Baru"
+              : "Verifikasi Email Akun"}
           </h2>
           <p className="text-xs text-[#5E5E5E] mt-1 leading-relaxed">
             {activeTab === "login"
               ? "Lanjutkan akses materi pembelajaran & pantau progress belajar kamu."
-              : "Mulai perjalanan belajar strategi konten organik & roadmap specialist dari nol."}
+              : activeTab === "register"
+              ? "Mulai perjalanan belajar strategi konten organik & roadmap specialist dari nol."
+              : "Masukkan alamat email yang Anda daftarkan untuk menerima tautan verifikasi baru."}
           </p>
         </div>
 
@@ -421,7 +494,7 @@ export function AuthModal({
             <AlertCircle size={15} className="shrink-0 mt-0.5" />
             <div className="flex-1 space-y-2">
               <p className="leading-relaxed">{errorMessage}</p>
-              {pendingConfirmEmail && (
+              {activeTab !== "resend" && pendingConfirmEmail && (
                 <button
                   type="button"
                   onClick={handleResendConfirmation}
@@ -442,7 +515,7 @@ export function AuthModal({
             <CheckCircle2 size={15} className="shrink-0 mt-0.5" />
             <div className="flex-1 space-y-2">
               <p className="leading-relaxed">{successMessage}</p>
-              {pendingConfirmEmail && (
+              {activeTab !== "resend" && pendingConfirmEmail && (
                 <button
                   type="button"
                   onClick={handleResendConfirmation}
@@ -511,6 +584,17 @@ export function AuthModal({
                 <span>{loading ? "Memproses Masuk..." : "Masuk ke Akun"}</span>
               </button>
 
+              <div className="text-center text-[11px] text-[#5E5E5E]">
+                Belum verifikasi email?{" "}
+                <button
+                  type="button"
+                  onClick={openResendTab}
+                  className="font-semibold text-[#4F39F6] hover:underline cursor-pointer ml-0.5"
+                >
+                  Kirim ulang link verifikasi
+                </button>
+              </div>
+
               <div className="pt-3 text-center text-xs text-[#5E5E5E] border-t border-[#EAECEF]/80">
                 Belum memiliki akun?{" "}
                 <button
@@ -527,7 +611,7 @@ export function AuthModal({
                 </button>
               </div>
             </form>
-          ) : (
+          ) : activeTab === "register" ? (
             /* TAB 2: REGISTER FORM */
             <form onSubmit={handleRegister} className="space-y-3.5">
               <div>
@@ -637,6 +721,60 @@ export function AuthModal({
                   className="font-bold text-[#4F39F6] hover:underline cursor-pointer ml-1"
                 >
                   Masuk di sini
+                </button>
+              </div>
+            </form>
+          ) : (
+            /* TAB 3: RESEND VERIFICATION EMAIL FORM */
+            <form onSubmit={handleResendFormSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#121215] mb-1.5">
+                  Alamat Email Terdaftar
+                </label>
+                <div className="relative flex items-center">
+                  <Mail
+                    size={15}
+                    className="absolute left-3 text-[#9CA3AF] pointer-events-none"
+                  />
+                  <input
+                    type="email"
+                    required
+                    value={resendEmailInput}
+                    onChange={(e) => setResendEmailInput(e.target.value)}
+                    placeholder="email.aktif@gmail.com"
+                    className="w-full rounded-lg bg-[#F8F9FB] pl-9 pr-3 py-2.5 text-xs text-[#121215] placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:bg-[#FFFFFF] focus:border-[#4F39F6] focus:outline-none transition-colors"
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-[#5E5E5E] leading-relaxed">
+                  Pastikan Anda membuka link dari email terbaru dan memeriksa folder Spam/Promosi.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={resendingConfirm}
+                className="w-full inline-flex items-center justify-center rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-3 text-xs font-bold text-white shadow-[0_4px_12px_rgba(79,57,246,0.25)] transition-all cursor-pointer disabled:opacity-60"
+              >
+                <span>
+                  {resendingConfirm
+                    ? "Mengirim Link Verifikasi..."
+                    : "Kirim Link Verifikasi"}
+                </span>
+              </button>
+
+              <div className="pt-3 text-center text-xs text-[#5E5E5E] border-t border-[#EAECEF]/80">
+                Sudah verifikasi?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("login");
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
+                    setPendingConfirmEmail(null);
+                  }}
+                  className="font-bold text-[#4F39F6] hover:underline cursor-pointer ml-1"
+                >
+                  Kembali ke Masuk
                 </button>
               </div>
             </form>

@@ -68,6 +68,132 @@ export const isSupabaseConfigured: boolean = Boolean(
     !SUPABASE_ANON_KEY.includes("placeholder")
 );
 
+const PROXIED_SUPABASE_PREFIXES = [
+  "/auth/v1/",
+  "/rest/v1/",
+  "/storage/v1/",
+  "/functions/v1/",
+] as const;
+
+const SB_PROXY_SESSION_KEY = "rs_use_sb_proxy_v1";
+
+let preferSameOriginProxy = false;
+if (typeof window !== "undefined") {
+  try {
+    preferSameOriginProxy =
+      window.sessionStorage.getItem(SB_PROXY_SESSION_KEY) === "1";
+  } catch {}
+}
+
+/**
+ * Resilient browser `fetch` wrapper for Supabase calls:
+ * - Never intercepts SSR / Node server requests (`typeof window === "undefined"`).
+ * - Tries direct request to SUPABASE_URL first (with a 4.5s timeout on non-storage calls).
+ * - On network/carrier/timeout failure, transparently retries via same-origin `/api/sb/...`
+ *   and pins proxy mode in sessionStorage for the rest of the tab session.
+ */
+function createResilientSupabaseFetch(): typeof fetch {
+  return async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> => {
+    const nativeFetch = globalThis.fetch.bind(globalThis);
+    if (typeof window === "undefined") {
+      return nativeFetch(input, init);
+    }
+
+    const rawUrl =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+        ? input.toString()
+        : input.url;
+
+    const baseUrl = SUPABASE_URL.replace(/\/+$/, "");
+    if (!rawUrl.startsWith(`${baseUrl}/`)) {
+      return nativeFetch(input, init);
+    }
+
+    const relativePathAndQuery = rawUrl.slice(baseUrl.length);
+    const pathnameOnly = relativePathAndQuery.split("?")[0];
+    const shouldProxyPrefix = PROXIED_SUPABASE_PREFIXES.some(
+      (prefix) =>
+        relativePathAndQuery.startsWith(prefix) ||
+        pathnameOnly === prefix.slice(0, -1)
+    );
+    if (!shouldProxyPrefix) {
+      return nativeFetch(input, init);
+    }
+
+    const proxyUrl = `${window.location.origin}/api/sb${relativePathAndQuery}`;
+    const proxyRequestClone = input instanceof Request ? input.clone() : null;
+
+    const fetchViaProxy = async (): Promise<Response> => {
+      if (input instanceof Request) {
+        const headers = new Headers(input.headers);
+        if (init?.headers) {
+          new Headers(init.headers).forEach((value, key) =>
+            headers.set(key, value)
+          );
+        }
+        const method = (init?.method || input.method || "GET").toUpperCase();
+        const hasBody = method !== "GET" && method !== "HEAD";
+        const body =
+          init?.body !== undefined
+            ? init.body
+            : hasBody && proxyRequestClone
+            ? await proxyRequestClone.arrayBuffer()
+            : undefined;
+        return nativeFetch(proxyUrl, {
+          ...init,
+          method,
+          headers,
+          body,
+          signal: init?.signal,
+        });
+      }
+      return nativeFetch(proxyUrl, init);
+    };
+
+    if (preferSameOriginProxy) {
+      return fetchViaProxy();
+    }
+
+    const isStorageRequest = relativePathAndQuery.startsWith("/storage/v1/");
+    let timeoutController: AbortController | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    if (!isStorageRequest && !init?.signal) {
+      timeoutController = new AbortController();
+      timeoutId = setTimeout(() => {
+        timeoutController?.abort();
+      }, 4500);
+    }
+
+    try {
+      const directInit: RequestInit | undefined = timeoutController
+        ? { ...init, signal: timeoutController.signal }
+        : init;
+      return await nativeFetch(input, directInit);
+    } catch (err) {
+      if (init?.signal?.aborted) {
+        throw err;
+      }
+      preferSameOriginProxy = true;
+      try {
+        window.sessionStorage.setItem(SB_PROXY_SESSION_KEY, "1");
+      } catch {}
+      return await fetchViaProxy();
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    }
+  };
+}
+
+const resilientSupabaseFetch = createResilientSupabaseFetch();
+
 const globalForSupabase = globalThis as unknown as {
   __ruangSosmedSupabase?: SupabaseClient;
   __ruangSosmedSupabasePublic?: SupabaseClient;
@@ -83,6 +209,9 @@ export const supabase: SupabaseClient =
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+      },
+      global: {
+        fetch: resilientSupabaseFetch,
       },
     }
   ));
@@ -106,6 +235,9 @@ export const supabasePublic: SupabaseClient =
         autoRefreshToken: false,
         detectSessionInUrl: false,
         storageKey: "sb-ruang-sosmed-public-anon",
+      },
+      global: {
+        fetch: resilientSupabaseFetch,
       },
     }
   ));
