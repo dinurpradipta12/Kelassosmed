@@ -729,3 +729,178 @@ export async function deleteDiscussionAction(
     replyId,
   };
 }
+
+export interface DeleteContentPayload {
+  id?: string;
+  title?: string;
+  type?: string;
+}
+
+function normalizeDbTypeForDelete(t?: string): string | null {
+  if (!t) return null;
+  switch (t.trim().toLowerCase()) {
+    case "course":
+      return "course";
+    case "folder":
+      return "folder";
+    case "quiz":
+      return "quiz";
+    case "assignment":
+      return "assignment";
+    case "learning path":
+    case "learning_path":
+      return "learning_path";
+    case "wiki":
+      return "wiki";
+    case "page":
+      return "page";
+    default:
+      return null;
+  }
+}
+
+export async function deleteContentAction(
+  payload: DeleteContentPayload,
+  scopedClient?: any
+) {
+  const cleanId = (payload.id || "").trim();
+  const cleanTitle = (payload.title || "").trim();
+  const targetType = (payload.type || "").trim();
+  const targetDbType = normalizeDbTypeForDelete(targetType);
+
+  if (!cleanId && !cleanTitle) {
+    return {
+      ok: false,
+      error: "ID atau judul konten tidak valid.",
+      deletedIds: [] as string[],
+    };
+  }
+
+  const client =
+    createServiceRoleClient() ??
+    scopedClient ??
+    (isSupabaseConfigured ? supabase : null);
+
+  if (!client) {
+    revalidatePath("/");
+    return {
+      ok: true,
+      deletedIds: cleanId ? [cleanId] : [],
+      localOnly: true,
+    };
+  }
+
+  const isUuidId =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      cleanId
+    );
+
+  const idsSet = new Set<string>();
+  const nowIso = new Date().toISOString();
+
+  try {
+    if (isUuidId) {
+      const { data: idRow } = await client
+        .from("contents")
+        .select("id, title")
+        .eq("id", cleanId)
+        .maybeSingle();
+      if (idRow?.id && !String(idRow.title || "").startsWith("__SYSTEM_")) {
+        idsSet.add(String(idRow.id));
+      } else {
+        idsSet.add(cleanId);
+      }
+    }
+
+    if (cleanTitle && !cleanTitle.startsWith("__SYSTEM_")) {
+      const escaped = cleanTitle.replace(/[\\%_]/g, "\\$&");
+      const { data: titleRows } = await client
+        .from("contents")
+        .select("id, type, title, settings_json")
+        .ilike("title", `%${escaped}%`)
+        .not("title", "like", "__SYSTEM_%");
+
+      if (Array.isArray(titleRows)) {
+        for (const r of titleRows as any[]) {
+          if (!r?.id) continue;
+          const rTitle = String(r.title || "").trim();
+          if (rTitle.startsWith("__SYSTEM_")) continue;
+          if (rTitle.toLowerCase() !== cleanTitle.toLowerCase()) continue;
+
+          if (targetDbType) {
+            const rDbType = String(r.type || "").trim().toLowerCase();
+            const metaType = String(
+              r.settings_json?.explorer_meta?.itemType || ""
+            )
+              .trim()
+              .toLowerCase();
+            const typeMatches =
+              rDbType === targetDbType ||
+              (targetDbType === "folder" &&
+                (metaType === "folder" || r.settings_json?.explorer_meta?.isFolder === true)) ||
+              (targetType && metaType === targetType.toLowerCase());
+            if (!typeMatches) continue;
+          }
+
+          idsSet.add(String(r.id));
+        }
+      }
+    }
+
+    const deletedIds = Array.from(idsSet);
+
+    for (const rowId of deletedIds) {
+      // 1. Tombstone update so if DELETE is delayed/blocked by RLS, it vanishes from published queries immediately
+      try {
+        await client
+          .from("contents")
+          .update({
+            status: "draft",
+            title: `__DELETED__${rowId}`,
+            folder_name: null,
+            access_code: null,
+            updated_at: nowIso,
+          })
+          .eq("id", rowId);
+      } catch {
+        try {
+          await client
+            .from("contents")
+            .update({
+              status: "draft",
+              title: `__DELETED__${rowId}`,
+              updated_at: nowIso,
+            })
+            .eq("id", rowId);
+        } catch {}
+      }
+
+      // 2. Hard delete
+      await client.from("contents").delete().eq("id", rowId);
+    }
+
+    if (deletedIds.length === 0 && cleanTitle && !cleanTitle.startsWith("__SYSTEM_")) {
+      await client
+        .from("contents")
+        .update({
+          status: "draft",
+          title: `__DELETED__${Date.now()}`,
+          updated_at: nowIso,
+        })
+        .eq("title", cleanTitle);
+      await client.from("contents").delete().eq("title", cleanTitle);
+    }
+
+    revalidatePath("/");
+    return {
+      ok: true,
+      deletedIds,
+    };
+  } catch {
+    return {
+      ok: false,
+      error: "Gagal menghapus konten dari database.",
+      deletedIds: Array.from(idsSet),
+    };
+  }
+}

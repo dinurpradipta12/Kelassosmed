@@ -21,6 +21,7 @@ import {
   redeemAccessCodeAction,
   syncUserPointsAction,
   deleteDiscussionAction,
+  deleteContentAction,
 } from "@/app/actions/lms-actions";
 import {
   API_SECURITY_HEADERS,
@@ -72,14 +73,16 @@ export async function POST(request: Request) {
         | "save_lesson_note_review"
         | "redeem_access_code"
         | "sync_user_points"
-        | "delete_discussion";
+        | "delete_discussion"
+        | "delete_content";
       payload: Record<string, unknown>;
     };
 
     if (
       (action === "publish_content" ||
         action === "grade_submission" ||
-        action === "delete_discussion") &&
+        action === "delete_discussion" ||
+        action === "delete_content") &&
       caller.role !== "admin" &&
       caller.role !== "mentor"
     ) {
@@ -176,6 +179,22 @@ export async function POST(request: Request) {
               typeof rawPayload.replyId === "string"
                 ? rawPayload.replyId
                 : undefined,
+          },
+          caller.supabase
+        );
+        return NextResponse.json(res, { headers: API_SECURITY_HEADERS });
+      }
+      case "delete_content": {
+        const rawPayload = (payload || {}) as Record<string, unknown>;
+        const res = await deleteContentAction(
+          {
+            id: typeof rawPayload.id === "string" ? rawPayload.id : undefined,
+            title:
+              typeof rawPayload.title === "string"
+                ? rawPayload.title
+                : undefined,
+            type:
+              typeof rawPayload.type === "string" ? rawPayload.type : undefined,
           },
           caller.supabase
         );

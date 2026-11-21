@@ -370,6 +370,82 @@ interface PersistedGlobalState {
 const STORAGE_KEY = "ruang_sosmed_2_0_clean_store_v6";
 const DELETED_THREADS_STORAGE_KEY = "ruang_sosmed_deleted_threads_v1";
 const DELETED_REPLIES_STORAGE_KEY = "ruang_sosmed_deleted_replies_v1";
+const DELETED_CONTENT_IDS_STORAGE_KEY = "ruang_sosmed_deleted_content_ids_v1";
+const DELETED_CONTENT_TITLES_STORAGE_KEY = "ruang_sosmed_deleted_content_titles_v1";
+const CONTENT_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function readStoredTombstoneMap(storageKey: string): Map<string, number> {
+  const result = new Map<string, number>();
+  if (typeof window === "undefined") return result;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return result;
+    const parsed = JSON.parse(raw);
+    const now = Date.now();
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      Object.entries(parsed).forEach(([k, v]) => {
+        const cleanKey = k.trim().toLowerCase();
+        const expiresAt = Number(v);
+        if (cleanKey && Number.isFinite(expiresAt) && expiresAt > now) {
+          result.set(cleanKey, expiresAt);
+        }
+      });
+    }
+  } catch {}
+  return result;
+}
+
+function persistStoredTombstoneMap(
+  storageKey: string,
+  map: Map<string, number>
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const now = Date.now();
+    const obj: Record<string, number> = {};
+    map.forEach((expiresAt, k) => {
+      if (k && expiresAt > now) {
+        obj[k] = expiresAt;
+      } else {
+        map.delete(k);
+      }
+    });
+    window.localStorage.setItem(storageKey, JSON.stringify(obj));
+  } catch {}
+}
+
+function isContentTitleTombstoned(
+  titleKey: string,
+  map: Map<string, number>
+): boolean {
+  const clean = titleKey.trim().toLowerCase();
+  if (!clean) return false;
+  const expiresAt = map.get(clean);
+  if (!expiresAt) return false;
+  if (expiresAt <= Date.now()) {
+    map.delete(clean);
+    return false;
+  }
+  return true;
+}
+
+function cleanupLocalStorageForContent(id: string, title: string): void {
+  if (typeof window === "undefined") return;
+  const key = (title || "").trim().toLowerCase();
+  try {
+    if (id) {
+      window.localStorage.removeItem(`ruang_sosmed_thumb_${id}`);
+    }
+    if (key) {
+      window.localStorage.removeItem(`ruang_sosmed_curriculum_${key}`);
+      window.localStorage.removeItem(`ruang_sosmed_curriculum_ts_${key}`);
+      window.localStorage.removeItem(`ruang_sosmed_editor_sections_${key}`);
+      window.localStorage.removeItem(`ruang_sosmed_course_tier_${key}`);
+      window.localStorage.removeItem(`ruang_sosmed_wiki_doc_${key}`);
+      window.localStorage.removeItem(`ruang_sosmed_thumb_${key}`);
+    }
+  } catch {}
+}
 
 function readStoredIdSet(storageKey: string): Set<string> {
   const result = new Set<string>();
@@ -2452,6 +2528,8 @@ export function RuangSosmedProvider({
   >(new Map());
   const deletedThreadIdsRef = useRef<Set<string>>(new Set());
   const deletedReplyIdsRef = useRef<Set<string>>(new Set());
+  const deletedContentIdsRef = useRef<Set<string>>(new Set());
+  const deletedContentTitlesRef = useRef<Map<string, number>>(new Map());
   const recentLocalThreadPostsRef = useRef<Map<string, number>>(new Map());
   const recentLocalReplyPostsRef = useRef<Map<string, number>>(new Map());
   const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
@@ -2592,6 +2670,10 @@ export function RuangSosmedProvider({
     try {
       deletedThreadIdsRef.current = readStoredIdSet(DELETED_THREADS_STORAGE_KEY);
       deletedReplyIdsRef.current = readStoredIdSet(DELETED_REPLIES_STORAGE_KEY);
+      deletedContentIdsRef.current = readStoredIdSet(DELETED_CONTENT_IDS_STORAGE_KEY);
+      deletedContentTitlesRef.current = readStoredTombstoneMap(
+        DELETED_CONTENT_TITLES_STORAGE_KEY
+      );
       let parsed: Partial<PersistedGlobalState> | null = null;
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -2610,13 +2692,39 @@ export function RuangSosmedProvider({
       }
 
       if (parsed) {
-        // Bersihkan semua dummy data lama dan pastikan 100% sinkron antara Admin Explorer & Learner Portal
+        // Bersihkan semua dummy data lama & konten yang sudah ditandai terhapus (tombstone)
         const rawExplorer = Array.isArray(parsed.explorerItems)
-          ? parsed.explorerItems.filter((i) => !isLegacyDummyItem(i))
+          ? parsed.explorerItems.filter((i) => {
+              if (!i || isLegacyDummyItem(i)) return false;
+              const tk = (i.title || "").trim().toLowerCase();
+              if (!tk || String(i.title || "").startsWith("__DELETED__")) {
+                return false;
+              }
+              if (i.id && deletedContentIdsRef.current.has(i.id)) return false;
+              if (isContentTitleTombstoned(tk, deletedContentTitlesRef.current)) {
+                return false;
+              }
+              return true;
+            })
           : [];
 
+        const rawExplorerTitleKeys = new Set(
+          rawExplorer.map((e) => (e.title || "").trim().toLowerCase())
+        );
+
         const rawAssigned = Array.isArray(parsed.learnerAssignedItems)
-          ? parsed.learnerAssignedItems.filter((i) => !isLegacyDummyItem(i))
+          ? parsed.learnerAssignedItems.filter((i) => {
+              if (!i || isLegacyDummyItem(i)) return false;
+              const tk = (i.title || "").trim().toLowerCase();
+              if (!tk || String(i.title || "").startsWith("__DELETED__")) {
+                return false;
+              }
+              if (i.id && deletedContentIdsRef.current.has(i.id)) return false;
+              if (isContentTitleTombstoned(tk, deletedContentTitlesRef.current)) {
+                return false;
+              }
+              return true;
+            })
           : [];
 
         const mergedCurriculums: Record<string, CourseSectionAccordion[]> = {};
@@ -2625,25 +2733,41 @@ export function RuangSosmedProvider({
           typeof parsed.courseCurriculums === "object"
         ) {
           Object.entries(parsed.courseCurriculums).forEach(([k, secs]) => {
+            const cleanK = k.trim().toLowerCase();
             if (
-              !LEGACY_DUMMY_TITLES.has(k.trim().toLowerCase()) &&
+              !LEGACY_DUMMY_TITLES.has(cleanK) &&
+              !isContentTitleTombstoned(cleanK, deletedContentTitlesRef.current) &&
               Array.isArray(secs) &&
               !isLegacyDummySections(secs)
             ) {
-              mergedCurriculums[k.trim().toLowerCase()] = secs;
+              mergedCurriculums[cleanK] = secs;
             }
           });
         }
 
-        // Pastikan kurikulum yang tersimpan per-course di localStorage ikut termuat
-        // dan jika ada course yang dibuat admin di localStorage, pastikan masuk ke rawExplorer
+        // Muat kurikulum yang tersimpan di localStorage HANYA untuk course yang aktif di rawExplorer (jangan bangkitkan item yang sudah dihapus!)
         if (typeof window !== "undefined") {
           try {
             for (let i = 0; i < window.localStorage.length; i++) {
               const k = window.localStorage.key(i);
-              if (k && k.startsWith("ruang_sosmed_curriculum_")) {
-                const titleKey = k.replace("ruang_sosmed_curriculum_", "").trim();
-                if (titleKey && !LEGACY_DUMMY_TITLES.has(titleKey.toLowerCase())) {
+              if (
+                k &&
+                k.startsWith("ruang_sosmed_curriculum_") &&
+                !k.startsWith("ruang_sosmed_curriculum_ts_")
+              ) {
+                const titleKey = k
+                  .replace("ruang_sosmed_curriculum_", "")
+                  .trim()
+                  .toLowerCase();
+                if (
+                  titleKey &&
+                  !LEGACY_DUMMY_TITLES.has(titleKey) &&
+                  !isContentTitleTombstoned(
+                    titleKey,
+                    deletedContentTitlesRef.current
+                  ) &&
+                  rawExplorerTitleKeys.has(titleKey)
+                ) {
                   const val = window.localStorage.getItem(k);
                   if (val) {
                     try {
@@ -2652,39 +2776,7 @@ export function RuangSosmedProvider({
                         Array.isArray(parsedSecs) &&
                         !isLegacyDummySections(parsedSecs)
                       ) {
-                        mergedCurriculums[titleKey.toLowerCase()] = parsedSecs;
-                        if (
-                          !rawExplorer.some(
-                            (e) =>
-                              e.title.trim().toLowerCase() ===
-                              titleKey.toLowerCase()
-                          )
-                        ) {
-                          const niceTitle = titleKey
-                            .split(" ")
-                            .map(
-                              (w) => w.charAt(0).toUpperCase() + w.slice(1)
-                            )
-                            .join(" ");
-                          rawExplorer.unshift({
-                            id: `exp-${Date.now()}`,
-                            title: niceTitle,
-                            type: "Course",
-                            assignedCount: 0,
-                            category: "Social Media Strategy",
-                            urgency: "Not Urgent",
-                            editedLabel: "Published",
-                            statusLabel: "Completed",
-                            progressPercent: 100,
-                            language: "Bahasa / English",
-                            editedDate: "Edited Recently",
-                            bannerGradient:
-                              "linear-gradient(135deg, rgba(14, 165, 233, 0.10) 0%, #FFFFFF 100%)",
-                            bannerAccent: "#0EA5E9",
-                            bannerPattern: "carousel",
-                            description: `Materi pembelajaran ${niceTitle} Ruang Sosmed 2.0.`,
-                          });
-                        }
+                        mergedCurriculums[titleKey] = parsedSecs;
                       }
                     } catch {}
                   }
@@ -3326,6 +3418,62 @@ export function RuangSosmedProvider({
                   : exp
               ),
             }));
+          } else if (event.data?.type === "CONTENT_DELETED") {
+            const delId = String(event.data.id || "").trim();
+            const delTitleKey = String(event.data.titleKey || "")
+              .trim()
+              .toLowerCase();
+            if (delId) {
+              deletedContentIdsRef.current.add(delId);
+              persistStoredIdSet(
+                DELETED_CONTENT_IDS_STORAGE_KEY,
+                deletedContentIdsRef.current
+              );
+            }
+            if (delTitleKey) {
+              deletedContentTitlesRef.current.set(
+                delTitleKey,
+                Date.now() + CONTENT_TOMBSTONE_TTL_MS
+              );
+              persistStoredTombstoneMap(
+                DELETED_CONTENT_TITLES_STORAGE_KEY,
+                deletedContentTitlesRef.current
+              );
+            }
+            cachedContentsRowsRef.current = null;
+            lastContentsWmKeyRef.current = "";
+            lastWatermarkRef.current = "";
+            cleanupLocalStorageForContent(delId, delTitleKey);
+
+            setState((prev) => {
+              const nextExplorer = prev.explorerItems.filter((item) => {
+                if (delId && item.id === delId) return false;
+                if (
+                  delTitleKey &&
+                  item.title.trim().toLowerCase() === delTitleKey
+                ) {
+                  return false;
+                }
+                return true;
+              });
+              const nextCurriculums = { ...(prev.courseCurriculums || {}) };
+              if (delTitleKey) delete nextCurriculums[delTitleKey];
+              const nextCatalog = syncLearnerCatalogWithExplorer(
+                nextExplorer,
+                prev.learnerAssignedItems.filter(
+                  (l) =>
+                    !delTitleKey ||
+                    l.title.trim().toLowerCase() !== delTitleKey
+                ),
+                nextCurriculums
+              );
+              return {
+                ...prev,
+                explorerItems: nextExplorer,
+                courseCurriculums: nextCurriculums,
+                learnerAssignedItems: nextCatalog,
+              };
+            });
           } else if (
             event.data?.type === "ADMIN_NOTIFICATION_NEW" &&
             event.data.notification
@@ -3687,19 +3835,30 @@ export function RuangSosmedProvider({
 
         const justPushedIds = new Set<string>();
 
-        // 1) Admin/Mentor/Dev: dorong folder & konten lokal yang belum tersimpan ke Supabase
+        // 1) Admin/Mentor/Dev: dorong HANYA konten lokal baru (non-UUID) yang belum tersimpan ke Supabase & bukan item terhapus
         if (isStaffSession && !contentsRes.error) {
+          const dbIds = new Set(
+            (contentsRes.data || []).map((r: any) => String(r.id || ""))
+          );
           const dbTitles = new Set(
             (contentsRes.data || []).map((r: any) =>
               String(r.title).trim().toLowerCase()
             )
           );
           const pending = stateRef.current.explorerItems
-            .filter(
-              (i) =>
-                !isLegacyDummyItem(i) &&
-                !dbTitles.has(i.title.trim().toLowerCase())
-            )
+            .filter((i) => {
+              if (!i || isLegacyDummyItem(i)) return false;
+              const tk = (i.title || "").trim().toLowerCase();
+              if (!tk || String(i.title || "").startsWith("__DELETED__")) {
+                return false;
+              }
+              if (isUuid(i.id)) return false;
+              if (deletedContentIdsRef.current.has(i.id)) return false;
+              if (isContentTitleTombstoned(tk, deletedContentTitlesRef.current)) {
+                return false;
+              }
+              return !dbIds.has(i.id) && !dbTitles.has(tk);
+            })
             .sort((a, b) =>
               a.type === "Folder" && b.type !== "Folder"
                 ? -1
@@ -4286,13 +4445,25 @@ export function RuangSosmedProvider({
           const newlyObservedReplyIds: string[] = [];
 
           if (!contentsRes.error && Array.isArray(contentsRes.data)) {
-            const dbRows = (contentsRes.data as any[]).filter(
-              (r) =>
-                r &&
-                r.title &&
-                !String(r.title).startsWith("__SYSTEM_") &&
-                !isLegacyDummyItem({ id: r.id, title: r.title })
-            );
+            const dbRows = (contentsRes.data as any[]).filter((r) => {
+              if (!r || !r.title) return false;
+              const rawTitle = String(r.title);
+              if (
+                rawTitle.startsWith("__SYSTEM_") ||
+                rawTitle.startsWith("__DELETED__")
+              ) {
+                return false;
+              }
+              if (r.status === "draft") return false;
+              if (r.id && deletedContentIdsRef.current.has(String(r.id))) {
+                return false;
+              }
+              const tk = rawTitle.trim().toLowerCase();
+              if (isContentTitleTombstoned(tk, deletedContentTitlesRef.current)) {
+                return false;
+              }
+              return !isLegacyDummyItem({ id: r.id, title: r.title });
+            });
             const dbIds = new Set(dbRows.map((r) => r.id));
             const dbTitles = new Set(
               dbRows.map((r) => String(r.title).trim().toLowerCase())
@@ -4591,14 +4762,24 @@ export function RuangSosmedProvider({
               };
             });
 
-            // Item lokal yang belum pernah di-push (id non-UUID) tetap dipertahankan;
+            // Item lokal yang belum pernah di-push (id non-UUID) tetap dipertahankan kecuali sudah dihapus;
             // item ber-UUID yang tidak ada lagi di DB berarti sudah dihapus admin.
-            const localOnly = nextExplorer.filter(
-              (i) =>
+            const localOnly = nextExplorer.filter((i) => {
+              if (!i || !i.id) return false;
+              const tk = (i.title || "").trim().toLowerCase();
+              if (!tk || String(i.title || "").startsWith("__DELETED__")) {
+                return false;
+              }
+              if (deletedContentIdsRef.current.has(i.id)) return false;
+              if (isContentTitleTombstoned(tk, deletedContentTitlesRef.current)) {
+                return false;
+              }
+              return (
                 !dbIds.has(i.id) &&
-                !dbTitles.has(i.title.trim().toLowerCase()) &&
+                !dbTitles.has(tk) &&
                 (!isUuid(i.id) || justPushedIds.has(i.id))
-            );
+              );
+            });
             nextExplorer = deduplicateExplorerItems([
               ...localOnly,
               ...dbExplorer,
@@ -5880,6 +6061,18 @@ export function RuangSosmedProvider({
       const finalDesc = description?.trim() || cfg.description;
       const nowId = Date.now();
 
+      const titleKeyClean = title.trim().toLowerCase();
+      if (titleKeyClean) {
+        deletedContentTitlesRef.current.delete(titleKeyClean);
+        persistStoredTombstoneMap(
+          DELETED_CONTENT_TITLES_STORAGE_KEY,
+          deletedContentTitlesRef.current
+        );
+      }
+      cachedContentsRowsRef.current = null;
+      lastContentsWmKeyRef.current = "";
+      lastWatermarkRef.current = "";
+
       const existingSameTitle = stateRef.current.explorerItems.find(
         (e) => e.title.trim().toLowerCase() === title.trim().toLowerCase()
       );
@@ -6341,40 +6534,170 @@ export function RuangSosmedProvider({
 
   const deleteExplorerItem = useCallback((id: string) => {
     const targetForDb = stateRef.current.explorerItems.find((i) => i.id === id);
+    const targetTitle = targetForDb?.title || "";
+    const targetTitleKey = targetTitle.trim().toLowerCase();
+    const targetType = targetForDb?.type;
+
+    if (id) {
+      deletedContentIdsRef.current.add(id);
+      persistStoredIdSet(
+        DELETED_CONTENT_IDS_STORAGE_KEY,
+        deletedContentIdsRef.current
+      );
+    }
+    if (targetTitleKey) {
+      deletedContentTitlesRef.current.set(
+        targetTitleKey,
+        Date.now() + CONTENT_TOMBSTONE_TTL_MS
+      );
+      persistStoredTombstoneMap(
+        DELETED_CONTENT_TITLES_STORAGE_KEY,
+        deletedContentTitlesRef.current
+      );
+    }
+
+    // Invalidate all sync caches immediately so stale rows cannot replay the deleted item
+    cachedContentsRowsRef.current = null;
+    lastContentsWmKeyRef.current = "";
+    lastWatermarkRef.current = "";
+    cleanupLocalStorageForContent(id, targetTitle);
+
+    if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+      try {
+        const bc = new BroadcastChannel("ruang_sosmed_channel");
+        bc.postMessage({
+          type: "CONTENT_DELETED",
+          id,
+          titleKey: targetTitleKey,
+          contentType: targetType,
+        });
+        bc.close();
+      } catch {}
+    }
+
     if (isSupabaseConfigured && targetForDb) {
       void (async () => {
         try {
-          if (isUuid(targetForDb.id)) {
-            await supabase.from("contents").delete().eq("id", targetForDb.id);
-          } else {
-            await supabase
-              .from("contents")
-              .delete()
-              .eq("title", targetForDb.title);
+          let serverDeleteOk = false;
+          if (typeof window !== "undefined") {
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const accessToken = sessionData?.session?.access_token;
+              if (accessToken) {
+                const res = await fetch("/api/lms", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${accessToken}`,
+                  },
+                  body: JSON.stringify({
+                    action: "delete_content",
+                    payload: {
+                      id: targetForDb.id,
+                      title: targetForDb.title,
+                      type: targetForDb.type,
+                    },
+                  }),
+                });
+                if (res.ok) {
+                  const parsed = await res.json().catch(() => null);
+                  if (parsed?.ok) serverDeleteOk = true;
+                }
+              }
+            } catch {}
           }
-        } catch {}
+
+          if (!serverDeleteOk || isUuid(targetForDb.id)) {
+            const matchingIds = new Set<string>();
+            if (isUuid(targetForDb.id)) {
+              matchingIds.add(targetForDb.id);
+            }
+            if (targetTitle.trim() && !targetTitle.startsWith("__SYSTEM_")) {
+              const escaped = targetTitle.trim().replace(/[\\%_]/g, "\\$&");
+              const { data: dupRows } = await supabase
+                .from("contents")
+                .select("id, type, title")
+                .ilike("title", `%${escaped}%`)
+                .not("title", "like", "__SYSTEM_%");
+              if (Array.isArray(dupRows)) {
+                dupRows.forEach((row: any) => {
+                  if (
+                    row?.id &&
+                    String(row.title || "").trim().toLowerCase() === targetTitleKey
+                  ) {
+                    matchingIds.add(String(row.id));
+                  }
+                });
+              }
+            }
+
+            const nowIso = new Date().toISOString();
+            for (const rowId of Array.from(matchingIds)) {
+              deletedContentIdsRef.current.add(rowId);
+              try {
+                await supabase
+                  .from("contents")
+                  .update({
+                    status: "draft",
+                    title: `__DELETED__${rowId}`,
+                    folder_name: null,
+                    access_code: null,
+                    updated_at: nowIso,
+                  })
+                  .eq("id", rowId);
+              } catch {}
+              await supabase.from("contents").delete().eq("id", rowId);
+            }
+            persistStoredIdSet(
+              DELETED_CONTENT_IDS_STORAGE_KEY,
+              deletedContentIdsRef.current
+            );
+
+            if (matchingIds.size === 0 && targetTitle.trim()) {
+              await supabase
+                .from("contents")
+                .delete()
+                .eq("title", targetTitle.trim());
+            }
+          }
+        } catch {} finally {
+          cachedContentsRowsRef.current = null;
+          lastContentsWmKeyRef.current = "";
+          lastWatermarkRef.current = "";
+        }
       })();
     }
+
     setState((prev) => {
-      const target = prev.explorerItems.find((i) => i.id === id);
-      const nextExplorer = prev.explorerItems.filter((i) => i.id !== id);
-      const nextCurriculums = { ...(prev.courseCurriculums || {}) };
-      if (target) {
-        const key = target.title.trim().toLowerCase();
-        delete nextCurriculums[key];
-        if (typeof window !== "undefined") {
-          try {
-            window.localStorage.removeItem(`ruang_sosmed_curriculum_${key}`);
-            window.localStorage.removeItem(`ruang_sosmed_wiki_doc_${key}`);
-          } catch {}
+      const nextExplorer = prev.explorerItems.filter((i) => {
+        if (i.id === id) return false;
+        if (
+          targetTitleKey &&
+          i.title.trim().toLowerCase() === targetTitleKey &&
+          (!targetType || i.type === targetType)
+        ) {
+          return false;
         }
+        return true;
+      });
+      const nextCurriculums = { ...(prev.courseCurriculums || {}) };
+      if (targetTitleKey) {
+        delete nextCurriculums[targetTitleKey];
+      }
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            "ruang_sosmed_explorer_items_v2",
+            JSON.stringify(nextExplorer)
+          );
+        } catch {}
       }
       const nextCatalog = syncLearnerCatalogWithExplorer(
         nextExplorer,
         prev.learnerAssignedItems.filter(
           (l) =>
-            !target ||
-            l.title.trim().toLowerCase() !== target.title.trim().toLowerCase()
+            !targetTitleKey ||
+            l.title.trim().toLowerCase() !== targetTitleKey
         ),
         nextCurriculums
       );
