@@ -5,7 +5,7 @@
 -- =============================================================================
 
 DELETE FROM public.contents
-WHERE COALESCE(lower(type), '') <> 'folder'
+WHERE COALESCE(lower(type::text), '') <> 'folder'
   AND COALESCE(
     NULLIF(trim(folder_name), ''),
     NULLIF(trim(settings_json->'explorer_meta'->>'folderName'), '')
