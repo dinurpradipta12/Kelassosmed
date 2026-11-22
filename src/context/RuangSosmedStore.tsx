@@ -2837,6 +2837,11 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     points?: number;
     jobTitle?: string;
   }) => void;
+  removeLearnerProfile: (target: {
+    id?: string;
+    email?: string;
+    name?: string;
+  }) => void;
   updateMemberAccessRole: (
     emailOrId: string,
     nextRole: "Learner" | "Mentor" | "Admin"
@@ -3023,6 +3028,7 @@ export function RuangSosmedProvider({
   const lastRemoteCohortSyncSigRef = useRef<string>("");
   const lastAutoSharedSyncSigRef = useRef<string>("");
   const lastMySharedSyncKeyRef = useRef<string>("");
+  const deletedLearnerKeysRef = useRef<Map<string, number>>(new Map());
   const recentLocalThreadPostsRef = useRef<Map<string, number>>(new Map());
   const recentLocalReplyPostsRef = useRef<Map<string, number>>(new Map());
   const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
@@ -4201,6 +4207,7 @@ export function RuangSosmedProvider({
         const authUserId = authUser?.id || null;
 
         let ownProfile: any = null;
+        let ownProfileErr: any = null;
         let isStaffSession = false;
 
         if (authUserId) {
@@ -4215,12 +4222,14 @@ export function RuangSosmedProvider({
               .maybeSingle();
             if (!v2Res.error) {
               ownProf = v2Res.data;
+              ownProfileErr = null;
             } else if (isMissingTierV2ColumnError(v2Res.error)) {
               profilesHasTierV2Cols = false;
             } else if (isMissingSubDateColumnError(v2Res.error)) {
               profilesHasSubDateCols = false;
             } else {
               ownProf = v2Res.data;
+              ownProfileErr = v2Res.error;
             }
           }
           if (!ownProf && profilesHasSubDateCols) {
@@ -4233,10 +4242,12 @@ export function RuangSosmedProvider({
               .maybeSingle();
             if (!res.error) {
               ownProf = res.data;
+              ownProfileErr = null;
             } else if (isMissingSubDateColumnError(res.error)) {
               profilesHasSubDateCols = false;
             } else {
               ownProf = res.data;
+              ownProfileErr = res.error;
             }
           }
           if (!profilesHasSubDateCols) {
@@ -4246,6 +4257,7 @@ export function RuangSosmedProvider({
               .eq("id", authUserId)
               .maybeSingle();
             ownProf = fallbackRes.data;
+            ownProfileErr = fallbackRes.error;
           }
 
           ownProfile = ownProf;
@@ -4327,7 +4339,7 @@ export function RuangSosmedProvider({
 
         let profilesRes: { data: any[] | null; error: any } = {
           data: ownProfile ? [ownProfile] : [],
-          error: null,
+          error: ownProfileErr,
         };
         let userProfilesRes: { data: any[] | null; error: any } = {
           data: [],
@@ -4692,16 +4704,68 @@ export function RuangSosmedProvider({
           });
         }
 
+        const nowDelPruneMs = Date.now();
+        const isLearnerTombstoned = (keys: Array<string | undefined | null>) =>
+          keys.some((k) => {
+            const clean = String(k || "").trim().toLowerCase();
+            if (!clean) return false;
+            const exp = deletedLearnerKeysRef.current.get(clean);
+            if (exp && exp > nowDelPruneMs) return true;
+            if (exp) deletedLearnerKeysRef.current.delete(clean);
+            return false;
+          });
+
         const learnerOnly = combinedLearners.filter(
           (u) =>
             u.role !== "admin" &&
             !u.email.toLowerCase().includes("dinur") &&
-            u.email.toLowerCase() !== "admin@ruangsosmed.id"
+            u.email.toLowerCase() !== "admin@ruangsosmed.id" &&
+            !isLearnerTombstoned([u.id, u.email, u.name])
         );
 
+        // Bila akun learner yang sedang aktif telah dihapus dari database, picu auto-logout segera
+        if (authUserId && !isStaffSession && !ownProfileErr && !ownProfile) {
+          const authEmailLower = String(authUser?.email || "")
+            .trim()
+            .toLowerCase();
+          const accountAgeMs = authUser?.created_at
+            ? Date.now() - Date.parse(authUser.created_at)
+            : 999999;
+          if (
+            accountAgeMs > 15000 &&
+            !authEmailLower.includes("dinur") &&
+            authEmailLower !== "admin@ruangsosmed.id" &&
+            typeof window !== "undefined"
+          ) {
+            window.dispatchEvent(
+              new CustomEvent("ruang_sosmed_account_deleted", {
+                detail: { userId: authUserId, email: authEmailLower },
+              })
+            );
+          }
+        }
+
+        const liveDbIds = new Set(
+          learnerOnly.map((u) => String(u.id || "").trim()).filter(Boolean)
+        );
+        const shouldPruneDeletedLearners =
+          isStaffSession && !profilesRes.error && Array.isArray(profilesRes.data);
+
         setState((prev) => {
-          const nextAssignees = [...prev.assignees];
-          const nextLeaderboard = [...prev.leaderboard];
+          const nextAssignees = prev.assignees.filter((a) => {
+            if (isLearnerTombstoned([a.id, a.name])) return false;
+            if (
+              shouldPruneDeletedLearners &&
+              isUuid(a.id) &&
+              !liveDbIds.has(a.id)
+            ) {
+              return false;
+            }
+            return true;
+          });
+          const nextLeaderboard = prev.leaderboard.filter(
+            (l) => !isLearnerTombstoned([l.name])
+          );
           const nextSubs: Record<string, "PRO" | "Free"> = {
             ...(prev.learnerSubscriptions ?? {}),
             ...proMapFromDb,
@@ -11063,6 +11127,93 @@ export function RuangSosmedProvider({
     []
   );
 
+  const removeLearnerProfile = useCallback(
+    (target: { id?: string; email?: string; name?: string }) => {
+      const idKey = (target.id || "").trim().toLowerCase();
+      const emailKey = (target.email || "").trim().toLowerCase();
+      const nameKey = (target.name || "").trim().toLowerCase();
+      if (!idKey && !emailKey && !nameKey) return;
+
+      const lockUntil = Date.now() + 60_000;
+      [idKey, emailKey, nameKey].filter(Boolean).forEach((k) => {
+        deletedLearnerKeysRef.current.set(k, lockUntil);
+      });
+
+      const matchesTokens = (val?: string | null) => {
+        const clean = String(val || "").trim().toLowerCase();
+        if (!clean) return false;
+        return (
+          (emailKey !== "" && clean === emailKey) ||
+          (nameKey !== "" && clean === nameKey) ||
+          (idKey !== "" && clean === idKey)
+        );
+      };
+
+      setState((prev) => {
+        const nextAssignees = prev.assignees.filter(
+          (a) =>
+            !(idKey && a.id.trim().toLowerCase() === idKey) &&
+            !(nameKey && a.name.trim().toLowerCase() === nameKey)
+        );
+        const nextLeaderboard = prev.leaderboard
+          .filter((l) => !(nameKey && l.name.trim().toLowerCase() === nameKey))
+          .map((l, idx) => ({ ...l, rank: idx + 1 }));
+
+        const nextSubs = { ...(prev.learnerSubscriptions || {}) };
+        if (target.email) {
+          delete nextSubs[target.email];
+          delete nextSubs[target.email.toLowerCase()];
+        }
+        if (target.name) {
+          delete nextSubs[target.name];
+          delete nextSubs[target.name.toLowerCase()];
+        }
+
+        const nextCollaborators = prev.workspaceCollaborators.filter(
+          (c) =>
+            c.role === "Admin" ||
+            (!(idKey && c.id.trim().toLowerCase() === idKey) &&
+              !(emailKey && c.email.trim().toLowerCase() === emailKey))
+        );
+
+        const nextExplorer = prev.explorerItems.map((item) => {
+          const list = item.assignedLearners;
+          if (!Array.isArray(list) || list.length === 0) return item;
+          const filtered = list.filter((entry) => !matchesTokens(entry));
+          if (filtered.length === list.length) return item;
+          return {
+            ...item,
+            assignedLearners: filtered,
+            assignedCount: filtered.length,
+          };
+        });
+
+        try {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              "ruang_sosmed_explorer_items_v2",
+              JSON.stringify(nextExplorer)
+            );
+          }
+        } catch {}
+
+        return {
+          ...prev,
+          assignees: nextAssignees,
+          leaderboard: nextLeaderboard,
+          learnerSubscriptions: nextSubs,
+          workspaceCollaborators: nextCollaborators,
+          explorerItems: nextExplorer,
+        };
+      });
+
+      cachedContentsRowsRef.current = null;
+      lastContentsWmKeyRef.current = "";
+      lastWatermarkRef.current = "";
+    },
+    []
+  );
+
   const updateMemberAccessRole = useCallback(
     async (
       emailOrId: string,
@@ -12551,6 +12702,7 @@ export function RuangSosmedProvider({
     toggleStudentProByAdmin,
     setStudentProTierLocal,
     registerLearnerProfile,
+    removeLearnerProfile,
     updateMemberAccessRole,
     createReward,
     updateReward,

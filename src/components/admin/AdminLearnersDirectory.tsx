@@ -150,6 +150,7 @@ export function AdminLearnersDirectory({
     setStudentProTierLocal,
     cohortProjects,
     registerLearnerProfile,
+    removeLearnerProfile,
     workspaceCollaborators,
     updateMemberAccessRole,
     explorerItems,
@@ -247,6 +248,9 @@ export function AdminLearnersDirectory({
   const [previewProofReq, setPreviewProofReq] =
     useState<InsightsProRequestRecord | null>(null);
   const [processingReqId, setProcessingReqId] = useState<string | null>(null);
+  const [deleteTargetMember, setDeleteTargetMember] =
+    useState<DirectoryMember | null>(null);
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
 
   const courseSectionsRef = useRef(courseSections);
   courseSectionsRef.current = courseSections;
@@ -939,6 +943,101 @@ export function AdminLearnersDirectory({
       );
     } finally {
       setIsSendingResetEmail(false);
+    }
+  };
+
+  const canDeleteMember = (member: DirectoryMember): boolean => {
+    if (member.accessRole !== "Learner") return false;
+    const mEmail = (member.email || "").toLowerCase().trim();
+    const myEmail = (currentUser?.email || "").toLowerCase().trim();
+    if (mEmail && myEmail && mEmail === myEmail) return false;
+    if (mEmail === "admin@ruangsosmed.id" || mEmail.includes("dinur")) return false;
+    return true;
+  };
+
+  const handleConfirmDeleteMember = async () => {
+    const member = deleteTargetMember;
+    if (!member || isDeletingMember) return;
+    if (!canDeleteMember(member)) {
+      onShowToast("Akun Admin atau akun Anda sendiri tidak dapat dihapus.");
+      setDeleteTargetMember(null);
+      return;
+    }
+
+    setIsDeletingMember(true);
+    try {
+      if (isSupabaseConfigured) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData?.session?.access_token;
+        if (!accessToken) {
+          throw new Error(
+            "Sesi Admin tidak ditemukan. Pastikan Anda masuk sebagai Admin terverifikasi."
+          );
+        }
+
+        const res = await fetch("/api/admin/learners/delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            userId: member.id,
+            email: member.email,
+            name: member.name,
+          }),
+        });
+        const payload = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+        };
+        if (!res.ok || payload.ok === false) {
+          throw new Error(
+            payload.error || "Gagal menghapus akun siswa dari database."
+          );
+        }
+      }
+
+      const targetEmailLower = (member.email || "").toLowerCase().trim();
+      removeLearnerProfile({
+        id: member.id,
+        email: member.email,
+        name: member.name,
+      });
+      setSupabaseMembers((prev) =>
+        prev.filter(
+          (m) =>
+            m.id !== member.id &&
+            (!targetEmailLower ||
+              m.email.toLowerCase().trim() !== targetEmailLower)
+        )
+      );
+      setInvitedMembers((prev) =>
+        prev.filter(
+          (m) =>
+            m.id !== member.id &&
+            (!targetEmailLower ||
+              m.email.toLowerCase().trim() !== targetEmailLower)
+        )
+      );
+      if (
+        inspectedMember &&
+        (inspectedMember.id === member.id ||
+          (targetEmailLower &&
+            inspectedMember.email.toLowerCase().trim() === targetEmailLower))
+      ) {
+        setInspectedMember(null);
+      }
+      setDeleteTargetMember(null);
+      onShowToast(
+        `🗑️ Akun siswa "${member.name}" dihapus permanen dari database. Sesi siswa akan keluar otomatis dan wajib daftar baru.`
+      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Gagal menghapus akun siswa.";
+      onShowToast(`Gagal menghapus siswa: ${msg}`);
+    } finally {
+      setIsDeletingMember(false);
     }
   };
 
@@ -3015,6 +3114,17 @@ export function AdminLearnersDirectory({
                                     <Eye size={12} />
                                     <span>Lihat Profil</span>
                                   </button>
+                                  {canDeleteMember(member) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeleteTargetMember(member)}
+                                      title={`Hapus permanen siswa ${member.name}`}
+                                      aria-label={`Hapus akun siswa ${member.name}`}
+                                      className="inline-flex items-center justify-center rounded-lg bg-[#F8F9FB] hover:bg-[#FEF2F2] hover:text-[#DC2626] hover:border-[#FECACA] p-1.5 text-[#64748B] border border-[#EAECEF] transition-colors cursor-pointer"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -3495,6 +3605,16 @@ export function AdminLearnersDirectory({
                     <KeyRound size={12} />
                     <span>Reset Password</span>
                   </button>
+                  {canDeleteMember(activeMember) && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTargetMember(activeMember)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#FEF2F2] hover:bg-[#DC2626] text-[#DC2626] hover:text-white px-2.5 py-1.5 text-xs font-bold border border-[#FECACA] hover:border-[#DC2626] transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={12} />
+                      <span>Hapus Siswa</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -4809,6 +4929,75 @@ export function AdminLearnersDirectory({
         }}
         quickExtendingEmail={quickExtendingEmail}
       />
+
+      {/* Modal 6: Konfirmasi Hapus Akun Siswa Permanen */}
+      <ModalDialog
+        open={Boolean(deleteTargetMember)}
+        onClose={() => {
+          if (!isDeletingMember) setDeleteTargetMember(null);
+        }}
+        titleId="delete-learner-confirm-title"
+        title="Hapus Akun Siswa Permanen?"
+        subtitle={
+          deleteTargetMember
+            ? `${deleteTargetMember.name} (${deleteTargetMember.email})`
+            : undefined
+        }
+        maxWidthClass="max-w-md"
+      >
+        {deleteTargetMember && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3.5 text-xs text-[#991B1B] space-y-1.5">
+              <p className="font-bold flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-[#DC2626] shrink-0" />
+                <span>Tindakan ini permanen &amp; tidak dapat dibatalkan</span>
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-[11px] leading-relaxed">
+                <li>
+                  Akun autentikasi (<code>auth.users</code>), profil, enrollment materi,
+                  progres belajar, poin, dan riwayat langganan siswa{" "}
+                  <strong>{deleteTargetMember.name}</strong> akan dihapus permanen
+                  dari database.
+                </li>
+                <li>
+                  Jika siswa sedang login di perangkat lain, sesinya akan{" "}
+                  <strong>otomatis keluar</strong>.
+                </li>
+                <li>
+                  Untuk masuk kembali ke platform, siswa tersebut wajib{" "}
+                  <strong>mendaftar akun baru</strong>.
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isDeletingMember}
+                onClick={() => setDeleteTargetMember(null)}
+                className="rounded-xl border border-[#EAECEF] bg-[#FFFFFF] hover:bg-[#F8F9FB] disabled:opacity-50 px-4 py-2 text-xs font-semibold text-[#5E5E5E] cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingMember}
+                onClick={() => void handleConfirmDeleteMember()}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#DC2626] hover:bg-[#B91C1C] disabled:opacity-60 px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer"
+              >
+                {isDeletingMember ? (
+                  <RefreshCw size={12} className="animate-spin" />
+                ) : (
+                  <Trash2 size={12} />
+                )}
+                <span>
+                  {isDeletingMember ? "Menghapus..." : "Ya, Hapus Permanen"}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+      </ModalDialog>
     </div>
   );
 }

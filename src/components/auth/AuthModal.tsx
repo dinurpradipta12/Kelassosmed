@@ -138,11 +138,29 @@ export function AuthModal({
       const user = data.user;
       const userMeta = user.user_metadata || {};
 
-      const { data: prof } = await supabase
+      const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("role, full_name, avatar_url, job_title")
         .eq("id", user.id)
         .maybeSingle();
+
+      const loginEmailLower = emailToUse.toLowerCase();
+      const accountAgeMs = user.created_at
+        ? Date.now() - Date.parse(String(user.created_at))
+        : 999999;
+      if (
+        !profErr &&
+        !prof &&
+        accountAgeMs > 15000 &&
+        !loginEmailLower.includes("dinur") &&
+        loginEmailLower !== "admin@ruangsosmed.id"
+      ) {
+        await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+        setErrorMessage(
+          "Akun ini telah dihapus oleh Admin. Silakan daftar akun baru untuk masuk kembali."
+        );
+        return;
+      }
 
       const dbRole = String(prof?.role || "learner").toLowerCase();
       const userRole: "admin" | "learner" =

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   GlobalRoleSwitcher,
   type AppRoleMode,
@@ -585,6 +585,26 @@ function RuangSosmedStudioInner() {
   // Non-intrusive toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastSeq, setToastSeq] = useState(0);
+  const deletedLogoutInFlightRef = useRef(false);
+
+  const forceSignOutDeletedAccount = useCallback(async (reason?: string) => {
+    if (deletedLogoutInFlightRef.current) return;
+    deletedLogoutInFlightRef.current = true;
+    try {
+      window.localStorage.removeItem("ruang_sosmed_session_user_v1");
+      window.localStorage.removeItem("ruang_sosmed_role_mode_v1");
+    } catch {}
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    setCurrentUser(null);
+    setActiveSubMeta(null);
+    setLearnerProStatus(false);
+    setRoleMode("learner");
+    setToastMessage(
+      reason ||
+        "Akun Anda telah dihapus oleh Admin. Silakan daftar akun baru untuk masuk kembali."
+    );
+    setToastSeq((s) => s + 1);
+  }, [setLearnerProStatus]);
 
   // Verify live Supabase session & role before hydrating user/PRO state
   useEffect(() => {
@@ -666,6 +686,8 @@ function RuangSosmedStudioInner() {
       user: AuthenticatedUser;
       isPro: boolean;
       subMeta: ActiveSubMeta;
+      profileExists: boolean;
+      profileCheckError: boolean;
     }> => {
       const meta = sessionUser.user_metadata || {};
       const email = sessionUser.email || "";
@@ -680,6 +702,8 @@ function RuangSosmedStudioInner() {
       let dbProPackageName: string | null = null;
       let dbProPackageId: string | null = null;
       let dbProBillingCycle: string | null = null;
+      let profileExists = false;
+      let profileCheckError = false;
       try {
         const fetchOwnProfile = async () => {
           if (pageProfilesHasSubDateCols) {
@@ -712,7 +736,7 @@ function RuangSosmedStudioInner() {
             .maybeSingle();
         };
 
-        const [{ data: prof }, userProfRes] = await Promise.all([
+        const [{ data: prof, error: profErr }, userProfRes] = await Promise.all([
           fetchOwnProfile(),
           email
             ? supabase
@@ -722,6 +746,9 @@ function RuangSosmedStudioInner() {
                 .limit(1)
             : Promise.resolve({ data: null }),
         ]);
+
+        profileExists = Boolean(prof);
+        profileCheckError = Boolean(profErr);
 
         const userProf =
           Array.isArray(userProfRes?.data) && userProfRes.data.length > 0
@@ -751,7 +778,9 @@ function RuangSosmedStudioInner() {
           dbProBillingCycle = String(profAny.pro_billing_cycle);
         }
         if (userProf?.username) dbUsername = userProf.username;
-      } catch {}
+      } catch {
+        profileCheckError = true;
+      }
 
       const isUserAdmin = dbRole === "admin" || dbRole === "mentor";
       const role: "admin" | "learner" = isUserAdmin ? "admin" : "learner";
@@ -782,18 +811,75 @@ function RuangSosmedStudioInner() {
           packageId: dbProPackageId,
           billingCycle: dbProBillingCycle,
         },
+        profileExists,
+        profileCheckError,
       };
+    };
+
+    const isDeletedAuthErr = (err: unknown): boolean => {
+      if (!err || typeof err !== "object") return false;
+      const e = err as { status?: number; code?: string; message?: string };
+      const msg = String(e.message || "").toLowerCase();
+      const code = String(e.code || "").toLowerCase();
+      return (
+        e.status === 401 ||
+        e.status === 403 ||
+        code === "user_not_found" ||
+        msg.includes("does not exist") ||
+        msg.includes("user_not_found") ||
+        msg.includes("user not found") ||
+        msg.includes("sub claim") ||
+        msg.includes("invalid jwt")
+      );
+    };
+
+    const isDeletedProfileUser = (
+      sessionUser: any,
+      authedUser: AuthenticatedUser,
+      profileExists: boolean,
+      profileCheckError: boolean
+    ): boolean => {
+      if (profileCheckError || profileExists) return false;
+      if (authedUser.role !== "learner") return false;
+      const em = authedUser.email.toLowerCase();
+      if (em.includes("dinur") || em === "admin@ruangsosmed.id") return false;
+      const ageMs = sessionUser?.created_at
+        ? Date.now() - Date.parse(String(sessionUser.created_at))
+        : 999999;
+      return ageMs > 15000;
     };
 
     supabase.auth
       .getSession()
       .then(async ({ data: { session } }) => {
         if (session?.user) {
+          const { error: liveUserErr } = await supabase.auth.getUser();
+          if (isDeletedAuthErr(liveUserErr)) {
+            await forceSignOutDeletedAccount();
+            return;
+          }
+
           const {
             user: authedUser,
             isPro,
             subMeta,
+            profileExists,
+            profileCheckError,
           } = await resolveUserWithDbRole(session.user);
+
+          if (
+            isDeletedProfileUser(
+              session.user,
+              authedUser,
+              profileExists,
+              profileCheckError
+            )
+          ) {
+            await forceSignOutDeletedAccount();
+            return;
+          }
+
+          deletedLogoutInFlightRef.current = false;
           setCurrentUser(authedUser);
           setActiveSubMeta(subMeta);
           setLearnerProStatus(isPro, authedUser);
@@ -839,7 +925,23 @@ function RuangSosmedStudioInner() {
           user: authedUser,
           isPro,
           subMeta,
+          profileExists,
+          profileCheckError,
         } = await resolveUserWithDbRole(session.user);
+
+        if (
+          isDeletedProfileUser(
+            session.user,
+            authedUser,
+            profileExists,
+            profileCheckError
+          )
+        ) {
+          await forceSignOutDeletedAccount();
+          return;
+        }
+
+        deletedLogoutInFlightRef.current = false;
         setCurrentUser(authedUser);
         setActiveSubMeta(subMeta);
         setLearnerProStatus(isPro, authedUser);
@@ -873,7 +975,105 @@ function RuangSosmedStudioInner() {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [forceSignOutDeletedAccount]);
+
+  // Pengawas sesi aktif Learner: auto-logout seketika apabila akun dihapus oleh Admin
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUser || currentUser.role !== "learner") {
+      return;
+    }
+    const emailLower = currentUser.email.toLowerCase();
+    if (emailLower.includes("dinur") || emailLower === "admin@ruangsosmed.id") {
+      return;
+    }
+
+    let cancelled = false;
+    let activeChannel: ReturnType<typeof supabase.channel> | null = null;
+
+    const verifyLearnerStillActive = async () => {
+      if (cancelled || deletedLogoutInFlightRef.current) return;
+      try {
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        const errObj = userErr as { status?: number; message?: string } | null;
+        const msg = String(errObj?.message || "").toLowerCase();
+        if (
+          errObj &&
+          (errObj.status === 401 ||
+            errObj.status === 403 ||
+            msg.includes("does not exist") ||
+            msg.includes("user_not_found") ||
+            msg.includes("sub claim") ||
+            msg.includes("invalid jwt"))
+        ) {
+          await forceSignOutDeletedAccount();
+          return;
+        }
+        const uid = userData?.user?.id;
+        if (!uid) return;
+
+        const createdAt = userData?.user?.created_at;
+        const ageMs = createdAt
+          ? Date.now() - Date.parse(String(createdAt))
+          : 999999;
+        const { data: profRow, error: profErr } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("id", uid)
+          .maybeSingle();
+
+        if (!profErr && !profRow && ageMs > 15000) {
+          await forceSignOutDeletedAccount();
+        }
+      } catch {}
+    };
+
+    const handleAccountDeletedEvent = () => {
+      void forceSignOutDeletedAccount();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void verifyLearnerStillActive();
+      }
+    };
+
+    window.addEventListener("ruang_sosmed_account_deleted", handleAccountDeletedEvent);
+    document.addEventListener("visibilitychange", handleVisibility);
+    const interval = window.setInterval(() => {
+      if (!document.hidden) {
+        void verifyLearnerStillActive();
+      }
+    }, 20_000);
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      const uid = session?.user?.id;
+      if (cancelled || !uid) return;
+      activeChannel = supabase
+        .channel(`learner-account-watch-${uid}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "profiles",
+            filter: `id=eq.${uid}`,
+          },
+          () => {
+            void forceSignOutDeletedAccount();
+          }
+        )
+        .subscribe();
+    });
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("ruang_sosmed_account_deleted", handleAccountDeletedEvent);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.clearInterval(interval);
+      if (activeChannel) {
+        supabase.removeChannel(activeChannel);
+      }
+    };
+  }, [currentUser, forceSignOutDeletedAccount]);
 
   const handleLogout = async () => {
     try {
