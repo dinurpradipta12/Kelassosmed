@@ -7,7 +7,6 @@ import {
   BookOpen,
   Bot,
   CheckCircle2,
-  Clock,
   FolderOpen,
   Gift,
   KeyRound,
@@ -197,7 +196,7 @@ function ShowcaseVisualPanel({
               <span>Sertifikat HD &amp; QRIS Instan</span>
             </div>
             <p className="text-[11px] text-[#5E5E5E]">
-              Checkout QRIS/Transfer terhubung notifikasi Telegram Bot, plus
+              Checkout QRIS/Transfer cepat dengan konfirmasi praktis, plus
               Sertifikat HD otomatis saat lulus 100%.
             </p>
           </div>
@@ -279,21 +278,24 @@ function ShowcaseVisualPanel({
           <RumiMascotIllustration stage={2} mood="happy" sizeClass="h-11 w-11" />
           <div className="min-w-0">
             <div className="text-[10px] font-bold text-indigo-600">
-              Lv.2 • Junior Rumi (Rising Strategist)
+              Ruang Kelas Interaktif • 100% Full Organik
             </div>
             <div className="text-xs sm:text-sm font-extrabold text-[#121215] truncate">
-              Beranda Belajar &amp; Lanjut Materi Terakhir
+              Kurikulum Berjenjang &amp; Wiki SOP Siap Pakai
             </div>
           </div>
         </div>
 
         <div className="hidden sm:flex flex-col items-end shrink-0 text-right">
-          <span className="inline-flex items-center gap-1 text-xs font-extrabold text-[#121215]">
-            <Clock size={12} style={{ color: accentColor }} />
-            <span>09:30 AM WIB</span>
+          <span
+            style={{ color: accentColor }}
+            className="inline-flex items-center gap-1 text-[11px] font-extrabold"
+          >
+            <CheckCircle2 size={12} />
+            <span>Progres Bab Terukur</span>
           </span>
           <span className="text-[10px] text-[#5E5E5E]">
-            ☀️ 29°C Cerah • Lokasi Realtime
+            Fundamental → Masterclass
           </span>
         </div>
       </div>
@@ -301,12 +303,12 @@ function ShowcaseVisualPanel({
       {/* Classroom Tools Pills */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {[
-          { icon: BookOpen, label: "Video, Page & Wiki SOP" },
-          { icon: Layers, label: "Quiz 5 Tipe & Tugas" },
-          { icon: MessageSquare, label: "Diskusi & Q&A Mentor" },
-          { icon: Star, label: "Catatan & Favorit Bab" },
-          { icon: KeyRound, label: "Redeem Kode Folder" },
-          { icon: Award, label: "Progres & Sertifikat HD" },
+          { icon: BookOpen, label: "Video HD Berjenjang" },
+          { icon: Layers, label: "Wiki & SOP Agensi" },
+          { icon: Sparkles, label: "Kuis & Tugas Praktik" },
+          { icon: Star, label: "Catatan Pribadi per Bab" },
+          { icon: MessageSquare, label: "Diskusi Q&A Mentor" },
+          { icon: FolderOpen, label: "Unduh Template & Aset" },
         ].map((pill) => {
           const Icon = pill.icon;
           return (
@@ -335,11 +337,11 @@ export function SystemShowcaseBlockRenderer({
   const heading =
     block.heading ||
     data.heading ||
-    "Lihat Cara Kerja Setiap Sistem di Dalam Ruang Sosmed 2.0";
+    "Lihat Cara Kerja Setiap Fitur di Dalam Ruang Sosmed 2.0";
   const subtitle =
     block.subtitle ||
     data.subtitle ||
-    "Klik tiap tab untuk melihat bagaimana alur siswa, evolusi Rumi, paket akses, dan studio mentor bekerja bersama.";
+    "Klik tiap tab untuk melihat bagaimana Ruang Kelas, Evolusi Rumi, hingga sistem Paket, Poin & Sertifikat membantu proses belajarmu.";
 
   const tabs: SystemShowcaseTabItem[] =
     Array.isArray(block.tabs) && block.tabs.length > 0

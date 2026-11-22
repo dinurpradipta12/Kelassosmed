@@ -345,9 +345,9 @@ export function LandingPageEditor({
           type: "system_showcase",
           data: {
             eyebrow: "EKSPLORASI EKOSISTEM 2.0",
-            heading: "Lihat Cara Kerja Setiap Sistem di Dalam Ruang Sosmed 2.0",
+            heading: "Lihat Cara Kerja Setiap Fitur di Dalam Ruang Sosmed 2.0",
             subtitle:
-              "Klik tiap tab untuk mengeksplorasi alur Portal Siswa, Evolusi Maskot Rumi 5 Tahap, Sistem Paket/Kode/Rewards, hingga Admin & Mentor Studio.",
+              "Klik tiap tab untuk melihat bagaimana Ruang Kelas, Evolusi Rumi, hingga sistem Paket, Poin & Sertifikat membantu proses belajarmu.",
             tabs: JSON.parse(JSON.stringify(DEFAULT_SYSTEM_SHOWCASE_TABS)),
           },
         } as SystemShowcaseBlock;
@@ -768,7 +768,7 @@ export function LandingPageEditor({
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem(
-            "ruang_sosmed_landing_config_v6",
+            "ruang_sosmed_landing_config_v7",
             JSON.stringify(pageData)
           );
         } catch (e) {

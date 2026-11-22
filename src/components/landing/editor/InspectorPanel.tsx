@@ -791,10 +791,9 @@ export function InspectorPanel({
                           }
                           className="w-full rounded-lg bg-white px-2 py-1 text-[11px] border border-slate-200"
                         >
-                          <option value="learner_portal">Visual: Portal Siswa</option>
+                          <option value="learner_portal">Visual: Ruang Kelas &amp; SOP</option>
                           <option value="rumi_evolution">Visual: Evolusi Rumi 1–5</option>
                           <option value="access_rewards">Visual: Akses &amp; Hadiah</option>
-                          <option value="admin_studio">Visual: Admin Studio</option>
                         </select>
                         <input
                           type="text"
@@ -2564,7 +2563,7 @@ export function InspectorPanel({
                       🎓 Template Ruang Sosmed 2.0 (Full Sistem &amp; Alur)
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5">
-                      Hero Live Preview, Alur 6 Langkah, Tab Ekosistem &amp; Rumi, 8 Fitur, 3 Kurikulum, Paket FREE/Basic/PRO, Testimoni, FAQ &amp; CTA.
+                      Hero Preview, Alur 6 Langkah, 3 Tab Ekosistem &amp; Rumi, 8 Fitur, 3 Kurikulum, Paket FREE/Basic/PRO, Testimoni, FAQ &amp; CTA.
                     </div>
                   </button>
                   <button

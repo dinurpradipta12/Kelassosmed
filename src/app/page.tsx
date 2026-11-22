@@ -496,13 +496,13 @@ function RuangSosmedStudioInner() {
     }
   };
 
-  // Landing Page & Public View state (v6 Full System & Flow)
+  // Landing Page & Public View state (v7 Learner-Focused System & Flow)
   const [landingConfig, setLandingConfig] = useState<LandingPageConfig>({
     id: "landing-main",
     slug: "home",
     title: "Ruang Sosmed 2.0 — Official Platform",
     description:
-      "Ekosistem LMS Social Media Specialist 100% Full Organik dengan Ruang Kelas interaktif, Rumi XP, Rewards Shop & Sertifikat HD.",
+      "Platform belajar Social Media Specialist 100% Full Organik dengan Kurikulum Berjenjang, Wiki SOP, Catatan & Diskusi Mentor, Rumi XP, Rewards Shop & Sertifikat HD.",
     headerImageUrl: "",
     headerConfig: DEFAULT_HEADER_CONFIG,
     paymentConfig: DEFAULT_PAYMENT_CONFIG,
@@ -518,7 +518,7 @@ function RuangSosmedStudioInner() {
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(
-          "ruang_sosmed_landing_config_v6",
+          "ruang_sosmed_landing_config_v7",
           JSON.stringify(newConfig)
         );
       } catch {}
@@ -558,49 +558,63 @@ function RuangSosmedStudioInner() {
             pricingTiers.some((t: any) =>
               String(t?.price || "").includes("149.000")
             );
+          const showcaseTabs =
+            remoteBlocks.find((b) => b?.type === "system_showcase")?.data
+              ?.tabs || [];
+          const flowItems =
+            remoteBlocks.find((b) => b?.id === "block-flow")?.items || [];
+          const isUntouchedLegacyV6 =
+            (Array.isArray(showcaseTabs) &&
+              showcaseTabs.some((t: any) => t?.id === "tab-admin-studio")) ||
+            (Array.isArray(flowItems) &&
+              flowItems.some(
+                (it: any) =>
+                  it?.title === "Pantau Progres, Jam & Cuaca Realtime"
+              ));
 
           setLandingConfig((prev) => {
-            const merged: LandingPageConfig = isUntouchedLegacyV5
-              ? {
-                  ...prev,
-                  id: data.id || prev.id,
-                  slug: data.slug || prev.slug,
-                  title: "Ruang Sosmed 2.0 — Official Platform",
-                  description:
-                    "Ekosistem LMS Social Media Specialist 100% Full Organik dengan Ruang Kelas interaktif, Rumi XP, Rewards Shop & Sertifikat HD.",
-                  headerImageUrl: data.header_image_url ?? prev.headerImageUrl,
-                  headerConfig: DEFAULT_HEADER_CONFIG,
-                  paymentConfig: data.payment_config
-                    ? { ...DEFAULT_PAYMENT_CONFIG, ...data.payment_config }
-                    : prev.paymentConfig || DEFAULT_PAYMENT_CONFIG,
-                  footerConfig: DEFAULT_FOOTER_CONFIG,
-                  theme: (data.theme as any) || prev.theme,
-                  status: (data.status as any) || prev.status,
-                  blocks: INITIAL_LANDING_BLOCKS,
-                }
-              : {
-                  ...prev,
-                  id: data.id || prev.id,
-                  slug: data.slug || prev.slug,
-                  title: data.title || prev.title,
-                  description: data.description ?? prev.description,
-                  headerImageUrl: data.header_image_url ?? prev.headerImageUrl,
-                  headerConfig: data.header_config
-                    ? { ...DEFAULT_HEADER_CONFIG, ...data.header_config }
-                    : prev.headerConfig || DEFAULT_HEADER_CONFIG,
-                  paymentConfig: data.payment_config
-                    ? { ...DEFAULT_PAYMENT_CONFIG, ...data.payment_config }
-                    : prev.paymentConfig || DEFAULT_PAYMENT_CONFIG,
-                  footerConfig: data.footer_config
-                    ? { ...DEFAULT_FOOTER_CONFIG, ...data.footer_config }
-                    : prev.footerConfig || DEFAULT_FOOTER_CONFIG,
-                  theme: (data.theme as any) || prev.theme,
-                  status: (data.status as any) || prev.status,
-                  blocks: data.blocks,
-                };
+            const merged: LandingPageConfig =
+              isUntouchedLegacyV5 || isUntouchedLegacyV6
+                ? {
+                    ...prev,
+                    id: data.id || prev.id,
+                    slug: data.slug || prev.slug,
+                    title: "Ruang Sosmed 2.0 — Official Platform",
+                    description:
+                      "Platform belajar Social Media Specialist 100% Full Organik dengan Kurikulum Berjenjang, Wiki SOP, Catatan & Diskusi Mentor, Rumi XP, Rewards Shop & Sertifikat HD.",
+                    headerImageUrl: data.header_image_url ?? prev.headerImageUrl,
+                    headerConfig: DEFAULT_HEADER_CONFIG,
+                    paymentConfig: data.payment_config
+                      ? { ...DEFAULT_PAYMENT_CONFIG, ...data.payment_config }
+                      : prev.paymentConfig || DEFAULT_PAYMENT_CONFIG,
+                    footerConfig: DEFAULT_FOOTER_CONFIG,
+                    theme: (data.theme as any) || prev.theme,
+                    status: (data.status as any) || prev.status,
+                    blocks: INITIAL_LANDING_BLOCKS,
+                  }
+                : {
+                    ...prev,
+                    id: data.id || prev.id,
+                    slug: data.slug || prev.slug,
+                    title: data.title || prev.title,
+                    description: data.description ?? prev.description,
+                    headerImageUrl: data.header_image_url ?? prev.headerImageUrl,
+                    headerConfig: data.header_config
+                      ? { ...DEFAULT_HEADER_CONFIG, ...data.header_config }
+                      : prev.headerConfig || DEFAULT_HEADER_CONFIG,
+                    paymentConfig: data.payment_config
+                      ? { ...DEFAULT_PAYMENT_CONFIG, ...data.payment_config }
+                      : prev.paymentConfig || DEFAULT_PAYMENT_CONFIG,
+                    footerConfig: data.footer_config
+                      ? { ...DEFAULT_FOOTER_CONFIG, ...data.footer_config }
+                      : prev.footerConfig || DEFAULT_FOOTER_CONFIG,
+                    theme: (data.theme as any) || prev.theme,
+                    status: (data.status as any) || prev.status,
+                    blocks: data.blocks,
+                  };
             try {
               window.localStorage.setItem(
-                "ruang_sosmed_landing_config_v6",
+                "ruang_sosmed_landing_config_v7",
                 JSON.stringify(merged)
               );
             } catch {}
@@ -646,7 +660,7 @@ function RuangSosmedStudioInner() {
   useEffect(() => {
     try {
       const cachedLanding = window.localStorage.getItem(
-        "ruang_sosmed_landing_config_v6"
+        "ruang_sosmed_landing_config_v7"
       );
       if (cachedLanding) {
         const parsedLanding = JSON.parse(cachedLanding);

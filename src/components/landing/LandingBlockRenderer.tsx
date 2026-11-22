@@ -263,7 +263,7 @@ export function LandingBlockRenderer({
                 <div className="mt-12 sm:mt-14 max-w-4xl mx-auto rounded-3xl p-2 sm:p-3 bg-gradient-to-b from-[#EAECEF] to-[#FFFFFF] border border-[#EAECEF] shadow-[0_20px_50px_rgba(16,15,17,0.07)]">
                   <div className="rounded-2xl bg-white border border-[#EAECEF] p-4 sm:p-6 space-y-5">
                     {/* Top Mini Hero Bar inside Preview */}
-                    <div className="rounded-2xl bg-gradient-to-r from-[#EEF2FF]/90 via-white to-[#FFFBEB]/80 border border-[#EAECEF] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="rounded-2xl bg-gradient-to-r from-[#EEF2FF]/90 via-white to-[#ECFDF5]/60 border border-[#EAECEF] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <RumiMascotIllustration
                           stage={4}
@@ -272,62 +272,76 @@ export function LandingBlockRenderer({
                         />
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-white border border-[#EAECEF] px-2.5 py-0.5 text-[10px] font-bold text-indigo-700">
-                              👑 Lv.4 • Pro Rumi
+                            <span className="inline-flex items-center gap-1 rounded-full bg-white border border-[#EAECEF] px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                              🌱 100% Full Organik
                             </span>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
-                              Auto-Assign + Redeem Kode
+                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                              Roadmap Siap Kerja
                             </span>
                           </div>
                           <div className="text-sm sm:text-base font-extrabold text-[#121215] truncate">
-                            Portal Belajar &amp; Studio Karir Ruang Sosmed 2.0
+                            Belajar Terarah dari Nol hingga Siap Handle Brand
                           </div>
-                          <p className="text-[11px] text-[#5E5E5E] truncate">
-                            Lanjut bab terakhir, kumpulkan XP &amp; Poin Bintang, atau diskusi langsung dengan Mentor.
+                          <p className="text-[11px] text-[#5E5E5E] leading-snug">
+                            Kurikulum berjenjang, panduan Wiki SOP siap pakai, latihan praktik, dan diskusi langsung bersama Mentor.
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-1 shrink-0 sm:border-l sm:border-[#EAECEF] sm:pl-4 text-right">
-                        <div className="flex items-baseline gap-1 font-extrabold text-[#121215]">
-                          <span className="text-lg sm:text-xl tracking-tight">09:41</span>
-                          <span className="text-[10px] text-[#5E5E5E]">AM • WIB</span>
+                      <div className="shrink-0 sm:border-l sm:border-[#EAECEF] sm:pl-4 min-w-[190px] space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[#5E5E5E]">
+                          <span>Roadmap Progres</span>
+                          <span style={{ color: accent }}>3 Seri • 22 Modul</span>
                         </div>
-                        <span className="text-[10px] font-medium text-[#5E5E5E]">
-                          ☀️ 28°C Cerah • Realtime
-                        </span>
+                        <div className="text-[11px] font-bold text-[#121215] truncate">
+                          Fundamental → Workflow → Masterclass
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-[#EAECEF] overflow-hidden flex gap-0.5">
+                          <div
+                            className="h-full w-1/3 rounded-full"
+                            style={{ backgroundColor: "#2563EB" }}
+                          />
+                          <div
+                            className="h-full w-1/3 rounded-full"
+                            style={{ backgroundColor: "#EA580C" }}
+                          />
+                          <div
+                            className="h-full w-1/3 rounded-full"
+                            style={{ backgroundColor: "#7C3AED" }}
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    {/* 3 Core Workspace Cards */}
+                    {/* 3 Purpose-Focused Highlight Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3.5 space-y-1">
                         <div className="flex items-center gap-1.5 text-xs font-bold text-[#121215]">
                           <BookOpen size={14} style={{ color: accent }} />
-                          <span>Ruang Kelas &amp; Wiki SOP</span>
+                          <span>Kurikulum Organik &amp; Wiki SOP</span>
                         </div>
                         <p className="text-[11px] text-[#5E5E5E] leading-relaxed">
-                          Video HD, halaman panduan, Wiki SOP agensi, Catatan per bab, dan Diskusi Q&amp;A Mentor.
+                          Strategi konten organik, editorial calendar, SOP 30 hari handling akun, hingga template rate card.
                         </p>
                       </div>
 
                       <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3.5 space-y-1">
                         <div className="flex items-center gap-1.5 text-xs font-bold text-[#121215]">
-                          <Bot size={14} style={{ color: accent }} />
-                          <span>Rumi XP &amp; Stream Deck</span>
+                          <MessageSquare size={14} style={{ color: accent }} />
+                          <span>Catatan, Kuis &amp; Diskusi Mentor</span>
                         </div>
                         <p className="text-[11px] text-[#5E5E5E] leading-relaxed">
-                          Tumbuhkan Baby → Superior Rumi (Lv.1–5) dan navigasi cepat pakai pintasan Stream Deck 1–6.
+                          Simpan catatan tiap bab, kerjakan kuis &amp; tugas praktik, dan dapatkan feedback langsung dari Mentor.
                         </p>
                       </div>
 
                       <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3.5 space-y-1">
                         <div className="flex items-center gap-1.5 text-xs font-bold text-[#121215]">
                           <Award size={14} style={{ color: accent }} />
-                          <span>Rewards &amp; Sertifikat HD</span>
+                          <span>Rumi XP, Rewards &amp; Sertifikat HD</span>
                         </div>
                         <p className="text-[11px] text-[#5E5E5E] leading-relaxed">
-                          Tukar Poin Bintang di Rewards Shop dan raih Sertifikat Kelulusan HD setelah kelas tuntas.
+                          Bangun kebiasaan belajar lewat evolusi Rumi, tukar Poin di Rewards Shop, dan raih Sertifikat HD.
                         </p>
                       </div>
                     </div>

@@ -259,7 +259,7 @@ export type LandingPageConfig = LandingPageData;
 export const DEFAULT_HEADER_CONFIG: LandingHeaderConfig = {
   showAnnouncement: true,
   announcementBadge: "Ruang Sosmed 2.0 Live",
-  announcementText: "Platform LMS Social Media Organik • Evolusi Rumi XP • Trial 3 & 7 Hari • Redeem Kode Folder & Voucher PRO",
+  announcementText: "Belajar Strategi Social Media 100% Full Organik • Roadmap Siap Kerja • Gamifikasi Rumi XP • Trial 3 & 7 Hari",
   announcementBgColor: "#121215",
   announcementBadgeColor: "#10B981",
   showNavbar: true,
@@ -295,7 +295,7 @@ export const DEFAULT_FOOTER_CONFIG: LandingFooterConfig = {
   brandTitle: "Ruang Sosmed 2.0",
   logoUrl: "/favicon.png",
   description:
-    "Platform LMS & Social Media Studio 100% Full Organik — lengkap dengan Ruang Kelas Interaktif, Wiki SOP, Gamifikasi Rumi XP, Rewards Shop, Sertifikat HD, dan Mentor Studio.",
+    "Platform belajar Social Media Specialist 100% Full Organik — lengkap dengan Kurikulum Berjenjang, Wiki SOP, Catatan & Diskusi Mentor, Gamifikasi Rumi XP, Rewards Shop, dan Sertifikat HD.",
   copyrightText: `© ${new Date().getFullYear()} Ruang Sosmed 2.0. All rights reserved.`,
   bgColor: "#121215",
   textColor: "#FFFFFF",
@@ -398,27 +398,27 @@ export const DEFAULT_EDITOR_LANDING_PAGE: LandingPageData = {
 export const DEFAULT_SYSTEM_SHOWCASE_TABS: SystemShowcaseTabItem[] = [
   {
     id: "tab-learner-portal",
-    tabLabel: "Portal Belajar Siswa",
+    tabLabel: "Ruang Kelas & Wiki SOP",
     badge: "Active Classroom",
-    title: "Beranda Personal, Ruang Kelas Multi-Format & Diskusi Mentor",
+    title: "Ruang Kelas Interaktif, Wiki SOP & Diskusi Langsung Mentor",
     subtitle:
-      "Siswa belajar dalam ruang kelas terfokus yang langsung mencatat progres tiap bab, menyimpan catatan pribadi, serta terhubung dengan mentor dan rekan se-batch.",
+      "Belajar tidak cuma menonton video pasif. Setiap bab dilengkapi catatan pribadi, panduan SOP siap pakai, latihan praktik, dan ruang tanya jawab langsung bersama Mentor.",
     visualType: "learner_portal",
     highlights: [
       {
-        title: "Header Jam & Cuaca Realtime",
+        title: "Kurikulum Organik & Wiki SOP Siap Pakai",
         description:
-          "Menyapa otomatis sesuai jam lokal pengguna (WIB/WITA/WIT) lengkap dengan jam 12/24 jam, kondisi suhu, dan lokasi realtime.",
+          "Materi video terstruktur ditambah dokumen Wiki SOP (content calendar, brief kreatif, 30 days handling, rate card) yang bisa langsung dipakai kerja.",
       },
       {
-        title: "5+ Format Materi & Wiki SOP",
+        title: "Kuis Interaktif & Tugas Praktik Nyata",
         description:
-          "Course Video, Page artikel, Interactive Quiz (5 tipe soal), Assignment praktik, Learning Path, dan Wiki SOP standar agency.",
+          "Uji pemahaman melalui beragam format kuis dan kerjakan studi kasus nyata dengan feedback langsung dari Mentor.",
       },
       {
-        title: "Catatan Pribadi, Favorit & Q&A Bab",
+        title: "Catatan Pribadi, Favorit & Q&A per Bab",
         description:
-          "Catat insight di tiap bab, tandai materi favorit, unduh file template, kirim ulasan kelas, dan berdiskusi langsung dengan Mentor.",
+          "Simpan catatan penting di tiap bab, tandai materi favorit, unduh lampiran template, dan ajukan pertanyaan langsung tanpa keluar dari kelas.",
       },
     ],
     ctaLabel: "Coba Masuk Portal Gratis",
@@ -426,11 +426,11 @@ export const DEFAULT_SYSTEM_SHOWCASE_TABS: SystemShowcaseTabItem[] = [
   },
   {
     id: "tab-rumi-xp",
-    tabLabel: "Evolusi Rumi & Stream Deck",
+    tabLabel: "Evolusi Rumi & Konsistensi",
     badge: "Gamifikasi 5 Tahap",
     title: "Maskot Rumi Tumbuh Seiring Konsistensi Belajarmu",
     subtitle:
-      "Setiap aktivitas belajar memberi Rumi XP nyata untuk berevolusi dari Lv.1 Baby Rumi hingga Lv.5 Superior Rumi, ditemani Asisten Stream Deck.",
+      "Setiap aktivitas belajar memberi Rumi XP nyata untuk berevolusi dari Lv.1 Baby Rumi hingga Lv.5 Superior Rumi, ditemani Rumi Assistant cepat di setiap halaman.",
     visualType: "rumi_evolution",
     highlights: [
       {
@@ -454,20 +454,20 @@ export const DEFAULT_SYSTEM_SHOWCASE_TABS: SystemShowcaseTabItem[] = [
   },
   {
     id: "tab-access-rewards",
-    tabLabel: "Akses, Poin & Hadiah",
+    tabLabel: "Akses Fleksibel, Poin & Hadiah",
     badge: "Ekonomi & Sertifikat",
     title: "3 Tier Fleksibel, Trial 3/7 Hari, Redeem Kode, Poin & Sertifikat HD",
     subtitle:
-      "Siswa tidak dipaksa bayar penuh di awal. Pilih FREE, Basic, PRO Unlimited, uji coba Trial, tukar Kode Folder/Voucher, atau buka bab lanjutan via Poin Bintang.",
+      "Belajar sesuai ritmemu tanpa terpaksa bayar penuh di awal. Pilih FREE, Basic, PRO Unlimited, uji coba Trial, tukar Kode Kelas/Voucher, atau buka bab lanjutan via Poin Bintang.",
     visualType: "access_rewards",
     highlights: [
       {
-        title: "Auto-Assign & Redeem Kode Folder",
+        title: "Akses Langsung & Redeem Kode Kelas",
         description:
-          "Project dengan Bagikan ke Semua Siswa otomatis masuk saat mendaftar. Kelas batch tertutup bisa dibuka lewat Redeem Kode Folder (contoh SICS-2026).",
+          "Materi utama langsung terbuka setelah mendaftar. Untuk kelas batch khusus, cukup masukkan Kode Akses Folder di Beranda untuk membuka seluruh bab.",
       },
       {
-        title: "Unlock Satuan, Trial & Voucher PRO",
+        title: "Unlock Satuan, Trial 3/7 Hari & Voucher PRO",
         description:
           "Buka bab lanjutan pakai Poin Bintang (★), bayar per materi, klaim Kode Voucher PRO berjangka, atau coba paket Basic/PRO dengan Trial 3 & 7 Hari.",
       },
@@ -480,34 +480,6 @@ export const DEFAULT_SYSTEM_SHOWCASE_TABS: SystemShowcaseTabItem[] = [
     ctaLabel: "Bandingkan Paket Belajar",
     ctaAction: "scroll_pricing",
   },
-  {
-    id: "tab-admin-studio",
-    tabLabel: "Admin & Mentor Studio",
-    badge: "Ekosistem Mentor",
-    title: "Kelola Project, Folder, Kuis 5 Tipe, Grading & Visual Builder",
-    subtitle:
-      "Dibalik pengalaman siswa yang rapi, Mentor dan Admin Studio memiliki kendali penuh untuk membangun kurikulum, memeriksa tugas, hingga mengatur landing page.",
-    visualType: "admin_studio",
-    highlights: [
-      {
-        title: "Project, Folder & Auto-Assign ON",
-        description:
-          "Kelompokkan kelas dalam Project/Cohort berlabel warna dan Folder berkode akses. Mode Bagikan ke Semua Siswa otomatis mendaftarkan akun baru.",
-      },
-      {
-        title: "Inbox Grading & Notifikasi Telegram",
-        description:
-          "Nilai kuis/tugas (Essay, Multiple Choice, Hotspot, Categorization, Fill Blank) dan verifikasi pembayaran QRIS/Transfer dengan notifikasi Telegram Bot.",
-      },
-      {
-        title: "Visual Landing Builder & Direktori Siswa",
-        description:
-          "Edit seluruh blok landing page secara visual, kelola katalog hadiah & sertifikat, pantau analitik progres, serta kontrol akses siswa secara realtime.",
-      },
-    ],
-    ctaLabel: "Daftar & Rasakan Ekosistemnya",
-    ctaAction: "register",
-  },
 ];
 
 export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
@@ -515,11 +487,11 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
     id: "block-hero",
     type: "hero",
     data: {
-      badgeText: "🌱 100% Full Organik • Portal LMS + Gamifikasi Rumi + Mentor Studio",
-      eyebrow: "Ruang Sosmed 2.0 • Ekosistem Belajar Social Media Specialist Terpadu",
+      badgeText: "🌱 100% Full Organik • Kurikulum, Praktik, SOP & Sertifikat Siap Kerja",
+      eyebrow: "Ruang Sosmed 2.0 • Platform Belajar Social Media Specialist",
       headline:
-        "Satu Platform Lengkap untuk Belajar, Praktik & Berkembang Jadi Social Media Specialist",
-      body: "Mulai dari nol hingga siap handle brand secara organik. Daftar sekali, materi publik langsung masuk otomatis atau buka kelas batch pakai Kode Akses—lengkap dengan Ruang Kelas interaktif, Wiki SOP, Catatan & Diskusi Mentor, Evolusi Maskot Rumi XP, Rewards Shop, hingga Sertifikat HD.",
+        "Belajar Strategi Social Media Organik dari Nol hingga Siap Handle Brand",
+      body: "Platform belajar terstruktur untuk kamu yang ingin menguasai strategi konten organik, workflow kerja agensi, dan portofolio Social Media Specialist—lengkap dengan Ruang Kelas interaktif, Wiki SOP, Diskusi Mentor, Gamifikasi Rumi XP, Rewards Shop, hingga Sertifikat HD.",
       buttonLabel: "Daftar Gratis Sekarang",
       secondaryButtonLabel: "Pelajari Alur Sistem",
       secondaryTargetId: "flow-section",
@@ -528,9 +500,9 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
       imageAlt: "Pratinjau Portal Ruang Sosmed 2.0",
       stats: [
         { label: "Kurikulum Organik", value: "3 Seri • 22 Modul" },
-        { label: "Gamifikasi Aktif", value: "5 Tahap Evolusi Rumi" },
+        { label: "Belajar Praktis", value: "Video, Wiki SOP & Kuis" },
         { label: "Akses Fleksibel", value: "FREE • Basic • PRO + Trial" },
-        { label: "Output Nyata", value: "Rewards & Sertifikat HD" },
+        { label: "Output Karir", value: "Rewards & Sertifikat HD" },
       ],
     },
   },
@@ -538,57 +510,57 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
     id: "block-flow",
     type: "benefits",
     sectionTitle: "Alur Belajar End-to-End di Ruang Sosmed 2.0",
-    eyebrow: "ALUR & FLOW SISTEM",
+    eyebrow: "ALUR & FLOW BELAJAR",
     subtitle:
-      "Dari pertama kali mendaftar sampai meraih sertifikat kelulusan HD—semua terhubung otomatis dalam satu portal.",
+      "Dari pertama kali mendaftar sampai meraih sertifikat kelulusan HD—semua dirancang untuk membawamu siap terjun sebagai Social Media Specialist.",
     items: [
       {
         id: "flow-1",
         number: 1,
-        tag: "Onboarding Instan",
-        title: "Daftar Akun & Akses Otomatis",
+        tag: "Mulai Cepat",
+        title: "Daftar Akun & Buka Akses Kelas",
         description:
-          "Daftar gratis via Email atau Google. Materi dari project yang dibagikan ke semua siswa langsung otomatis muncul di akunmu, atau masukkan Kode Akses Folder/Materi untuk membuka kelas batch seketika.",
+          "Buat akun gratis via Email atau Google. Materi utama langsung siap diakses di berandamu, atau masukkan Kode Akses jika kamu mengikuti kelas batch khusus.",
       },
       {
         id: "flow-2",
         number: 2,
-        tag: "Beranda Personal",
-        title: "Pantau Progres, Jam & Cuaca Realtime",
+        tag: "Kurikulum Terstruktur",
+        title: "Ikuti Roadmap Organik dari Nol",
         description:
-          "Disambut header personal sesuai zona waktu lokal lengkap dengan widget jam (12/24 jam), cuaca & lokasi realtime, tombol Lanjut Belajar ke bab terakhir, serta Leaderboard Poin Bintang.",
+          "Pelajari materi secara berjenjang mulai dari Fundamental & Mindset, Content System & Workflow, hingga Optimization & Maintenance—100% strategi organik tanpa iklan berbayar.",
       },
       {
         id: "flow-3",
         number: 3,
-        tag: "Active Classroom",
-        title: "Belajar Multi-Format & Diskusi Mentor",
+        tag: "Belajar Aktif",
+        title: "Praktik Kuis, Wiki SOP & Diskusi Mentor",
         description:
-          "Pelajari Course Video, Page, Wiki SOP, Interactive Quiz (5 tipe soal), dan Tugas Praktik. Simpan Catatan pribadi per bab, Favorit materi penting, unduh lampiran template, dan tanya jawab langsung dengan Mentor.",
+          "Pelajari video & panduan Wiki SOP siap pakai, simpan catatan pribadi per bab, kerjakan kuis & tugas praktik, serta tanya jawab langsung bersama Mentor.",
       },
       {
         id: "flow-4",
         number: 4,
-        tag: "Gamifikasi Rumi",
-        title: "Naikkan Evolusi Rumi & Pakai Stream Deck",
+        tag: "Jaga Konsistensi",
+        title: "Tumbuhkan Maskot Rumi & Kumpulkan XP",
         description:
-          "Setiap login harian, streak 7 hari, selesai bab, kuis, catatan, hingga ulasan menambah XP Rumi (Lv.1 Baby → Lv.5 Superior) ditemani Rumi Floating Assistant Stream Deck (pintasan 1–6 & FAQ kontekstual).",
+          "Setiap bab selesai, kuis, catatan, hingga streak harian menaikkan tahap evolusi Rumi (Lv.1 Baby → Lv.5 Superior) agar ritme belajarmu selalu terjaga.",
       },
       {
         id: "flow-5",
         number: 5,
-        tag: "Poin & Rewards",
-        title: "Kumpulkan Poin Bintang & Tukar Hadiah",
+        tag: "Benefit Nyata",
+        title: "Raih Poin Bintang & Tukar di Rewards Shop",
         description:
-          "Selesaikan bab & evaluasi untuk meraih Poin Bintang (★). Tukarkan di Rewards Shop (Template, E-Book, Voucher Diskon, 1-on-1 Mentoring, Merch) atau gunakan untuk membuka modul lanjutan satuan.",
+          "Kumpulkan Poin Bintang (★) dari progres belajarmu untuk naik Leaderboard, tukar Template/E-Book/Voucher/1-on-1 Mentoring, atau buka modul lanjutan satuan.",
       },
       {
         id: "flow-6",
         number: 6,
-        tag: "Karir & Portofolio",
-        title: "Review Tugas Mentor & Sertifikat HD",
+        tag: "Siap Kerja & Klien",
+        title: "Audit Portofolio & Sertifikat Kelulusan HD",
         description:
-          "Tuntaskan 100% bab wajib & tugas praktik untuk mendapatkan feedback 1-on-1 dari Mentor dan menerbitkan Sertifikat Kelulusan HD siap lampir di CV maupun LinkedIn.",
+          "Tuntaskan kelas dan tugas praktik untuk mendapatkan feedback personal dari Mentor serta Sertifikat Kelulusan HD siap lampir di CV & LinkedIn.",
       },
     ],
     data: {},
@@ -598,9 +570,9 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
     type: "system_showcase",
     data: {
       eyebrow: "EKSPLORASI EKOSISTEM 2.0",
-      heading: "Lihat Cara Kerja Setiap Sistem di Dalam Ruang Sosmed 2.0",
+      heading: "Lihat Cara Kerja Setiap Fitur di Dalam Ruang Sosmed 2.0",
       subtitle:
-        "Klik tiap tab untuk mengeksplorasi alur Portal Siswa, Evolusi Maskot Rumi 5 Tahap, Sistem Paket/Kode/Rewards, hingga Admin & Mentor Studio.",
+        "Klik tiap tab untuk melihat bagaimana Ruang Kelas, Evolusi Rumi, hingga sistem Paket, Poin & Sertifikat membantu proses belajarmu.",
       tabs: DEFAULT_SYSTEM_SHOWCASE_TABS,
     },
   },
@@ -610,12 +582,12 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
     data: {
       heading: "Semua Fitur yang Bikin Belajar Konsisten & Terukur",
       subtitle:
-        "Bukan sekadar kumpulan video pasif—Ruang Sosmed 2.0 menyatukan kurikulum organik, manajemen folder, gamifikasi XP, dan mentoring aktif.",
+        "Bukan sekadar kumpulan video pasif—Ruang Sosmed 2.0 menyatukan kurikulum organik terarah, praktik nyata, gamifikasi XP, dan mentoring aktif.",
       items: [
         {
-          title: "Auto-Assign & Redeem Kode Folder",
+          title: "Akses Instan & Redeem Kode Kelas",
           description:
-            "Materi dari project publik otomatis ter-assign ke akun baru, sedangkan kelas batch khusus cukup dibuka dengan Kode Akses Folder dari mentor.",
+            "Materi utama langsung terbuka saat akun aktif, sedangkan kelas batch khusus cukup dibuka lewat Kode Akses dari mentor di Beranda.",
           icon: "KeyRound",
         },
         {
@@ -655,10 +627,10 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
           icon: "Zap",
         },
         {
-          title: "Beranda Realtime & Kontrol Akses Aman",
+          title: "Dokumen Kerja, Rate Card & Portofolio",
           description:
-            "Header menyapa sesuai zona waktu lokal dengan jam & cuaca realtime, sinkronisasi cloud Supabase, dan pembaruan status keanggotaan otomatis.",
-          icon: "Clock",
+            "Panduan lengkap 30 hari handling akun, penyusunan SOP kerja, penentuan rate card jasa, hingga portofolio siap pitching klien maupun melamar kerja.",
+          icon: "FolderOpen",
         },
       ],
     },
@@ -836,7 +808,7 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
           description:
             "Akses seluruh materi gratis & project publik, kumpulkan Rumi XP + Poin Bintang, dan coba sistem kelas interaktif.",
           features: [
-            "Auto-assign materi dari Project publik yang dibagikan",
+            "Akses langsung materi utama & kelas publik gratis",
             "Redeem Kode Akses Folder / Kelas Batch dari Mentor",
             "Akses materi berstatus Gratis + Kuis Interaktif dasar",
             "Maskot Baby Rumi XP + Poin Bintang (★) & Leaderboard",
@@ -890,7 +862,7 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
         },
       ],
       footnote:
-        "Punya Kode Akses Folder kelas atau Kode Voucher PRO? Daftar akun gratis terlebih dahulu, lalu tukarkan langsung di Beranda atau menu Paket Akses. Pembayaran QRIS & Transfer Bank diproses cepat dengan notifikasi otomatis Telegram Bot.",
+        "Punya Kode Akses Folder kelas atau Kode Voucher PRO? Daftar akun gratis terlebih dahulu, lalu tukarkan langsung di Beranda atau menu Paket Akses. Pembayaran QRIS & Transfer Bank diproses cepat dengan konfirmasi praktis.",
     },
   },
   {
@@ -940,7 +912,7 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
           question:
             "Bagaimana alur mulai belajar setelah mendaftar akun gratis?",
           answer:
-            "Setelah daftar via Email atau Google, materi dari project yang dibagikan ke semua siswa akan langsung muncul otomatis di portal kamu. Jika kamu ikut kelas batch tertentu, cukup masukkan Kode Akses Folder/Materi pada kolom Redeem Kode di Beranda.",
+            "Setelah daftar via Email atau Google, materi utama & publik langsung siap diakses di portal kamu. Jika kamu ikut kelas batch tertentu, cukup masukkan Kode Akses pada kolom Redeem Kode di Beranda.",
         },
         {
           question:
@@ -976,13 +948,13 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
           question:
             "Apakah saya bisa mencatat materi dan bertanya langsung ke Mentor di setiap bab?",
           answer:
-            "Bisa! Di dalam Ruang Kelas Interaktif tersedia panel Catatan Pribadi per bab, tombol Favorit, tab Lampiran/Wiki SOP, serta tab Diskusi & Q&A yang langsung masuk ke Inbox Mentor.",
+            "Bisa! Di dalam Ruang Kelas Interaktif tersedia panel Catatan Pribadi per bab, tombol Favorit, tab Lampiran/Wiki SOP, serta tab Diskusi & Q&A untuk berkonsultasi langsung dengan Mentor.",
         },
         {
           question:
             "Bagaimana metode pembayaran dan konfirmasi aktivasi paket?",
           answer:
-            "Kamu bisa membayar lewat QRIS instan maupun transfer bank (BCA/Mandiri). Bukti pembayaran dapat langsung diunggah di modal checkout atau dikonfirmasi lewat WhatsApp, dan tim Admin mendapat notifikasi instan melalui Telegram Bot untuk mengaktifkan paketmu.",
+            "Kamu bisa membayar lewat QRIS instan maupun transfer bank (BCA/Mandiri). Bukti pembayaran dapat langsung diunggah di modal checkout atau dikonfirmasi lewat WhatsApp untuk aktivasi cepat akunmu.",
         },
       ],
     },
@@ -991,8 +963,8 @@ export const INITIAL_LANDING_BLOCKS: LandingBlock[] = [
     id: "block-cta",
     type: "cta",
     data: {
-      heading: "Siap Masuk ke Ekosistem Ruang Sosmed 2.0?",
-      body: "Buat akun gratis dalam 30 detik, nikmati materi publik yang langsung ter-assign otomatis, kumpulkan Rumi XP & Poin Bintang, dan bangun karir Social Media Specialist organik kamu hari ini.",
+      heading: "Siap Mulai Belajar Social Media Organik?",
+      body: "Buat akun gratis dalam 30 detik, pelajari materi utama secara langsung, kumpulkan Rumi XP & Poin Bintang, dan bangun portofolio Social Media Specialist kamu hari ini.",
       buttonLabel: "Daftar Akun Gratis",
       secondaryButtonLabel: "Masuk & Redeem Kode",
     },
