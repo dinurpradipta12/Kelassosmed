@@ -1780,6 +1780,7 @@ function RuangSosmedStudioInner() {
             activeProject={activeProject}
             onSelectProject={(projectName) => {
               setActiveProject(projectName);
+              setActiveSubNav("recents");
               setShowProjectHub(false);
               setSelectedContentDetailId(null);
               setAuthoringMode(null);

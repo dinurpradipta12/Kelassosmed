@@ -6,7 +6,6 @@ import {
   BarChart3,
   Folder,
   Users,
-  Clock,
   Archive,
   Plus,
   Zap,
@@ -220,7 +219,6 @@ export function AdminLeftRail({
   const activeScopedItems = projectScopedItems.filter(
     (i) => !i.isArchived && !i.isTemplate
   );
-  const recentCount = activeScopedItems.length;
   const quickJumpItems = [...activeScopedItems]
     .sort((a, b) => {
       if (a.type !== "Folder" && b.type === "Folder") return -1;
@@ -733,12 +731,6 @@ export function AdminLeftRail({
               </button>
 
               {[
-                {
-                  id: "recents" as const,
-                  label: "Recents",
-                  icon: Clock,
-                  badge: recentCount > 0 ? String(recentCount) : undefined,
-                },
                 {
                   id: "shared" as const,
                   label: "Shared",

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import {
   Upload,
   Plus,
+  Minus,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -658,6 +659,76 @@ export function LearningContentExplorer({
   const [editFolderDesc, setEditFolderDesc] = useState("");
   const [editFolderColor, setEditFolderColor] = useState("blue");
   const [editFolderCode, setEditFolderCode] = useState("");
+  const [folderIconScale, setFolderIconScale] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = Number(
+          window.localStorage.getItem("ruang_sosmed_folder_icon_scale_v1")
+        );
+        if (!Number.isNaN(saved) && saved >= 52 && saved <= 140) {
+          return saved;
+        }
+      } catch {}
+    }
+    return 84;
+  });
+
+  const updateFolderScale = (next: number) => {
+    const clamped = Math.min(140, Math.max(52, Math.round(next)));
+    setFolderIconScale(clamped);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          "ruang_sosmed_folder_icon_scale_v1",
+          String(clamped)
+        );
+      } catch {}
+    }
+  };
+
+  const renderFinderSizeControls = () => (
+    <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-1 shadow-2xs">
+      <button
+        type="button"
+        onClick={() => updateFolderScale(folderIconScale - 12)}
+        disabled={folderIconScale <= 52}
+        title="Perkecil ukuran folder"
+        aria-label="Perkecil ukuran folder"
+        className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
+      >
+        <Minus size={11} />
+      </button>
+      <input
+        type="range"
+        min={52}
+        max={140}
+        step={4}
+        value={folderIconScale}
+        onChange={(e) => updateFolderScale(Number(e.target.value))}
+        aria-label="Atur ukuran folder"
+        className="w-20 sm:w-24 h-1.5 accent-[#4F39F6] cursor-pointer"
+      />
+      <button
+        type="button"
+        onClick={() => updateFolderScale(folderIconScale + 12)}
+        disabled={folderIconScale >= 140}
+        title="Perbesar ukuran folder"
+        aria-label="Perbesar ukuran folder"
+        className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
+      >
+        <Plus size={11} />
+      </button>
+      <button
+        type="button"
+        onClick={() => updateFolderScale(84)}
+        title="Reset ukuran folder (100%)"
+        className="ml-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#64748B] hover:bg-white hover:text-[#121215] tabular-nums cursor-pointer"
+      >
+        {Math.round((folderIconScale / 84) * 100)}%
+      </button>
+    </div>
+  );
+
   const cardScale = 72;
 
   const getCardGridProps = (scale: number) => {
@@ -895,8 +966,18 @@ export function LearningContentExplorer({
           currentFolder.trim().toLowerCase();
         if (!matchesFolder) return false;
         if (item.type === "Folder") return false;
-      } else if (selectedTab !== "All" && item.type !== selectedTab) {
-        return false;
+      } else {
+        if (selectedTab === "All") {
+          if (
+            activeSubView === "recents" &&
+            !searchQuery.trim() &&
+            item.type !== "Folder"
+          ) {
+            return false;
+          }
+        } else if (item.type !== selectedTab) {
+          return false;
+        }
       }
 
       if (searchQuery.trim()) {
@@ -2042,20 +2123,12 @@ export function LearningContentExplorer({
           const folderItems = filteredItems.filter((i) => i.type === "Folder");
           const contentItems = filteredItems.filter((i) => i.type !== "Folder");
 
-          const renderFolderCurriculumCard = (item: ExplorerContentItem) => {
+          const renderMacFolderIconTile = (item: ExplorerContentItem) => {
             const menuOpen = openMenuCardId === item.id;
+            const insideCount = getFolderItemCount(item.title);
             const isOpening = openingFolderId === item.id;
             const fCode =
               item.accessCode || getDefaultFolderAccessCode(item.title);
-            const folderChildren = items.filter(
-              (i) =>
-                i.type !== "Folder" &&
-                !i.isArchived &&
-                !i.isTemplate &&
-                i.folderName?.trim().toLowerCase() ===
-                  item.title.trim().toLowerCase()
-            );
-            const assignedStudentCount = getItemAssignedCount(item);
 
             return (
               <div
@@ -2072,296 +2145,198 @@ export function LearningContentExplorer({
                     handleOpenFolder(item.title, item.id);
                   }
                 }}
-                className={`group relative flex flex-col justify-between rounded-2xl bg-white border border-[#EAECEF] hover:border-[#4F39F6]/50 p-4 shadow-[0_2px_8px_rgba(16,15,17,0.03)] hover:shadow-[0_8px_24px_rgba(79,57,246,0.08)] transition-all duration-200 cursor-pointer text-left select-none ${
+                style={{ width: `${Math.round(folderIconScale * 1.45)}px` }}
+                className={`group relative flex flex-col items-center justify-start p-2 rounded-2xl transition-all duration-200 cursor-pointer text-center select-none ${
                   menuOpen ? "z-40" : "z-0"
-                } ${isOpening ? "scale-[0.99] opacity-50" : ""}`}
+                } ${isOpening ? "scale-110 opacity-30" : "hover:bg-black/[0.04]"}`}
               >
-                {/* Card Top: Folder Icon, Title, Access Code & Menu */}
-                <div>
-                  <div className="flex items-start justify-between gap-2.5">
-                    <div className="flex items-start gap-3 min-w-0 flex-1">
-                      <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#F8FAFC] border border-[#EAECEF] group-hover:bg-[#EEF2FF]/60 group-hover:border-[#4F39F6]/30 transition-colors">
-                        <MacOsFolderIcon
-                          color={resolveMacFolderColor(item.bannerAccent)}
-                          className="w-9 h-7.5 drop-shadow-[0_2px_6px_rgba(0,0,0,0.08)] transition-transform duration-200 group-hover:scale-105"
-                        />
-                      </div>
+                {/* Top-Right Menu Trigger */}
+                <div
+                  className={`absolute top-1 right-1 ${menuOpen ? "z-50" : "z-10"}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenMenuCardId(menuOpen ? null : item.id)}
+                    aria-label={`Opsi untuk folder ${item.title}`}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-lg text-[#9CA3AF] opacity-0 group-hover:opacity-100 hover:bg-white hover:text-[#121215] shadow-xs transition-all cursor-pointer"
+                  >
+                    <MoreHorizontal size={14} />
+                  </button>
 
-                      <div className="min-w-0 flex-1 space-y-0.5">
-                        <h3
-                          title={item.title}
-                          className="text-sm font-bold text-[#121215] group-hover:text-[#4F39F6] line-clamp-1 transition-colors"
-                        >
-                          {item.title}
-                        </h3>
-                        <p className="text-[11px] text-[#64748B] line-clamp-1">
-                          {item.description?.trim()
-                            ? item.description
-                            : "Klik untuk kelola semua materi di folder ini"}
-                        </p>
-                      </div>
-                    </div>
-
+                  {menuOpen && (
                     <div
-                      className="flex items-center gap-1 shrink-0"
-                      onClick={(e) => e.stopPropagation()}
+                      role="menu"
+                      className="absolute left-0 top-7 w-52 rounded-xl bg-[#FFFFFF] p-2 border border-[#EAECEF] shadow-[0_12px_32px_rgba(16,15,17,0.18)] z-[60] text-left animate-in fade-in zoom-in-95 duration-100"
                     >
                       <button
                         type="button"
                         onClick={() => {
-                          if (
-                            typeof navigator !== "undefined" &&
-                            navigator.clipboard
-                          ) {
-                            void navigator.clipboard.writeText(fCode);
-                          }
-                          onShowToast(
-                            `Kode folder "${fCode}" disalin! Siswa bisa masukkan kode ini di Learner Portal.`
-                          );
+                          setOpenMenuCardId(null);
+                          handleOpenFolder(item.title, item.id);
                         }}
-                        title={`Klik untuk salin Kode Akses Folder: ${fCode}`}
-                        className="inline-flex items-center gap-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-2 py-1 text-[10px] font-bold text-amber-800 transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold text-[#2563EB] hover:bg-[#EFF6FF] cursor-pointer"
                       >
-                        <KeyRound size={10} />
-                        <span>{fCode}</span>
+                        <FolderOpen size={14} />
+                        <span>Buka Folder</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuCardId(null);
+                          setEditFolderTarget(item);
+                          setEditFolderName(item.title);
+                          setEditFolderDesc(item.description || "");
+                          setEditFolderColor(
+                            resolveMacFolderColor(item.bannerAccent)
+                          );
+                          setEditFolderCode(fCode);
+                        }}
+                        className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#121215] hover:bg-[#F8F9FB] cursor-pointer"
+                      >
+                        <Edit3 size={14} className="text-[#5E5E5E]" />
+                        <span>Edit Nama, Info &amp; Kode</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuCardId(null);
+                          onOpenAssignModal(item);
+                        }}
+                        className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold text-[#4F39F6] hover:bg-[#4F39F6]/10 cursor-pointer"
+                      >
+                        <KeyRound size={14} />
+                        <span>Assign Folder &amp; Kode Akses</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuCardId(null);
+                          onCreateNewContent("Course", item.title);
+                        }}
+                        className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#121215] hover:bg-[#F8F9FB] cursor-pointer"
+                      >
+                        <Plus size={14} className="text-[#5E5E5E]" />
+                        <span>+ Buat Course di Sini</span>
                       </button>
 
-                      <div className={`relative ${menuOpen ? "z-50" : "z-10"}`}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOpenMenuCardId(menuOpen ? null : item.id)
-                          }
-                          aria-label={`Opsi untuk folder ${item.title}`}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#121215] border border-transparent hover:border-[#EAECEF] transition-colors cursor-pointer"
-                        >
-                          <MoreHorizontal size={15} />
-                        </button>
-
-                        {menuOpen && (
-                          <div
-                            role="menu"
-                            className="absolute right-0 top-8 w-52 rounded-xl bg-[#FFFFFF] p-2 border border-[#EAECEF] shadow-[0_12px_32px_rgba(16,15,17,0.18)] z-[60] text-left animate-in fade-in zoom-in-95 duration-100"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenMenuCardId(null);
-                                handleOpenFolder(item.title, item.id);
-                              }}
-                              className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold text-[#2563EB] hover:bg-[#EFF6FF] cursor-pointer"
-                            >
-                              <FolderOpen size={14} />
-                              <span>Buka Folder</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenMenuCardId(null);
-                                setEditFolderTarget(item);
-                                setEditFolderName(item.title);
-                                setEditFolderDesc(item.description || "");
-                                setEditFolderColor(
-                                  resolveMacFolderColor(item.bannerAccent)
-                                );
-                                setEditFolderCode(fCode);
-                              }}
-                              className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#121215] hover:bg-[#F8F9FB] cursor-pointer"
-                            >
-                              <Edit3 size={14} className="text-[#5E5E5E]" />
-                              <span>Edit Nama, Info &amp; Kode</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenMenuCardId(null);
-                                onOpenAssignModal(item);
-                              }}
-                              className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold text-[#4F39F6] hover:bg-[#4F39F6]/10 cursor-pointer"
-                            >
-                              <KeyRound size={14} />
-                              <span>Assign Folder &amp; Kode Akses</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenMenuCardId(null);
-                                onCreateNewContent("Course", item.title);
-                              }}
-                              className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#121215] hover:bg-[#F8F9FB] cursor-pointer"
-                            >
-                              <Plus size={14} className="text-[#5E5E5E]" />
-                              <span>+ Buat Course di Sini</span>
-                            </button>
-
-                            <div className="px-2 py-1.5 border-t border-[#F0F2F5] my-1">
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5">
-                                Ubah Warna Folder
-                              </p>
-                              <div className="grid grid-cols-4 gap-1.5">
-                                {Object.entries(MAC_FOLDER_COLORS).map(
-                                  ([cKey, cVal]) => {
-                                    const isCur =
-                                      resolveMacFolderColor(item.bannerAccent) ===
-                                      cKey;
-                                    return (
-                                      <button
-                                        key={cKey}
-                                        type="button"
-                                        onClick={() => {
-                                          setOpenMenuCardId(null);
-                                          updateFolder(
-                                            item.id,
-                                            item.title,
-                                            item.title,
-                                            item.description || "",
-                                            cKey
-                                          );
-                                          onShowToast(
-                                            `Warna folder diubah ke ${cVal.name}.`
-                                          );
-                                        }}
-                                        title={cVal.name}
-                                        className={`h-5 w-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-                                          isCur
-                                            ? "ring-2 ring-offset-1 ring-[#4F39F6] scale-110 shadow-2xs"
-                                            : "hover:scale-115 border border-black/10"
-                                        }`}
-                                        style={{
-                                          backgroundColor: cVal.swatchHex,
-                                        }}
-                                      >
-                                        {isCur && (
-                                          <Check
-                                            size={10}
-                                            className="text-white stroke-[3]"
-                                          />
-                                        )}
-                                      </button>
-                                    );
-                                  }
+                      {/* Quick Color Palette Tag Selector */}
+                      <div className="px-2 py-1.5 border-t border-[#F0F2F5] my-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5">
+                          Ubah Warna Folder
+                        </p>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {Object.entries(MAC_FOLDER_COLORS).map(([cKey, cVal]) => {
+                            const isCur =
+                              resolveMacFolderColor(item.bannerAccent) === cKey;
+                            return (
+                              <button
+                                key={cKey}
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuCardId(null);
+                                  updateFolder(
+                                    item.id,
+                                    item.title,
+                                    item.title,
+                                    item.description || "",
+                                    cKey
+                                  );
+                                  onShowToast(
+                                    `Warna folder diubah ke ${cVal.name}.`
+                                  );
+                                }}
+                                title={cVal.name}
+                                className={`h-5 w-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                                  isCur
+                                    ? "ring-2 ring-offset-1 ring-[#4F39F6] scale-110 shadow-2xs"
+                                    : "hover:scale-115 border border-black/10"
+                                }`}
+                                style={{ backgroundColor: cVal.swatchHex }}
+                              >
+                                {isCur && (
+                                  <Check
+                                    size={10}
+                                    className="text-white stroke-[3]"
+                                  />
                                 )}
-                              </div>
-                            </div>
-
-                            <div className="my-1 h-[1px] bg-[#EAECEF]" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenMenuCardId(null);
-                                onDeleteItem(item.id);
-                              }}
-                              className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#EF4444] hover:bg-[#EF4444]/10 cursor-pointer"
-                            >
-                              <Trash2 size={14} />
-                              <span>Hapus Folder</span>
-                            </button>
-                          </div>
-                        )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
+
+                      <div className="my-1 h-[1px] bg-[#EAECEF]" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuCardId(null);
+                          onDeleteItem(item.id);
+                        }}
+                        className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-[#EF4444] hover:bg-[#EF4444]/10 cursor-pointer"
+                      >
+                        <Trash2 size={14} />
+                        <span>Hapus Folder</span>
+                      </button>
                     </div>
-                  </div>
-
-                  {/* Card Middle: Direct 1-Click Material Previews inside Folder */}
-                  <div className="mt-3.5 space-y-1.5">
-                    {folderChildren.length > 0 ? (
-                      <>
-                        {folderChildren.slice(0, 3).map((child) => (
-                          <button
-                            key={child.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectContentItem(child);
-                            }}
-                            className="w-full group/row flex items-center justify-between gap-2 rounded-xl bg-[#F8FAFC] hover:bg-[#EEF2FF]/70 border border-[#EAECEF] hover:border-[#4F39F6]/30 px-2.5 py-2 text-left transition-all cursor-pointer"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <ContentIconBox type={child.type} size="sm" />
-                              <span className="truncate text-xs font-semibold text-[#121215] group-hover/row:text-[#4F39F6]">
-                                {child.title}
-                              </span>
-                            </div>
-                            <span className="shrink-0 inline-flex items-center gap-0.5 text-[10px] font-bold text-[#64748B] group-hover/row:text-[#4F39F6]">
-                              <span>Detail</span>
-                              <ChevronRight size={11} />
-                            </span>
-                          </button>
-                        ))}
-                        {folderChildren.length > 3 && (
-                          <p className="px-1 pt-0.5 text-[11px] font-semibold text-[#4F39F6]">
-                            +{folderChildren.length - 3} materi lainnya di folder ini
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <div className="rounded-xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC]/60 px-3 py-2.5 flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-[#94A3B8]">
-                          Belum ada materi di folder ini
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onCreateNewContent("Course", item.title);
-                          }}
-                          className="text-[11px] font-bold text-[#4F39F6] hover:underline cursor-pointer shrink-0"
-                        >
-                          + Tambah Course
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
 
-                {/* Card Footer: Counts + Quick Actions */}
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="mt-4 pt-3 border-t border-[#F1F5F9] flex flex-wrap items-center justify-between gap-2"
+                {/* macOS Folder Icon with smooth hover animation & Red Notification Badge */}
+                <div className="relative pt-1 pb-1 transition-transform duration-300 group-hover:scale-105 group-active:scale-95">
+                  <MacOsFolderIcon
+                    color={resolveMacFolderColor(item.bannerAccent)}
+                    className="drop-shadow-[0_3px_8px_rgba(0,0,0,0.08)]"
+                    style={{
+                      width: `${folderIconScale}px`,
+                      height: `${Math.round(folderIconScale * 0.82)}px`,
+                    }}
+                  />
+
+                  {insideCount > 0 && (
+                    <span
+                      title={`${insideCount} materi`}
+                      className="absolute -top-0.5 -right-1 min-w-[20px] h-[20px] px-1 flex items-center justify-center rounded-full bg-[#EF4444] text-white text-[10px] font-bold shadow-md ring-2 ring-white select-none transition-transform duration-200 group-hover:scale-110"
+                    >
+                      {insideCount}
+                    </span>
+                  )}
+                </div>
+
+                {/* Folder Title */}
+                <p
+                  className={`mt-1 font-semibold text-[#1E293B] group-hover:text-[#2563EB] line-clamp-2 leading-tight transition-colors px-0.5 w-full break-words ${
+                    folderIconScale >= 104
+                      ? "text-xs"
+                      : folderIconScale <= 58
+                      ? "text-[10px]"
+                      : "text-[11px]"
+                  }`}
                 >
-                  <div className="flex items-center gap-2 text-[11px] font-medium text-[#64748B] tabular-nums">
-                    <span className="inline-flex items-center gap-1">
-                      <BookOpen size={12} className="text-[#4F39F6]" />
-                      <strong className="text-[#121215]">{folderChildren.length}</strong> Materi
-                    </span>
-                    <span className="text-[#CBD5E1]">•</span>
-                    <span className="inline-flex items-center gap-1">
-                      <Users size={12} className="text-[#10B981]" />
-                      <strong className="text-[#121215]">{assignedStudentCount}</strong> Siswa
-                    </span>
-                  </div>
+                  {item.title}
+                </p>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => onCreateNewContent("Course", item.title)}
-                      title={`Tambah Course baru ke folder ${item.title}`}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#F8FAFC] hover:bg-[#EEF2FF] border border-[#EAECEF] hover:border-[#4F39F6]/30 px-2 py-1 text-[11px] font-semibold text-[#475569] hover:text-[#4F39F6] transition-colors cursor-pointer"
-                    >
-                      <Plus size={11} />
-                      <span>Materi</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onOpenAssignModal(item)}
-                      title={`Assign siswa ke folder ${item.title}`}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#F8FAFC] hover:bg-[#EEF2FF] border border-[#EAECEF] hover:border-[#4F39F6]/30 px-2 py-1 text-[11px] font-semibold text-[#475569] hover:text-[#4F39F6] transition-colors cursor-pointer"
-                    >
-                      <UserPlus size={11} />
-                      <span>Assign</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenFolder(item.title, item.id)}
-                      className="inline-flex items-center gap-0.5 rounded-lg bg-[#EEF2FF] hover:bg-[#4F39F6] px-2.5 py-1 text-[11px] font-bold text-[#4F39F6] hover:text-white transition-colors cursor-pointer"
-                    >
-                      <span>Buka</span>
-                      <ChevronRight size={12} />
-                    </button>
-                  </div>
-                </div>
+                {/* Folder Series Access Code Pill (click to copy) */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (
+                      typeof navigator !== "undefined" &&
+                      navigator.clipboard
+                    ) {
+                      void navigator.clipboard.writeText(fCode);
+                    }
+                    onShowToast(
+                      `Kode folder "${fCode}" disalin! Siswa bisa masukkan kode ini saat daftar / di Learner Portal.`
+                    );
+                  }}
+                  title={`Klik untuk salin Kode Akses Folder: ${fCode}`}
+                  className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-200/80 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 transition-colors cursor-pointer"
+                >
+                  <KeyRound size={9} />
+                  <span>{fCode}</span>
+                </button>
               </div>
             );
           };
@@ -2760,84 +2735,67 @@ export function LearningContentExplorer({
                 </div>
               )}
 
-              {/* TAMPILAN ROOT: SEKSI 1 FOLDER KURIKULUM + SEKSI 2 SEMUA MATERI LANGSUNG */}
+              {/* TAMPILAN ROOT: DIREKTORI FOLDER GAYA macOS + HASIL PENCARIAN / MATERI */}
               {!currentFolder && selectedTab === "All" ? (
                 <>
-                  {/* SEKSI 1: DIREKTORI FOLDER KURIKULUM */}
-                  {(folderItems.length > 0 || activeSubView === "recents") && (
-                    <section aria-labelledby="section-folders" className="space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <Folder size={15} className="text-[#4F39F6]" />
-                          <h2
-                            id="section-folders"
-                            className="text-xs font-bold uppercase tracking-wider text-[#475569]"
-                          >
-                            Direktori Folder Kurikulum ({folderItems.length})
-                          </h2>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setCreateFolderModalOpen(true)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[#EEF2FF] hover:bg-[#E0E7FF] px-2.5 py-1 text-[11px] font-bold text-[#4F39F6] transition-colors cursor-pointer"
-                        >
-                          <Plus size={12} strokeWidth={2.5} />
-                          <span>Buat Folder Baru</span>
-                        </button>
-                      </div>
-
-                      {folderItems.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                          {folderItems.map(renderFolderCurriculumCard)}
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC]/70 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="space-y-0.5">
-                            <p className="text-xs font-bold text-[#121215]">
-                              Belum ada folder di {activeProjectName}
-                            </p>
-                            <p className="text-[11px] text-[#64748B]">
-                              Kelompokkan kursus ke dalam folder series lengkap dengan Kode Akses otomatis.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCreateFolderModalOpen(true)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-2 text-xs font-bold text-white transition-colors cursor-pointer shrink-0"
-                          >
-                            <FolderPlus size={14} />
-                            <span>+ Buat Folder Pertama</span>
-                          </button>
-                        </div>
-                      )}
-                    </section>
-                  )}
-
-                  {/* SEKSI 2: SEMUA MATERI & KELAS DI PROJECT INI */}
+                  {/* SEKSI MATERI (Saat mencari atau di Shared/Archived/Templates/Wiki) */}
                   {contentItems.length > 0 && (
-                    <section
-                      aria-labelledby="section-contents"
-                      className="pt-5 border-t border-[#EAECEF] space-y-3"
-                    >
+                    <section aria-labelledby="section-contents" className="space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <BookOpen size={15} className="text-[#10B981]" />
-                          <h2
-                            id="section-contents"
-                            className="text-xs font-bold uppercase tracking-wider text-[#475569]"
-                          >
-                            {activeSubView === "recents"
-                              ? "Semua Materi & Kelas di Project Ini"
-                              : "Daftar Materi"}{" "}
-                            ({contentItems.length})
-                          </h2>
-                        </div>
-                        <span className="text-[11px] text-[#94A3B8] hidden sm:inline">
-                          Klik kartu untuk detail atau klik Edit untuk langsung mengubah isi bab
+                        <span className="text-xs font-semibold text-[#64748B]">
+                          Materi ({contentItems.length})
                         </span>
                       </div>
                       <div {...getCardGridProps(cardScale)}>
                         {contentItems.map(renderStandardCard)}
+                      </div>
+                    </section>
+                  )}
+
+                  {/* SEKSI DIREKTORI FOLDER (FINDER ICON VIEW YANG RAPI) */}
+                  {(folderItems.length > 0 || activeSubView === "recents") && (
+                    <section
+                      aria-labelledby="section-folders"
+                      className={`${
+                        contentItems.length > 0
+                          ? "pt-6 border-t border-[#EAECEF]"
+                          : ""
+                      } space-y-3`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Folder size={14} className="text-[#4F39F6]" />
+                          <h2
+                            id="section-folders"
+                            className="text-xs font-bold uppercase tracking-wider text-[#475569]"
+                          >
+                            Direktori Folder ({folderItems.length})
+                          </h2>
+                          <span className="text-[11px] text-[#94A3B8] hidden sm:inline">
+                            — Klik folder untuk melihat &amp; edit materi di dalamnya
+                          </span>
+                        </div>
+                        {renderFinderSizeControls()}
+                      </div>
+
+                      <div className="flex flex-wrap items-start gap-4 sm:gap-5 py-1">
+                        {folderItems.map(renderMacFolderIconTile)}
+                        <button
+                          type="button"
+                          onClick={() => setCreateFolderModalOpen(true)}
+                          style={{
+                            width: `${Math.round(folderIconScale * 1.45)}px`,
+                            height: `${Math.max(92, Math.round(folderIconScale * 1.15))}px`,
+                          }}
+                          className="group flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#CBD5E1] hover:border-[#4F39F6] bg-[#F8FAFC]/60 hover:bg-[#EFF6FF]/60 transition-all cursor-pointer p-2 text-center"
+                        >
+                          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white border border-[#E2E8F0] group-hover:border-[#4F39F6] text-[#94A3B8] group-hover:text-[#4F39F6] shadow-2xs group-hover:scale-105 transition-all mb-1.5">
+                            <FolderPlus size={16} />
+                          </div>
+                          <span className="text-[11px] font-semibold text-[#64748B] group-hover:text-[#4F39F6] transition-colors">
+                            + Buat Folder
+                          </span>
+                        </button>
                       </div>
                     </section>
                   )}
@@ -2849,17 +2807,26 @@ export function LearningContentExplorer({
                     <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">
                       Direktori Folder ({filteredItems.length})
                     </span>
+                    {renderFinderSizeControls()}
+                  </div>
+                  <div className="flex flex-wrap items-start gap-4 sm:gap-5 py-1">
+                    {filteredItems.map(renderMacFolderIconTile)}
                     <button
                       type="button"
                       onClick={() => setCreateFolderModalOpen(true)}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#EEF2FF] hover:bg-[#E0E7FF] px-2.5 py-1 text-[11px] font-bold text-[#4F39F6] transition-colors cursor-pointer"
+                      style={{
+                        width: `${Math.round(folderIconScale * 1.45)}px`,
+                        height: `${Math.max(92, Math.round(folderIconScale * 1.15))}px`,
+                      }}
+                      className="group flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#CBD5E1] hover:border-[#4F39F6] bg-[#F8FAFC]/60 hover:bg-[#EFF6FF]/60 transition-all cursor-pointer p-2 text-center"
                     >
-                      <Plus size={12} strokeWidth={2.5} />
-                      <span>Buat Folder Baru</span>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white border border-[#E2E8F0] group-hover:border-[#4F39F6] text-[#94A3B8] group-hover:text-[#4F39F6] shadow-2xs group-hover:scale-105 transition-all mb-1.5">
+                        <FolderPlus size={16} />
+                      </div>
+                      <span className="text-[11px] font-semibold text-[#64748B] group-hover:text-[#4F39F6] transition-colors">
+                        + Buat Folder
+                      </span>
                     </button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {filteredItems.map(renderFolderCurriculumCard)}
                   </div>
                 </div>
               ) : (
@@ -2875,7 +2842,7 @@ export function LearningContentExplorer({
                   <div {...getCardGridProps(cardScale)}>
                     {filteredItems.map((item) =>
                       item.type === "Folder"
-                        ? renderFolderCurriculumCard(item)
+                        ? renderMacFolderIconTile(item)
                         : renderStandardCard(item)
                     )}
                   </div>

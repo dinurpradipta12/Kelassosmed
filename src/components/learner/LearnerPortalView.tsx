@@ -26,6 +26,7 @@ import {
   KeyRound,
   Folder,
   FolderOpen,
+  Minus,
   Plus,
   ArrowLeft,
   Search,
@@ -434,6 +435,19 @@ export function LearnerPortalView({
     "default" | "title" | "progress"
   >("default");
   const [folderSearchQuery, setFolderSearchQuery] = useState("");
+  const [learnerFolderScale, setLearnerFolderScale] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = Number(
+          window.localStorage.getItem("ruang_sosmed_learner_folder_scale_v1")
+        );
+        if (!Number.isNaN(saved) && saved >= 52 && saved <= 112) {
+          return saved;
+        }
+      } catch {}
+    }
+    return 76;
+  });
   const [unlockedFolderModal, setUnlockedFolderModal] = useState<{
     folderTitle: string;
     unlockedTitle?: string;
@@ -441,6 +455,19 @@ export function LearnerPortalView({
     courseCount: number;
     codeUsed: string;
   } | null>(null);
+
+  const updateLearnerFolderScale = (next: number) => {
+    const clamped = Math.min(140, Math.max(52, Math.round(next)));
+    setLearnerFolderScale(clamped);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          "ruang_sosmed_learner_folder_scale_v1",
+          String(clamped)
+        );
+      } catch {}
+    }
+  };
 
   const handleOpenLearnerFolder = (folderName: string) => {
     setFolderSearchQuery("");
@@ -781,6 +808,126 @@ export function LearnerPortalView({
       learnerFolders.find((f) => f.name.trim().toLowerCase() === key) || null
     );
   }, [activeLearnerFolder, learnerFolders]);
+
+  const renderLearnerFinderControls = () => (
+    <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-1 shadow-2xs">
+      <button
+        type="button"
+        onClick={() => updateLearnerFolderScale(learnerFolderScale - 12)}
+        disabled={learnerFolderScale <= 52}
+        title="Perkecil ukuran tampilan"
+        aria-label="Perkecil ukuran tampilan"
+        className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
+      >
+        <Minus size={11} />
+      </button>
+      <input
+        type="range"
+        min={52}
+        max={140}
+        step={4}
+        value={learnerFolderScale}
+        onChange={(e) => updateLearnerFolderScale(Number(e.target.value))}
+        aria-label="Atur ukuran folder & kartu"
+        className="w-20 sm:w-24 h-1.5 accent-[#4F39F6] cursor-pointer"
+      />
+      <button
+        type="button"
+        onClick={() => updateLearnerFolderScale(learnerFolderScale + 12)}
+        disabled={learnerFolderScale >= 140}
+        title="Perbesar ukuran tampilan"
+        aria-label="Perbesar ukuran tampilan"
+        className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
+      >
+        <Plus size={11} />
+      </button>
+      <button
+        type="button"
+        onClick={() => updateLearnerFolderScale(76)}
+        title="Reset ukuran standar (100%)"
+        className="ml-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#64748B] hover:bg-white hover:text-[#121215] tabular-nums cursor-pointer"
+      >
+        {Math.round((learnerFolderScale / 76) * 100)}%
+      </button>
+    </div>
+  );
+
+  const renderLearnerFolderTile = (
+    folder: {
+      name: string;
+      color: string;
+      description: string;
+      projectName: string;
+      projectColor: string;
+      courses: LearnerAssignedItem[];
+      avgPct: number;
+    },
+    compact?: boolean
+  ) => {
+    const isOpening = openingFolderName === folder.name;
+    const iconSize = compact
+      ? Math.max(48, Math.round(learnerFolderScale * 0.8))
+      : learnerFolderScale;
+    const tileWidth = compact
+      ? Math.max(82, Math.round(iconSize * 1.42))
+      : Math.round(iconSize * 1.45);
+    return (
+      <button
+        key={folder.name}
+        type="button"
+        onClick={() => handleOpenLearnerFolder(folder.name)}
+        style={{ width: `${tileWidth}px` }}
+        title={folder.description || `Buka folder ${folder.name} (${folder.projectName})`}
+        className={`group flex flex-col items-center justify-start p-2 rounded-xl transition-all duration-200 cursor-pointer text-center select-none ${
+          isOpening ? "scale-110 opacity-30" : "hover:bg-[#F8FAFC]"
+        }`}
+      >
+        <div className="relative pt-0.5 pb-1 transition-transform duration-300 group-hover:scale-105 group-active:scale-95">
+          <LearnerMacFolderIcon
+            color={folder.color}
+            className="drop-shadow-[0_3px_8px_rgba(0,0,0,0.08)]"
+            style={{
+              width: `${iconSize}px`,
+              height: `${Math.round(iconSize * 0.82)}px`,
+            }}
+          />
+          <span
+            title={`${folder.courses.length} materi`}
+            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[#EF4444] text-white text-[10px] font-bold shadow-md ring-2 ring-white"
+          >
+            {folder.courses.length}
+          </span>
+        </div>
+
+        <p
+          className={`mt-1 font-semibold text-[#1E293B] group-hover:text-[#4F39F6] line-clamp-2 leading-tight px-0.5 w-full break-words ${
+            iconSize >= 104
+              ? "text-xs"
+              : iconSize <= 58
+              ? "text-[10px]"
+              : "text-[11px]"
+          }`}
+        >
+          {folder.name}
+        </p>
+
+        <span
+          title={`Project: ${folder.projectName}`}
+          className="mt-1 inline-flex items-center gap-1 max-w-full rounded-full bg-[#F8FAFC] border border-[#E2E8F0] px-1.5 py-0.5 text-[9px] font-semibold text-[#475569]"
+        >
+          <span
+            className="h-1.5 w-1.5 rounded-full shrink-0"
+            style={{ backgroundColor: folder.projectColor }}
+          />
+          <span className="truncate">{folder.projectName}</span>
+        </span>
+
+        <span className="mt-1 inline-flex items-center rounded-md bg-[#F1F5F9] px-1.5 py-0.5 text-[9px] font-semibold text-[#475569] tabular-nums">
+          {folder.avgPct}% selesai
+        </span>
+      </button>
+    );
+  };
 
   const renderLearnerFolderSeriesCard = (folder: {
     name: string;
@@ -3610,6 +3757,10 @@ export function LearnerPortalView({
                   return "Ruang Sosmed Class";
                 };
 
+                const standaloneItems = displayedItems.filter(
+                  (item) => !item.folderName?.trim()
+                );
+
                 const normalizedFolderSearch = folderSearchQuery
                   .trim()
                   .toLowerCase();
@@ -3632,7 +3783,13 @@ export function LearnerPortalView({
                           .includes(normalizedFolderSearch)
                       );
                     })
-                  : displayedItems;
+                  : searchQuery.trim() ||
+                    activeNavTab === "favorites" ||
+                    selectedFolderFilter !== "All"
+                  ? displayedItems
+                  : learnerFolders.length > 0
+                  ? []
+                  : standaloneItems;
 
                 const baseVisibleCourseCards =
                   !activeFolderObj && isProjectFilterScope
@@ -3655,8 +3812,13 @@ export function LearnerPortalView({
                     ) || null
                   : null;
 
-                const activeGridColsClass =
-                  "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
+                const activeGridColsClass = activeFolderObj
+                  ? learnerFolderScale >= 108
+                    ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3"
+                    : learnerFolderScale <= 64
+                    ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5"
+                    : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+                  : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
 
                 const folderSortLabel =
                   learnerFolderSort === "title"
@@ -3761,9 +3923,12 @@ export function LearnerPortalView({
                       </label>
                     )}
 
+                  {(learnerFolders.length > 0 || activeFolderObj) &&
+                    renderLearnerFinderControls()}
+
                   {activeFolderObj && (
                     <>
-                      <div className="relative w-44 sm:w-56">
+                      <div className="relative w-40 sm:w-48">
                         <Search
                           size={12}
                           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
@@ -3842,7 +4007,7 @@ export function LearnerPortalView({
                 </div>
               </div>
 
-              {/* Folder Series Cards Grid (Informatif & Mudah Diklik) */}
+              {/* Finder Folder Grid (Read-Only untuk Siswa, Zoomable via Slider & Tombol) */}
               {!activeFolderObj &&
                 !searchQuery.trim() &&
                 activeNavTab !== "favorites" &&
@@ -3858,13 +4023,13 @@ export function LearnerPortalView({
                         </span>
                       </span>
                       <span className="text-[11px] text-[#94A3B8]">
-                        Pilih folder atau langsung klik materi kelas di bawah
+                        Klik folder untuk melihat materi di dalamnya
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="flex flex-wrap items-start gap-4 py-1">
                       {visibleFolders.map((folder) =>
-                        renderLearnerFolderSeriesCard(folder)
+                        renderLearnerFolderTile(folder)
                       )}
                     </div>
                   </div>
@@ -3970,15 +4135,6 @@ export function LearnerPortalView({
                 <>
                 {visibleCourseCards.length > 0 && (
                 <div className="space-y-3">
-                  {!activeFolderObj &&
-                    activeNavTab === "catalog" &&
-                    visibleFolders.length > 0 && (
-                      <div className="flex items-center justify-between pt-1">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#475569]">
-                          Semua Materi &amp; Kelas ({visibleCourseCards.length})
-                        </h3>
-                      </div>
-                    )}
                   {activeFolderObj && learnerCourseViewMode === "list" ? (
                     <div className="space-y-2.5">
                       {visibleCourseCards.map((item) => {
