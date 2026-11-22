@@ -1750,7 +1750,9 @@ function RuangSosmedStudioInner() {
           <AdminLeftRail
             activeNav={activeNav}
             onSelectNav={handleSelectNav}
-            secondarySidebarOpen={secondarySidebarOpen && !authoringMode}
+            secondarySidebarOpen={
+              secondarySidebarOpen && !authoringMode && !selectedContentDetail
+            }
             onToggleSecondarySidebar={() =>
               setSecondarySidebarOpen((prev) => !prev)
             }
@@ -1823,7 +1825,8 @@ function RuangSosmedStudioInner() {
             className={`min-w-0 flex-1 pl-0 md:pl-[56px] transition-[padding] duration-150 ease-out ${
               (activeNav === "content" || activeNav === "archive") &&
               secondarySidebarOpen &&
-              !authoringMode
+              !authoringMode &&
+              !selectedContentDetail
                 ? "pb-32 md:pb-24"
                 : "pb-20 md:pb-0"
             }`}

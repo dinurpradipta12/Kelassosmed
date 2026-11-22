@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import {
+  ArrowLeft,
   ChevronRight,
   Search,
   MessageSquare,
@@ -22,6 +23,7 @@ import {
   Calendar,
   Download,
   Filter,
+  Layers,
   Trash2,
   Check,
   Bell,
@@ -448,7 +450,7 @@ export function ContentDetailView({
     totalChaptersCount,
   ]);
 
-  const [activeTab, setActiveTab] = useState<DetailTabId>("statistics");
+  const [activeTab, setActiveTab] = useState<DetailTabId>("detail");
   const [rightTab, setRightTab] = useState<RightPanelTabId>("assignees");
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [issueTypeFilter, setIssueTypeFilter] = useState<string>("All type issue");
@@ -880,167 +882,211 @@ export function ContentDetailView({
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Main Center Content Area */}
-      <div className="flex-1 min-w-0 px-6 sm:px-8 pt-7 pb-16">
-        {/* Breadcrumb Header */}
+      <div className="flex-1 min-w-0 px-4 sm:px-7 pt-5 pb-20">
+        {/* Top Back Navigation & Breadcrumb */}
         <nav
           aria-label="Breadcrumb"
-          className="flex items-center gap-1.5 text-xs font-medium text-[#5E5E5E] mb-3"
+          className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#5E5E5E] mb-4"
         >
           <button
             type="button"
             onClick={onBackToExplorer}
-            className="hover:text-[#4F39F6] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFFFFF] border border-[#EAECEF] hover:border-[#4F39F6] hover:text-[#4F39F6] px-2.5 py-1 text-xs font-semibold text-[#121215] shadow-2xs transition-colors cursor-pointer"
           >
-            Ruang Sosmed 2.0
+            <ArrowLeft size={13} />
+            <span>Kembali ke Daftar Materi</span>
           </button>
-          <ChevronRight size={13} className="text-[#9CA3AF]" />
-          <span className="font-semibold text-[#121215] truncate">
+          <ChevronRight size={13} className="text-[#9CA3AF] hidden sm:inline" />
+          <span className="hidden sm:inline text-[#64748B]">
+            {item.folderName || "Ruang Sosmed 2.0"}
+          </span>
+          <ChevronRight size={13} className="text-[#9CA3AF] hidden sm:inline" />
+          <span className="font-semibold text-[#121215] truncate max-w-[260px]">
             {item.title}
           </span>
         </nav>
 
-        {/* Title & Metadata Row */}
-        <header className="pb-5 border-b border-[#EAECEF]">
-          <h1 className="text-[24px] font-bold tracking-tight text-[#121215]">
-            {item.title}
-          </h1>
+        {/* Hero Header Card + Top-Right Primary Actions (Unobstructed) */}
+        <header className="rounded-2xl bg-[#FFFFFF] border border-[#EAECEF] p-4 sm:p-5 shadow-[0_2px_10px_rgba(16,15,17,0.04)] space-y-4">
+          <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
+            {/* Left Info & Metadata */}
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <ContentBadge type={item.type} size="sm" />
+                {item.folderName && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-[#EEF2FF] border border-[#4F39F6]/20 px-2 py-0.5 text-[11px] font-bold text-[#4F39F6]">
+                    <Layers size={11} />
+                    <span>{item.folderName}</span>
+                  </span>
+                )}
+              </div>
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs text-[#5E5E5E]">
-            <ContentBadge type={item.type} size="sm" />
-            <span className="text-[#D1D5DB]">•</span>
-            <div className="relative inline-flex items-center">
-              <button
-                type="button"
-                onClick={() => setLangMenuOpen((prev) => !prev)}
-                className="inline-flex items-center gap-1.5 font-medium text-[#5E5E5E] hover:text-[#4F39F6] bg-transparent hover:bg-[#F8F9FB] px-2 py-0.5 rounded-md border border-transparent hover:border-[#EAECEF] transition-all cursor-pointer"
-                title="Klik untuk mengubah bahasa materi/kursus"
-              >
-                <Globe size={13} className="text-[#4F39F6]" />
-                <span>{item.language || "Bahasa Indonesia"}</span>
-                <ChevronDown size={11} className="text-[#9CA3AF]" />
-              </button>
+              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#121215] leading-snug">
+                {item.title}
+              </h1>
 
-              {langMenuOpen && (
-                <div className="absolute left-0 top-7 z-30 w-44 rounded-xl bg-[#FFFFFF] border border-[#EAECEF] shadow-xl p-1.5 space-y-0.5 text-left">
-                  {["Bahasa Indonesia", "English", "Bahasa / English"].map(
-                    (lang) => (
-                      <button
-                        key={lang}
-                        type="button"
-                        onClick={() => {
-                          updateContentLanguage(item.id, lang);
-                          setLangMenuOpen(false);
-                          onShowToast(`Bahasa kursus diubah ke "${lang}".`);
-                        }}
-                        className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-left cursor-pointer transition-colors ${
-                          item.language === lang
-                            ? "bg-[#4F39F6]/10 text-[#4F39F6] font-bold"
-                            : "text-[#121215] hover:bg-[#F8F9FB]"
-                        }`}
-                      >
-                        <span>{lang}</span>
-                        {item.language === lang && <Check size={12} />}
-                      </button>
-                    )
+              <div className="flex flex-wrap items-center gap-2.5 text-xs text-[#5E5E5E]">
+                <div className="relative inline-flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => setLangMenuOpen((prev) => !prev)}
+                    className="inline-flex items-center gap-1.5 font-medium text-[#5E5E5E] hover:text-[#4F39F6] bg-[#F8F9FB] hover:bg-[#FFFFFF] px-2 py-0.5 rounded-md border border-[#EAECEF] transition-all cursor-pointer"
+                    title="Klik untuk mengubah bahasa materi/kursus"
+                  >
+                    <Globe size={12} className="text-[#4F39F6]" />
+                    <span>{item.language || "Bahasa Indonesia"}</span>
+                    <ChevronDown size={11} className="text-[#9CA3AF]" />
+                  </button>
+
+                  {langMenuOpen && (
+                    <div className="absolute left-0 top-7 z-30 w-44 rounded-xl bg-[#FFFFFF] border border-[#EAECEF] shadow-xl p-1.5 space-y-0.5 text-left">
+                      {["Bahasa Indonesia", "English", "Bahasa / English"].map(
+                        (lang) => (
+                          <button
+                            key={lang}
+                            type="button"
+                            onClick={() => {
+                              updateContentLanguage(item.id, lang);
+                              setLangMenuOpen(false);
+                              onShowToast(`Bahasa kursus diubah ke "${lang}".`);
+                            }}
+                            className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-left cursor-pointer transition-colors ${
+                              item.language === lang
+                                ? "bg-[#4F39F6]/10 text-[#4F39F6] font-bold"
+                                : "text-[#121215] hover:bg-[#F8F9FB]"
+                            }`}
+                          >
+                            <span>{lang}</span>
+                            {item.language === lang && <Check size={12} />}
+                          </button>
+                        )
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+
+                <span
+                  title="Cohort / Project pemilik materi ini"
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#F8F9FB] border border-[#EAECEF] font-medium text-[11px] text-[#5E5E5E]"
+                >
+                  <span
+                    className="h-2 w-2 rounded-[3px] shrink-0"
+                    style={{
+                      backgroundColor:
+                        cohortProjects.find(
+                          (c) =>
+                            c.name.toLowerCase() ===
+                            (
+                              item.cohort ||
+                              cohortProjects[0]?.name ||
+                              "Ruang Sosmed Class"
+                            ).toLowerCase()
+                        )?.color || "#EC4899",
+                    }}
+                  />
+                  <span>
+                    {item.cohort ||
+                      cohortProjects[0]?.name ||
+                      "Ruang Sosmed Class"}
+                  </span>
+                </span>
+
+                <span className="inline-flex items-center gap-1 font-medium text-[11px] text-[#64748B]">
+                  <Calendar size={12} className="text-[#9CA3AF]" />
+                  <span>{item.editedDate}</span>
+                </span>
+              </div>
             </div>
 
-            <span className="text-[#D1D5DB]">•</span>
-            <span
-              title="Cohort / Project pemilik materi ini"
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#F8F9FB] border border-[#EAECEF] font-medium text-[11px] text-[#5E5E5E]"
-            >
-              <span
-                className="h-2 w-2 rounded-[3px] shrink-0"
-                style={{
-                  backgroundColor:
-                    cohortProjects.find(
-                      (c) =>
-                        c.name.toLowerCase() ===
-                        (
-                          item.cohort ||
-                          cohortProjects[0]?.name ||
-                          "Ruang Sosmed Class"
-                        ).toLowerCase()
-                    )?.color || "#EC4899",
+            {/* Right Prominent Action Toolbar */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onEditContent) {
+                    onEditContent(item);
+                  } else {
+                    onShowToast(`Membuka Studio Editor untuk "${item.title}".`);
+                  }
                 }}
-              />
-              <span>
-                {item.cohort ||
-                  cohortProjects[0]?.name ||
-                  "Ruang Sosmed Class"}
-              </span>
-            </span>
-            <span className="text-[#D1D5DB]">•</span>
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <Calendar size={13} className="text-[#9CA3AF]" />
-              {item.editedDate}
-            </span>
+                className="inline-flex items-center gap-2 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2.5 text-xs font-bold text-white shadow-[0_4px_14px_rgba(79,57,246,0.32)] transition-all cursor-pointer"
+              >
+                <Edit3 size={14} />
+                <span>Edit Materi &amp; Bab</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onOpenAssignModal(item)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#EEF2FF]/70 hover:bg-[#EEF2FF] border border-[#4F39F6]/30 px-3.5 py-2.5 text-xs font-bold text-[#4F39F6] transition-colors cursor-pointer"
+              >
+                <Plus size={14} strokeWidth={2.5} />
+                <span>Assign Siswa</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAllAssigneesModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#F8F9FB] hover:bg-[#FFFFFF] border border-[#EAECEF] hover:border-[#CBD5E1] px-3.5 py-2.5 text-xs font-semibold text-[#121215] transition-colors cursor-pointer"
+              >
+                <Users size={13} className="text-[#4F39F6]" />
+                <span>Peserta ({assignees.length})</span>
+              </button>
+            </div>
           </div>
 
-          {/* 4 View Tabs: Statistics | Details Content | Report Issues | Discussion */}
+          {/* Clear 4-Step Sequential Navigation Flow */}
           <div
             role="tablist"
-            aria-label="Content management tabs"
-            className="mt-6 flex items-center gap-2 border-b border-[#EAECEF] -mb-5"
+            aria-label="Alur pengelolaan materi"
+            className="flex items-center gap-1.5 overflow-x-auto pt-3 border-t border-[#EAECEF]"
           >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "statistics"}
-              onClick={() => setActiveTab("statistics")}
-              className={`relative inline-flex items-center gap-2 px-3.5 pb-3 pt-1 text-xs font-semibold transition-colors cursor-pointer ${
-                activeTab === "statistics"
-                  ? "text-[#4F39F6]"
-                  : "text-[#5E5E5E] hover:text-[#121215]"
-              }`}
-            >
-              <BarChart3 size={14} />
-              <span>Statistics</span>
-              {activeTab === "statistics" && (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#4F39F6]" />
-              )}
-            </button>
-
             <button
               type="button"
               role="tab"
               aria-selected={activeTab === "detail"}
               onClick={() => setActiveTab("detail")}
-              className={`relative inline-flex items-center gap-2 px-3.5 pb-3 pt-1 text-xs font-semibold transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
                 activeTab === "detail"
-                  ? "text-[#4F39F6]"
-                  : "text-[#5E5E5E] hover:text-[#121215]"
+                  ? "bg-[#4F39F6] text-white shadow-xs"
+                  : "bg-[#F8F9FB] text-[#5E5E5E] hover:bg-[#EEF2FF]/70 hover:text-[#121215]"
               }`}
             >
               <BookOpen size={14} />
-              <span>Details Content</span>
-              {activeTab === "detail" && (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#4F39F6]" />
-              )}
+              <span>1. Kurikulum &amp; Materi</span>
+              <span
+                className={`rounded-md px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  activeTab === "detail"
+                    ? "bg-white/20 text-white"
+                    : "bg-[#FFFFFF] border border-[#EAECEF] text-[#4F39F6]"
+                }`}
+              >
+                {totalChaptersCount} Bab
+              </span>
             </button>
 
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === "issues"}
-              onClick={() => setActiveTab("issues")}
-              className={`relative inline-flex items-center gap-2 px-3.5 pb-3 pt-1 text-xs font-semibold transition-colors cursor-pointer ${
-                activeTab === "issues"
-                  ? "text-[#4F39F6]"
-                  : "text-[#5E5E5E] hover:text-[#121215]"
+              aria-selected={activeTab === "statistics"}
+              onClick={() => setActiveTab("statistics")}
+              className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+                activeTab === "statistics"
+                  ? "bg-[#4F39F6] text-white shadow-xs"
+                  : "bg-[#F8F9FB] text-[#5E5E5E] hover:bg-[#EEF2FF]/70 hover:text-[#121215]"
               }`}
             >
-              <AlertCircle size={14} />
-              <span>Report Issues</span>
-              <span className="rounded-md bg-[#EF4444]/10 border border-[#EF4444]/20 px-1.5 py-0.2 text-[10px] font-bold text-[#EF4444]">
-                {courseIssues.filter((i) => i.status === "Open").length}
+              <BarChart3 size={14} />
+              <span>2. Progres &amp; Statistik</span>
+              <span
+                className={`rounded-md px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  activeTab === "statistics"
+                    ? "bg-white/20 text-white"
+                    : "bg-[#FFFFFF] border border-[#EAECEF] text-[#4F39F6]"
+                }`}
+              >
+                {assignees.length} Siswa
               </span>
-              {activeTab === "issues" && (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#4F39F6]" />
-              )}
             </button>
 
             <button
@@ -1048,20 +1094,47 @@ export function ContentDetailView({
               role="tab"
               aria-selected={activeTab === "discussion"}
               onClick={() => setActiveTab("discussion")}
-              className={`relative inline-flex items-center gap-2 px-3.5 pb-3 pt-1 text-xs font-semibold transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
                 activeTab === "discussion"
-                  ? "text-[#4F39F6]"
-                  : "text-[#5E5E5E] hover:text-[#121215]"
+                  ? "bg-[#4F39F6] text-white shadow-xs"
+                  : "bg-[#F8F9FB] text-[#5E5E5E] hover:bg-[#EEF2FF]/70 hover:text-[#121215]"
               }`}
             >
               <MessageSquare size={14} />
-              <span>Discussion</span>
-              <span className="rounded-md bg-[#4F39F6]/10 px-1.5 py-0.2 text-[10px] font-bold text-[#4F39F6]">
+              <span>3. Diskusi Kelas</span>
+              <span
+                className={`rounded-md px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  activeTab === "discussion"
+                    ? "bg-white/20 text-white"
+                    : "bg-[#FFFFFF] border border-[#EAECEF] text-[#4F39F6]"
+                }`}
+              >
                 {courseThreads.length}
               </span>
-              {activeTab === "discussion" && (
-                <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#4F39F6]" />
-              )}
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "issues"}
+              onClick={() => setActiveTab("issues")}
+              className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+                activeTab === "issues"
+                  ? "bg-[#4F39F6] text-white shadow-xs"
+                  : "bg-[#F8F9FB] text-[#5E5E5E] hover:bg-[#EEF2FF]/70 hover:text-[#121215]"
+              }`}
+            >
+              <AlertCircle size={14} />
+              <span>4. Laporan Kendala</span>
+              <span
+                className={`rounded-md px-1.5 py-0.2 text-[10px] font-extrabold ${
+                  activeTab === "issues"
+                    ? "bg-white/20 text-white"
+                    : "bg-[#EF4444]/10 text-[#EF4444]"
+                }`}
+              >
+                {courseIssues.filter((i) => i.status === "Open").length}
+              </span>
             </button>
           </div>
         </header>
@@ -2287,37 +2360,91 @@ export function ContentDetailView({
           </section>
         )}
 
-        {/* TAB 1: DETAILS CONTENT */}
+        {/* TAB 1 (DEFAULT): KURIKULUM & MATERI */}
         {activeTab === "detail" && (
           <section
-            aria-label="Detail Content Preview"
-            className="pt-6 space-y-4"
+            aria-label="Detail Kurikulum & Materi"
+            className="pt-5 space-y-4"
           >
-            <div className="rounded-xl bg-[#FFFFFF] p-6 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-5">
+            {/* Quick Summary Strip */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-xl bg-[#FFFFFF] border border-[#EAECEF] px-4 py-3 flex items-center justify-between gap-2 shadow-2xs">
+                <div>
+                  <p className="text-[11px] font-medium text-[#64748B]">
+                    Total Bab Materi
+                  </p>
+                  <p className="text-lg font-extrabold text-[#121215] tabular-nums">
+                    {totalChaptersCount} Bab
+                  </p>
+                </div>
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EEF2FF] text-[#4F39F6]">
+                  <BookOpen size={17} />
+                </span>
+              </div>
+
+              <div className="rounded-xl bg-[#FFFFFF] border border-[#EAECEF] px-4 py-3 flex items-center justify-between gap-2 shadow-2xs">
+                <div>
+                  <p className="text-[11px] font-medium text-[#64748B]">
+                    Total Poin Reward
+                  </p>
+                  <p className="text-lg font-extrabold text-[#B45309] tabular-nums">
+                    +{flatChapters.reduce((sum, ch) => sum + (ch.points || 5), 0) || 100} ★
+                  </p>
+                </div>
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FEF3C7] text-[#D97706]">
+                  <Award size={17} />
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("statistics")}
+                className="rounded-xl bg-[#FFFFFF] border border-[#EAECEF] hover:border-[#4F39F6]/50 px-4 py-3 flex items-center justify-between gap-2 text-left shadow-2xs transition-colors cursor-pointer"
+              >
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-[#64748B]">
+                    Peserta &amp; Progres
+                  </p>
+                  <p className="text-sm font-extrabold text-[#121215] truncate tabular-nums">
+                    {assignees.length} Siswa • {completedPct}% lulus
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-[#4F39F6] shrink-0">
+                  <span>Statistik</span>
+                  <ChevronRight size={13} />
+                </span>
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-[#FFFFFF] p-5 border border-[#EAECEF] shadow-[0_2px_8px_rgba(16,15,17,0.04)] space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#4F39F6]">
-                    Curriculum Preview
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#4F39F6]">
+                    Struktur Silabus &amp; Editor
                   </span>
-                  <h2 className="text-base font-bold text-[#121215] mt-1">
-                    {item.title} — {totalChaptersCount} Structured Chapter
-                    {totalChaptersCount !== 1 ? "s" : ""}
+                  <h2 className="text-base font-bold text-[#121215] mt-0.5">
+                    Daftar Bab ({totalChaptersCount})
                   </h2>
                   <p className="text-xs text-[#5E5E5E] mt-1 leading-relaxed max-w-2xl">
-                    {item.description || "Belum ada deskripsi kursus."}
+                    {item.description ||
+                      "Klik Edit Bab pada salah satu materi atau buka Studio Editor untuk menambah & menyusun isi."}
                   </p>
                 </div>
 
-                {onEditContent && (
-                  <button
-                    type="button"
-                    onClick={() => onEditContent(item)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer self-start shrink-0"
-                  >
-                    <Edit3 size={13} />
-                    <span>Edit Content</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onEditContent) {
+                      onEditContent(item);
+                    } else {
+                      onShowToast(`Membuka Studio Editor untuk "${item.title}".`);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#F8F9FB] hover:bg-[#EEF2FF] border border-[#EAECEF] hover:border-[#4F39F6]/40 px-3.5 py-2 text-xs font-bold text-[#4F39F6] transition-colors cursor-pointer self-start shrink-0"
+                >
+                  <Plus size={13} strokeWidth={2.5} />
+                  <span>Tambah / Edit Bab di Editor</span>
+                </button>
               </div>
 
               {totalChaptersCount === 0 ? (
@@ -2329,16 +2456,20 @@ export function ContentDetailView({
                   <p className="text-xs text-[#5E5E5E] max-w-md mx-auto">
                     Kursus ini belum memiliki silabus atau chapter yang diterbitkan. Klik tombol di bawah untuk mulai menyusun materi di editor.
                   </p>
-                  {onEditContent && (
-                    <button
-                      type="button"
-                      onClick={() => onEditContent(item)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#FFFFFF] px-3.5 py-1.5 text-xs font-semibold text-[#4F39F6] border border-[#EAECEF] hover:bg-[#F8F9FB] shadow-xs cursor-pointer mt-2"
-                    >
-                      <Plus size={13} />
-                      <span>Buka Editor Kursus</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onEditContent) {
+                        onEditContent(item);
+                      } else {
+                        onShowToast(`Membuka Studio Editor untuk "${item.title}".`);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white shadow-xs cursor-pointer mt-2"
+                  >
+                    <Plus size={13} />
+                    <span>Buka Editor Kursus</span>
+                  </button>
                 </div>
               ) : (
                 <div className="divide-y divide-[#EAECEF] border border-[#EAECEF] rounded-xl overflow-hidden">
@@ -2352,29 +2483,49 @@ export function ContentDetailView({
                     return (
                       <div
                         key={chapter.id || idx}
-                        className="p-4 bg-[#FFFFFF] hover:bg-[#F8F9FB]/60 transition-colors"
+                        className="p-4 bg-[#FFFFFF] hover:bg-[#F8F9FB]/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            {chapter.sectionTitle && (
-                              <span className="text-[11px] font-semibold text-[#9CA3AF] shrink-0">
-                                {chapter.sectionTitle} •
-                              </span>
-                            )}
-                            <span className="text-xs font-bold text-[#121215] truncate">
-                              Chapter {idx + 1}: {chapter.title}
-                            </span>
-                          </div>
-                          <span className="text-[11px] font-medium text-[#5E5E5E] shrink-0 bg-[#F8F9FB] px-2 py-0.5 rounded border border-[#EAECEF]">
-                            {chapter.duration || "10 mins read"}{" "}
-                            {chapter.points ? `• ${chapter.points} pts` : ""}
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF2FF] text-xs font-extrabold text-[#4F39F6] mt-0.5 tabular-nums">
+                            {idx + 1}
                           </span>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {chapter.sectionTitle && (
+                                <span className="rounded bg-[#F8F9FB] border border-[#EAECEF] px-1.5 py-0.2 text-[10px] font-semibold text-[#64748B]">
+                                  {chapter.sectionTitle}
+                                </span>
+                              )}
+                              <h3 className="text-xs sm:text-[13px] font-bold text-[#121215] truncate">
+                                {chapter.title}
+                              </h3>
+                            </div>
+                            {firstParagraph && (
+                              <p className="text-xs text-[#5E5E5E] line-clamp-1">
+                                {firstParagraph}
+                              </p>
+                            )}
+                            <p className="text-[11px] text-[#9CA3AF] font-medium">
+                              {chapter.duration || "10 mins read"}
+                              {chapter.points ? ` • +${chapter.points} pts` : ""}
+                            </p>
+                          </div>
                         </div>
-                        {firstParagraph && (
-                          <p className="mt-1.5 text-xs text-[#5E5E5E] line-clamp-2">
-                            {firstParagraph}
-                          </p>
-                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onEditContent) {
+                              onEditContent(item);
+                            } else {
+                              onShowToast(`Membuka editor untuk "${chapter.title}".`);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 self-end sm:self-center shrink-0 rounded-lg border border-[#EAECEF] bg-[#FFFFFF] hover:border-[#4F39F6] hover:text-[#4F39F6] px-3 py-1.5 text-xs font-bold text-[#121215] transition-colors cursor-pointer"
+                        >
+                          <Edit3 size={12} />
+                          <span>Edit Bab</span>
+                        </button>
                       </div>
                     );
                   })}
@@ -2549,12 +2700,12 @@ export function ContentDetailView({
         )}
       </div>
 
-      {/* Right Docked Panel (320px width - Statistics, Assignees & Version History Card — matches Image 4 Top-Left & Bottom-Left) */}
+      {/* Right Docked Panel (320px width - Assignees & Version History with safe bottom padding above Rumi) */}
       <aside
         aria-label="Statistics, Assignees and Version History Panel"
-        className="w-full lg:w-[320px] shrink-0 bg-[#FFFFFF] border-t lg:border-t-0 lg:border-l border-[#EAECEF] flex flex-col justify-between lg:min-h-[calc(100vh-2.5rem)]"
+        className="w-full lg:w-[320px] shrink-0 bg-[#FFFFFF] border-t lg:border-t-0 lg:border-l border-[#EAECEF] flex flex-col lg:min-h-[calc(100vh-2.5rem)]"
       >
-        <div className="p-4 flex-1 overflow-y-auto">
+        <div className="p-4 flex-1 overflow-y-auto pb-28">
           <div
             role="tablist"
             aria-label="Assignees and Version tabs"
@@ -2593,17 +2744,22 @@ export function ContentDetailView({
 
           {rightTab === "assignees" ? (
             <div className="space-y-3">
-              {/* View All Assignees Monitoring Modal Trigger (ref_09) */}
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-[#5E5E5E]">
-                  Assigned Learners
-                </span>
+              {/* Top Quick Actions in Panel (never covered by bottom-right Rumi) */}
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenAssignModal(item)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-2.5 py-1.5 text-[11px] font-bold text-white shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Plus size={12} strokeWidth={2.5} />
+                  <span>Assign Siswa</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setAllAssigneesModalOpen(true)}
                   className="text-xs font-bold text-[#4F39F6] hover:underline cursor-pointer"
                 >
-                  View All Assignees →
+                  Lihat Semua ({assignees.length}) →
                 </button>
               </div>
 
@@ -2832,55 +2988,6 @@ export function ContentDetailView({
               </div>
             </div>
           )}
-        </div>
-
-        {/* Bottom Sticky Actions */}
-        <div className="sticky bottom-0 bg-[#FFFFFF] p-4 border-t border-[#EAECEF] space-y-2">
-          <button
-            type="button"
-            onClick={() => setAllAssigneesModalOpen(true)}
-            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#F8F9FB] hover:border-[#4F39F6] px-4 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] transition-colors cursor-pointer"
-          >
-            <Users size={13} className="text-[#4F39F6]" />
-            <span>Monitor All Assignees ({assignees.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenAssignModal(item)}
-            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2.5 text-xs font-semibold text-white shadow-[0_2px_6px_rgba(79,57,246,0.28)] transition-colors cursor-pointer"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            <span>Assign Learners</span>
-          </button>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("detail");
-                onShowToast(`Previewing "${item.title}".`);
-              }}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#FFFFFF] px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] hover:bg-[#F8F9FB] transition-colors cursor-pointer"
-            >
-              <Play size={12} />
-              <span>Preview</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (onEditContent) {
-                  onEditContent(item);
-                } else {
-                  onShowToast(`Opened Studio Editor for "${item.title}".`);
-                }
-              }}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#FFFFFF] px-3 py-2 text-xs font-semibold text-[#121215] border border-[#EAECEF] hover:bg-[#F8F9FB] transition-colors cursor-pointer"
-            >
-              <Edit3 size={12} />
-              <span>Edit Content</span>
-            </button>
-          </div>
         </div>
       </aside>
 
