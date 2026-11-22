@@ -75,7 +75,7 @@ function ShowcaseVisualPanel({
                 key={tier.level}
                 className={`rounded-xl border p-2 text-center flex flex-col items-center justify-between transition-colors ${
                   isTop
-                    ? "bg-[#121215] text-white border-amber-400/50 shadow-sm"
+                    ? "bg-gradient-to-b from-amber-50 via-white to-indigo-50/70 text-[#121215] border-amber-300 ring-1 ring-amber-200/80 shadow-xs"
                     : "bg-white text-[#121215] border-[#EAECEF]"
                 }`}
               >
@@ -87,7 +87,7 @@ function ShowcaseVisualPanel({
                 <div className="mt-1.5 space-y-0.5 w-full">
                   <div
                     className={`text-[9px] font-extrabold uppercase ${
-                      isTop ? "text-amber-300" : "text-indigo-600"
+                      isTop ? "text-amber-600" : "text-indigo-600"
                     }`}
                   >
                     Lv.{tier.level}
@@ -95,11 +95,7 @@ function ShowcaseVisualPanel({
                   <div className="text-[10px] font-bold truncate">
                     {tier.formName.replace(" Rumi", "")}
                   </div>
-                  <div
-                    className={`text-[9px] ${
-                      isTop ? "text-white/70" : "text-[#5E5E5E]"
-                    }`}
-                  >
+                  <div className="text-[9px] text-[#5E5E5E]">
                     {tier.minXp} XP
                   </div>
                 </div>
@@ -108,28 +104,28 @@ function ShowcaseVisualPanel({
           })}
         </div>
 
-        <div className="rounded-xl bg-[#121215] text-white p-3.5 space-y-2.5">
+        <div className="rounded-xl bg-white border border-[#EAECEF] text-[#121215] p-3.5 space-y-2.5 shadow-2xs">
           <div className="flex items-center justify-between text-[11px]">
-            <span className="font-bold flex items-center gap-1.5">
-              <Bot size={14} className="text-amber-300" />
+            <span className="font-bold flex items-center gap-1.5 text-[#121215]">
+              <Bot size={14} className="text-indigo-600" />
               Rumi Floating Stream Deck
             </span>
-            <span className="text-[10px] text-white/65">
+            <span className="text-[10px] text-[#5E5E5E]">
               Pintasan tombol 1–6 &amp; FAQ
             </span>
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {STREAM_DECK_ITEMS.map((item) => (
               <div
                 key={item.key}
-                className="rounded-lg bg-white/10 border border-white/10 px-2 py-1.5 text-center"
+                className="rounded-lg bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-2 flex items-center gap-2"
               >
-                <div className="text-[9px] font-bold text-amber-300">
-                  [{item.key}]
-                </div>
-                <div className="text-[10px] font-semibold truncate">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-indigo-50 border border-indigo-100 text-[10px] font-bold text-indigo-700 shrink-0">
+                  {item.key}
+                </span>
+                <span className="text-[11px] font-semibold text-[#121215] truncate">
                   {item.label}
-                </div>
+                </span>
               </div>
             ))}
           </div>
