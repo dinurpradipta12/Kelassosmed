@@ -26,7 +26,6 @@ import {
   KeyRound,
   Folder,
   FolderOpen,
-  Minus,
   Plus,
   ArrowLeft,
   Search,
@@ -435,19 +434,6 @@ export function LearnerPortalView({
     "default" | "title" | "progress"
   >("default");
   const [folderSearchQuery, setFolderSearchQuery] = useState("");
-  const [learnerFolderScale, setLearnerFolderScale] = useState<number>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = Number(
-          window.localStorage.getItem("ruang_sosmed_learner_folder_scale_v1")
-        );
-        if (!Number.isNaN(saved) && saved >= 52 && saved <= 112) {
-          return saved;
-        }
-      } catch {}
-    }
-    return 76;
-  });
   const [unlockedFolderModal, setUnlockedFolderModal] = useState<{
     folderTitle: string;
     unlockedTitle?: string;
@@ -455,19 +441,6 @@ export function LearnerPortalView({
     courseCount: number;
     codeUsed: string;
   } | null>(null);
-
-  const updateLearnerFolderScale = (next: number) => {
-    const clamped = Math.min(140, Math.max(52, Math.round(next)));
-    setLearnerFolderScale(clamped);
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(
-          "ruang_sosmed_learner_folder_scale_v1",
-          String(clamped)
-        );
-      } catch {}
-    }
-  };
 
   const handleOpenLearnerFolder = (folderName: string) => {
     setFolderSearchQuery("");
@@ -809,122 +782,76 @@ export function LearnerPortalView({
     );
   }, [activeLearnerFolder, learnerFolders]);
 
-  const renderLearnerFinderControls = () => (
-    <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-2 py-1 shadow-2xs">
-      <button
-        type="button"
-        onClick={() => updateLearnerFolderScale(learnerFolderScale - 12)}
-        disabled={learnerFolderScale <= 52}
-        title="Perkecil ukuran tampilan"
-        aria-label="Perkecil ukuran tampilan"
-        className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
-      >
-        <Minus size={11} />
-      </button>
-      <input
-        type="range"
-        min={52}
-        max={140}
-        step={4}
-        value={learnerFolderScale}
-        onChange={(e) => updateLearnerFolderScale(Number(e.target.value))}
-        aria-label="Atur ukuran folder & kartu"
-        className="w-20 sm:w-24 h-1.5 accent-[#4F39F6] cursor-pointer"
-      />
-      <button
-        type="button"
-        onClick={() => updateLearnerFolderScale(learnerFolderScale + 12)}
-        disabled={learnerFolderScale >= 140}
-        title="Perbesar ukuran tampilan"
-        aria-label="Perbesar ukuran tampilan"
-        className="flex h-5 w-5 items-center justify-center rounded bg-white border border-[#E2E8F0] text-[#475569] hover:text-[#4F39F6] hover:border-[#4F39F6]/40 disabled:opacity-40 cursor-pointer"
-      >
-        <Plus size={11} />
-      </button>
-      <button
-        type="button"
-        onClick={() => updateLearnerFolderScale(76)}
-        title="Reset ukuran standar (100%)"
-        className="ml-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#64748B] hover:bg-white hover:text-[#121215] tabular-nums cursor-pointer"
-      >
-        {Math.round((learnerFolderScale / 76) * 100)}%
-      </button>
-    </div>
-  );
-
-  const renderLearnerFolderTile = (
-    folder: {
-      name: string;
-      color: string;
-      description: string;
-      projectName: string;
-      projectColor: string;
-      courses: LearnerAssignedItem[];
-      avgPct: number;
-    },
-    compact?: boolean
-  ) => {
+  const renderLearnerFolderSeriesCard = (folder: {
+    name: string;
+    color: string;
+    description: string;
+    projectName: string;
+    projectColor: string;
+    courses: LearnerAssignedItem[];
+    avgPct: number;
+  }) => {
     const isOpening = openingFolderName === folder.name;
-    const iconSize = compact
-      ? Math.max(48, Math.round(learnerFolderScale * 0.8))
-      : learnerFolderScale;
-    const tileWidth = compact
-      ? Math.max(82, Math.round(iconSize * 1.42))
-      : Math.round(iconSize * 1.45);
     return (
       <button
         key={folder.name}
         type="button"
         onClick={() => handleOpenLearnerFolder(folder.name)}
-        style={{ width: `${tileWidth}px` }}
-        title={folder.description || `Buka folder ${folder.name} (${folder.projectName})`}
-        className={`group flex flex-col items-center justify-start p-2 rounded-xl transition-all duration-200 cursor-pointer text-center select-none ${
-          isOpening ? "scale-110 opacity-30" : "hover:bg-[#F8FAFC]"
+        title={
+          folder.description ||
+          `Buka folder ${folder.name} (${folder.projectName})`
+        }
+        className={`group flex items-center gap-3.5 rounded-xl bg-[#F8F9FB]/70 hover:bg-[#FFFFFF] border border-[#EAECEF] hover:border-[#4F39F6]/45 p-3.5 text-left transition-all cursor-pointer shadow-2xs hover:shadow-[0_6px_18px_rgba(79,57,246,0.07)] ${
+          isOpening ? "scale-[0.98] opacity-50" : ""
         }`}
       >
-        <div className="relative pt-0.5 pb-1 transition-transform duration-300 group-hover:scale-105 group-active:scale-95">
+        <div className="relative flex h-14 w-16 shrink-0 items-center justify-center rounded-xl bg-white border border-[#EAECEF] group-hover:bg-[#EEF2FF]/60 group-hover:border-[#4F39F6]/30 transition-colors">
           <LearnerMacFolderIcon
             color={folder.color}
-            className="drop-shadow-[0_3px_8px_rgba(0,0,0,0.08)]"
-            style={{
-              width: `${iconSize}px`,
-              height: `${Math.round(iconSize * 0.82)}px`,
-            }}
+            className="w-11 h-9 drop-shadow-[0_2px_6px_rgba(0,0,0,0.08)] transition-transform duration-200 group-hover:scale-105"
           />
-          <span
-            title={`${folder.courses.length} materi`}
-            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[#EF4444] text-white text-[10px] font-bold shadow-md ring-2 ring-white"
-          >
+          <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-[#4F39F6] text-white text-[10px] font-bold shadow-xs ring-2 ring-white tabular-nums">
             {folder.courses.length}
           </span>
         </div>
 
-        <p
-          className={`mt-1 font-semibold text-[#1E293B] group-hover:text-[#4F39F6] line-clamp-2 leading-tight px-0.5 w-full break-words ${
-            iconSize >= 104
-              ? "text-xs"
-              : iconSize <= 58
-              ? "text-[10px]"
-              : "text-[11px]"
-          }`}
-        >
-          {folder.name}
-        </p>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-xs sm:text-sm font-bold text-[#121215] group-hover:text-[#4F39F6] line-clamp-1 leading-snug">
+              {folder.name}
+            </h3>
+            <ArrowRight
+              size={14}
+              className="shrink-0 mt-0.5 text-[#9CA3AF] group-hover:text-[#4F39F6] group-hover:translate-x-0.5 transition-all"
+            />
+          </div>
 
-        <span
-          title={`Project: ${folder.projectName}`}
-          className="mt-1 inline-flex items-center gap-1 max-w-full rounded-full bg-[#F8FAFC] border border-[#E2E8F0] px-1.5 py-0.5 text-[9px] font-semibold text-[#475569]"
-        >
-          <span
-            className="h-1.5 w-1.5 rounded-full shrink-0"
-            style={{ backgroundColor: folder.projectColor }}
-          />
-          <span className="truncate">{folder.projectName}</span>
-        </span>
+          <span className="inline-flex items-center gap-1.5 max-w-full rounded-full bg-white border border-[#E2E8F0] px-2 py-0.5 text-[10px] font-semibold text-[#475569]">
+            <span
+              className="h-1.5 w-1.5 rounded-full shrink-0"
+              style={{
+                backgroundColor: folder.projectColor,
+              }}
+            />
+            <span className="truncate">{folder.projectName}</span>
+          </span>
 
-        <span className="mt-1 inline-flex items-center rounded-md bg-[#F1F5F9] px-1.5 py-0.5 text-[9px] font-semibold text-[#475569] tabular-nums">
-          {folder.avgPct}% selesai
-        </span>
+          <div className="flex items-center gap-2 pt-0.5">
+            <div className="flex-1 h-1.5 rounded-full bg-[#EAECEF] overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${folder.avgPct}%`,
+                  backgroundColor:
+                    folder.avgPct >= 100 ? "#10B981" : "#4F39F6",
+                }}
+              />
+            </div>
+            <span className="text-[10px] font-semibold text-[#64748B] tabular-nums shrink-0">
+              {folder.avgPct}% selesai • {folder.courses.length} kelas
+            </span>
+          </div>
+        </div>
       </button>
     );
   };
@@ -3106,80 +3033,9 @@ export function LearnerPortalView({
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                              {learnerFolders.map((folder) => {
-                                const isOpening =
-                                  openingFolderName === folder.name;
-                                return (
-                                  <button
-                                    key={folder.name}
-                                    type="button"
-                                    onClick={() =>
-                                      handleOpenLearnerFolder(folder.name)
-                                    }
-                                    title={
-                                      folder.description ||
-                                      `Buka folder ${folder.name} (${folder.projectName})`
-                                    }
-                                    className={`group flex items-center gap-3.5 rounded-xl bg-[#F8F9FB]/70 hover:bg-[#FFFFFF] border border-[#EAECEF] hover:border-[#4F39F6]/45 p-3.5 text-left transition-all cursor-pointer shadow-2xs hover:shadow-[0_6px_18px_rgba(79,57,246,0.07)] ${
-                                      isOpening ? "scale-[0.98] opacity-50" : ""
-                                    }`}
-                                  >
-                                    <div className="relative flex h-14 w-16 shrink-0 items-center justify-center rounded-xl bg-white border border-[#EAECEF] group-hover:bg-[#EEF2FF]/60 group-hover:border-[#4F39F6]/30 transition-colors">
-                                      <LearnerMacFolderIcon
-                                        color={folder.color}
-                                        className="w-11 h-9 drop-shadow-[0_2px_6px_rgba(0,0,0,0.08)] transition-transform duration-200 group-hover:scale-105"
-                                      />
-                                      <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1.5 flex items-center justify-center rounded-full bg-[#4F39F6] text-white text-[10px] font-bold shadow-xs ring-2 ring-white tabular-nums">
-                                        {folder.courses.length}
-                                      </span>
-                                    </div>
-
-                                    <div className="min-w-0 flex-1 space-y-1.5">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <h3 className="text-xs sm:text-sm font-bold text-[#121215] group-hover:text-[#4F39F6] line-clamp-1 leading-snug">
-                                          {folder.name}
-                                        </h3>
-                                        <ArrowRight
-                                          size={14}
-                                          className="shrink-0 mt-0.5 text-[#9CA3AF] group-hover:text-[#4F39F6] group-hover:translate-x-0.5 transition-all"
-                                        />
-                                      </div>
-
-                                      <span className="inline-flex items-center gap-1.5 max-w-full rounded-full bg-white border border-[#E2E8F0] px-2 py-0.5 text-[10px] font-semibold text-[#475569]">
-                                        <span
-                                          className="h-1.5 w-1.5 rounded-full shrink-0"
-                                          style={{
-                                            backgroundColor:
-                                              folder.projectColor,
-                                          }}
-                                        />
-                                        <span className="truncate">
-                                          {folder.projectName}
-                                        </span>
-                                      </span>
-
-                                      <div className="flex items-center gap-2 pt-0.5">
-                                        <div className="flex-1 h-1.5 rounded-full bg-[#EAECEF] overflow-hidden">
-                                          <div
-                                            className="h-full rounded-full transition-all duration-300"
-                                            style={{
-                                              width: `${folder.avgPct}%`,
-                                              backgroundColor:
-                                                folder.avgPct >= 100
-                                                  ? "#10B981"
-                                                  : "#4F39F6",
-                                            }}
-                                          />
-                                        </div>
-                                        <span className="text-[10px] font-semibold text-[#64748B] tabular-nums shrink-0">
-                                          {folder.avgPct}% selesai •{" "}
-                                          {folder.courses.length} kelas
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </button>
-                                );
-                              })}
+                              {learnerFolders.map((folder) =>
+                                renderLearnerFolderSeriesCard(folder)
+                              )}
                             </div>
                           </section>
                         )}
@@ -3754,10 +3610,6 @@ export function LearnerPortalView({
                   return "Ruang Sosmed Class";
                 };
 
-                const standaloneItems = displayedItems.filter(
-                  (item) => !item.folderName?.trim()
-                );
-
                 const normalizedFolderSearch = folderSearchQuery
                   .trim()
                   .toLowerCase();
@@ -3780,13 +3632,7 @@ export function LearnerPortalView({
                           .includes(normalizedFolderSearch)
                       );
                     })
-                  : searchQuery.trim() ||
-                    activeNavTab === "favorites" ||
-                    selectedFolderFilter !== "All"
-                  ? displayedItems
-                  : learnerFolders.length > 0
-                  ? []
-                  : standaloneItems;
+                  : displayedItems;
 
                 const baseVisibleCourseCards =
                   !activeFolderObj && isProjectFilterScope
@@ -3809,13 +3655,8 @@ export function LearnerPortalView({
                     ) || null
                   : null;
 
-                const activeGridColsClass = activeFolderObj
-                  ? learnerFolderScale >= 108
-                    ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3"
-                    : learnerFolderScale <= 64
-                    ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5"
-                    : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
-                  : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
+                const activeGridColsClass =
+                  "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
 
                 const folderSortLabel =
                   learnerFolderSort === "title"
@@ -3920,12 +3761,9 @@ export function LearnerPortalView({
                       </label>
                     )}
 
-                  {(learnerFolders.length > 0 || activeFolderObj) &&
-                    renderLearnerFinderControls()}
-
                   {activeFolderObj && (
                     <>
-                      <div className="relative w-40 sm:w-48">
+                      <div className="relative w-44 sm:w-56">
                         <Search
                           size={12}
                           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"
@@ -4004,14 +3842,14 @@ export function LearnerPortalView({
                 </div>
               </div>
 
-              {/* Finder Folder Grid (Read-Only untuk Siswa, Zoomable via Slider & Tombol) */}
+              {/* Folder Series Cards Grid (Informatif & Mudah Diklik) */}
               {!activeFolderObj &&
                 !searchQuery.trim() &&
                 activeNavTab !== "favorites" &&
                 selectedFolderFilter === "All" &&
                 visibleFolders.length > 0 && (
                   <div className="rounded-2xl bg-white border border-[#EAECEF] p-4 sm:p-5 shadow-[0_2px_8px_rgba(16,15,17,0.03)] space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#475569]">
                         <FolderOpen size={14} className="text-[#4F39F6]" />
                         <span>
@@ -4020,13 +3858,13 @@ export function LearnerPortalView({
                         </span>
                       </span>
                       <span className="text-[11px] text-[#94A3B8]">
-                        Klik folder untuk melihat materi di dalamnya
+                        Pilih folder atau langsung klik materi kelas di bawah
                       </span>
                     </div>
 
-                    <div className="flex flex-wrap items-start gap-4 py-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {visibleFolders.map((folder) =>
-                        renderLearnerFolderTile(folder)
+                        renderLearnerFolderSeriesCard(folder)
                       )}
                     </div>
                   </div>
@@ -4132,6 +3970,15 @@ export function LearnerPortalView({
                 <>
                 {visibleCourseCards.length > 0 && (
                 <div className="space-y-3">
+                  {!activeFolderObj &&
+                    activeNavTab === "catalog" &&
+                    visibleFolders.length > 0 && (
+                      <div className="flex items-center justify-between pt-1">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#475569]">
+                          Semua Materi &amp; Kelas ({visibleCourseCards.length})
+                        </h3>
+                      </div>
+                    )}
                   {activeFolderObj && learnerCourseViewMode === "list" ? (
                     <div className="space-y-2.5">
                       {visibleCourseCards.map((item) => {

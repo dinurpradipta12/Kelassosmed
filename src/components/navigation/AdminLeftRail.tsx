@@ -139,11 +139,6 @@ function RailIconButton({
   );
 }
 
-const PINNED_FAVORITES: {
-  title: string;
-  type: ExplorerItemType;
-}[] = [];
-
 export const COHORT_COLOR_PRESETS = [
   { label: "Pink", value: "#EC4899" },
   { label: "Indigo", value: "#4F39F6" },
@@ -204,13 +199,35 @@ export function AdminLeftRail({
   ).length;
   const unreadInboxCount = awaitingReplyCount + openIssuesCount;
 
-  const projectScopedItems = (explorerItems || []).filter((item) =>
-    doesItemMatchCohortProject(item.cohort, activeProject)
-  );
+  const projectScopedItems = React.useMemo(() => {
+    const folderCohortMap = new Map<string, string>();
+    (explorerItems || []).forEach((it) => {
+      if (it.type === "Folder" && !it.isArchived && !it.isTemplate && it.title) {
+        folderCohortMap.set(it.title.trim().toLowerCase(), it.cohort || "");
+      }
+    });
+    return (explorerItems || []).filter((item) => {
+      if (item.type !== "Folder" && item.folderName?.trim()) {
+        const fKey = item.folderName.trim().toLowerCase();
+        if (folderCohortMap.has(fKey)) {
+          return doesItemMatchCohortProject(folderCohortMap.get(fKey), activeProject);
+        }
+      }
+      return doesItemMatchCohortProject(item.cohort, activeProject);
+    });
+  }, [explorerItems, activeProject]);
 
-  const recentCount = projectScopedItems.filter(
-    (i) => i.type === "Folder" && !i.isArchived && !i.isTemplate
-  ).length;
+  const activeScopedItems = projectScopedItems.filter(
+    (i) => !i.isArchived && !i.isTemplate
+  );
+  const recentCount = activeScopedItems.length;
+  const quickJumpItems = [...activeScopedItems]
+    .sort((a, b) => {
+      if (a.type !== "Folder" && b.type === "Folder") return -1;
+      if (a.type === "Folder" && b.type !== "Folder") return 1;
+      return 0;
+    })
+    .slice(0, 8);
   const sharedCount = projectScopedItems.filter(
     (i) => Boolean(i.isShared) && !i.isArchived
   ).length;
@@ -788,7 +805,7 @@ export function AdminLeftRail({
 
             <div className="h-5 w-[1px] bg-[#EAECEF] mx-0.5 shrink-0" />
 
-            {/* 3. Favorites Popover Button */}
+            {/* 3. Pintasan Materi Project (Quick Jump) Popover Button */}
             <div className="relative">
               <button
                 type="button"
@@ -797,8 +814,8 @@ export function AdminLeftRail({
                   setCohortMenuOpen(false);
                 }}
                 aria-expanded={favoritesMenuOpen}
-                title="Favorites"
-                aria-label="Favorites"
+                title={`Pintasan Materi (${activeProject})`}
+                aria-label={`Pintasan Materi ${activeProject}`}
                 className={`flex items-center justify-center h-8 w-8 rounded-xl transition-all cursor-pointer ${
                   favoritesMenuOpen
                     ? "bg-[#4F39F6]/10 text-[#4F39F6] border border-[#4F39F6]/20"
@@ -809,37 +826,62 @@ export function AdminLeftRail({
               </button>
 
               {favoritesMenuOpen && (
-                <div className="absolute bottom-full right-0 mb-2 w-60 rounded-2xl bg-white border border-[#EAECEF] p-2 shadow-[0_12px_36px_rgba(16,15,17,0.14)] animate-in fade-in slide-in-from-bottom-2 duration-150">
-                  <div className="px-2 py-1.5 border-b border-[#EAECEF]/70 mb-1">
+                <div className="absolute bottom-full right-0 mb-2 w-72 rounded-2xl bg-white border border-[#EAECEF] p-2 shadow-[0_12px_36px_rgba(16,15,17,0.14)] animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  <div className="flex items-center justify-between px-2 py-1.5 border-b border-[#EAECEF]/70 mb-1">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
-                      Favorites
+                      Pintasan Materi
+                    </span>
+                    <span className="max-w-[120px] truncate text-[10px] font-semibold text-[#4F39F6]">
+                      {activeProject}
                     </span>
                   </div>
-                  <ul className="space-y-1">
-                    {PINNED_FAVORITES.length === 0 ? (
-                      <li className="px-2 py-2 text-[11px] text-[#9CA3AF]">
-                        Belum ada favorit tersemat.
+                  <ul className="max-h-64 overflow-y-auto space-y-1">
+                    {quickJumpItems.length === 0 ? (
+                      <li className="px-2 py-2.5 text-[11px] text-[#9CA3AF]">
+                        Belum ada materi aktif di project ini.
                       </li>
                     ) : (
-                      PINNED_FAVORITES.map((fav) => (
-                        <li key={fav.title}>
+                      quickJumpItems.map((item) => (
+                        <li key={item.id || item.title}>
                           <button
                             type="button"
                             onClick={() => {
                               setFavoritesMenuOpen(false);
-                              onSelectNav("content");
-                              if (onOpenContentDetail) {
-                                onOpenContentDetail(fav.title, fav.type);
+                              if (item.type === "Folder") {
+                                if (typeof window !== "undefined") {
+                                  try {
+                                    window.localStorage.setItem(
+                                      "ruang_sosmed_admin_current_folder_v1",
+                                      item.title
+                                    );
+                                  } catch {}
+                                }
+                                onSelectNav("content");
+                                onSelectProject?.(activeProject);
                               } else {
-                                onShowToast(`Opened favorite: ${fav.title}`);
+                                onSelectNav("content");
+                                if (onOpenContentDetail) {
+                                  onOpenContentDetail(item.title, item.type);
+                                } else {
+                                  onShowToast(`Membuka materi: ${item.title}`);
+                                }
                               }
                             }}
                             className="w-full flex items-center gap-2 rounded-xl px-2 py-1.5 text-left hover:bg-[#F8F9FB] transition-all cursor-pointer"
                           >
-                            <ContentIconBox type={fav.type} size="sm" />
-                            <span className="truncate text-xs font-medium text-[#121215]">
-                              {fav.title}
-                            </span>
+                            <ContentIconBox type={item.type} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-semibold text-[#121215]">
+                                {item.title}
+                              </p>
+                              <p className="truncate text-[10px] text-[#9CA3AF]">
+                                {item.type === "Folder"
+                                  ? "Folder Kurikulum"
+                                  : item.folderName
+                                  ? `${item.type} • ${item.folderName}`
+                                  : item.type}
+                              </p>
+                            </div>
                           </button>
                         </li>
                       ))
