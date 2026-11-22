@@ -52,6 +52,7 @@ import { ContentBadge, ContentIconBox } from "@/components/ui/ContentBadge";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import {
   doesItemMatchCohortProject,
+  isItemInSharedCohortProject,
   normalizeCohortProjectName,
   useRuangSosmedStore,
 } from "@/context/RuangSosmedStore";
@@ -559,6 +560,7 @@ export function LearningContentExplorer({
   const {
     assignees,
     cohortProjects,
+    explorerItems: storeExplorerItems,
     addCohortProject,
     updateCohortProject,
     deleteCohortProject,
@@ -581,19 +583,57 @@ export function LearningContentExplorer({
     name: string;
   } | null>(null);
   const getItemAssignedCount = (item: ExplorerContentItem) => {
-    const raw = item.assignedLearners;
-    if (Array.isArray(raw)) {
-      if (raw.length === 0) return 0;
-      const hasCohortWide = raw.some((n) =>
-        [
-          "all learners",
-          "batch oktober 2026",
-          "ruang sosmed class",
-          "creator growth lab",
-        ].includes(String(n || "").trim().toLowerCase())
-      );
-      return hasCohortWide ? assignees.length : raw.length;
+    const allItems =
+      Array.isArray(storeExplorerItems) && storeExplorerItems.length > 0
+        ? storeExplorerItems
+        : items;
+    const parentFolder =
+      item.type !== "Folder" && item.folderName
+        ? allItems.find(
+            (f) =>
+              f.type === "Folder" &&
+              f.title.trim().toLowerCase() === item.folderName!.trim().toLowerCase()
+          )
+        : undefined;
+    const combinedRaw = Array.from(
+      new Set([
+        ...(Array.isArray(item.assignedLearners) ? item.assignedLearners : []),
+        ...(Array.isArray(parentFolder?.assignedLearners)
+          ? parentFolder.assignedLearners
+          : []),
+      ])
+    )
+      .map((n) => String(n || "").trim())
+      .filter(Boolean);
+
+    const wildcards = new Set([
+      "all learners",
+      "batch oktober 2026",
+      "ruang sosmed class",
+      "creator growth lab",
+      "specialist growth lab",
+    ]);
+    const isSharedAll = isItemInSharedCohortProject(
+      item,
+      allItems,
+      cohortProjects
+    );
+    const hasCohortWide = combinedRaw.some((n) =>
+      wildcards.has(n.toLowerCase())
+    );
+
+    if (isSharedAll || hasCohortWide) {
+      const mergedNames = new Set<string>();
+      combinedRaw.forEach((n) => {
+        if (!wildcards.has(n.toLowerCase())) mergedNames.add(n.toLowerCase());
+      });
+      assignees.forEach((a) => {
+        if (a.name?.trim()) mergedNames.add(a.name.trim().toLowerCase());
+      });
+      return Math.max(mergedNames.size, assignees.length);
     }
+
+    if (combinedRaw.length > 0) return combinedRaw.length;
     return item.assignedCount ?? 0;
   };
   const liveAvgProgress =
@@ -1188,7 +1228,7 @@ export function LearningContentExplorer({
                         });
                         onShowToast(
                           nextVal
-                            ? `🌐 Project "${proj.name}" sekarang otomatis dibagikan ke SEMUA member baru & lama!`
+                            ? `🌐 Project "${proj.name}" ON: seluruh folder & materi otomatis ter-assign ke semua siswa baru & lama!`
                             : `🔒 Project "${proj.name}" diubah ke Assign Manual.`
                         );
                       }}
@@ -1566,7 +1606,7 @@ export function LearningContentExplorer({
                     });
                     onShowToast(
                       nextVal
-                        ? `🌐 Semua folder & materi di "${activeCohortObj.name}" sekarang otomatis tampil untuk SEMUA siswa baru & lama!`
+                        ? `🌐 Semua folder & materi di "${activeCohortObj.name}" sekarang otomatis ter-assign ke semua siswa terdaftar & pendaftar baru!`
                         : `🔒 Project "${activeCohortObj.name}" dikembalikan ke mode Assign Manual.`
                     );
                   }}
@@ -1907,6 +1947,12 @@ export function LearningContentExplorer({
                   <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2.5 py-0.5 text-[11px] font-bold text-[#4F39F6] tabular-nums">
                     {getFolderItemCount(currentFolder)} materi
                   </span>
+                  {activeCohortObj?.shareWithAllLearners && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 tabular-nums">
+                      <Globe size={11} />
+                      <span>Auto-Assign Semua Siswa ({assignees.length})</span>
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2.5">

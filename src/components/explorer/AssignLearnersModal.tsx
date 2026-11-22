@@ -13,9 +13,13 @@ import {
   KeyRound,
   Copy,
   Edit3,
+  Globe,
 } from "lucide-react";
 import { ModalDialog } from "@/components/ui/ModalDialog";
-import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import {
+  isItemInSharedCohortProject,
+  useRuangSosmedStore,
+} from "@/context/RuangSosmedStore";
 import { getItemAccessCode } from "@/lib/phase2-data";
 
 interface AssignLearnersModalProps {
@@ -49,11 +53,6 @@ export function AssignLearnersModal({
       ),
     [explorerItems, contentTitle]
   );
-
-  const liveAssignedLearners = useMemo(() => {
-    const raw = liveCourse?.assignedLearners || [];
-    return raw.filter((n) => Boolean(n && n.trim()));
-  }, [liveCourse]);
 
   const [copiedFolderCode, setCopiedFolderCode] = useState(false);
   const [editingAccessCode, setEditingAccessCode] = useState(false);
@@ -126,6 +125,47 @@ export function AssignLearnersModal({
 
     return list;
   }, [assignees, leaderboard]);
+
+  const isSharedAllProject = useMemo(
+    () =>
+      Boolean(
+        liveCourse &&
+          isItemInSharedCohortProject(
+            liveCourse,
+            explorerItems || [],
+            cohortProjects
+          )
+      ),
+    [liveCourse, explorerItems, cohortProjects]
+  );
+
+  const liveAssignedLearners = useMemo(() => {
+    const parentFolder =
+      liveCourse?.type !== "Folder" && liveCourse?.folderName
+        ? (explorerItems || []).find(
+            (f) =>
+              f.type === "Folder" &&
+              f.title.trim().toLowerCase() ===
+                liveCourse.folderName!.trim().toLowerCase()
+          )
+        : undefined;
+    const sources = [
+      ...(liveCourse?.assignedLearners || []),
+      ...(parentFolder?.assignedLearners || []),
+      ...(isSharedAllProject ? candidateLearners.map((c) => c.name) : []),
+    ];
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of sources) {
+      const clean = String(raw || "").trim();
+      if (!clean) continue;
+      const lower = clean.toLowerCase();
+      if (seen.has(lower)) continue;
+      seen.add(lower);
+      result.push(clean);
+    }
+    return result;
+  }, [liveCourse, explorerItems, isSharedAllProject, candidateLearners]);
 
   const cohortOptions = useMemo(() => {
     const list: { id: string; name: string; count: number }[] = [];
@@ -455,6 +495,18 @@ export function AssignLearnersModal({
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Info Banner Mode Bagikan ke Semua Siswa: ON */}
+        {isSharedAllProject && (
+          <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-2.5 flex items-start gap-2.5 text-[11px] text-emerald-800">
+            <Globe size={14} className="shrink-0 mt-0.5 text-emerald-600" />
+            <span>
+              <strong>Mode Bagikan ke Semua Siswa: ON</strong> — seluruh siswa
+              terdaftar dan pendaftar baru otomatis ter-assign ke folder &amp;
+              materi di project ini.
+            </span>
           </div>
         )}
 

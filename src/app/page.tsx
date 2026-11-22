@@ -809,6 +809,11 @@ function RuangSosmedStudioInner() {
             } else {
               setRoleMode("learner");
               window.localStorage.setItem("ruang_sosmed_role_mode_v1", "learner");
+              registerLearnerProfile({
+                name: authedUser.name,
+                email: authedUser.email,
+                role: authedUser.role,
+              });
             }
           } catch {}
         } else {
@@ -841,6 +846,11 @@ function RuangSosmedStudioInner() {
         finalizeAuthCallback();
         if (authedUser.role !== "admin") {
           setRoleMode("learner");
+          registerLearnerProfile({
+            name: authedUser.name,
+            email: authedUser.email,
+            role: authedUser.role,
+          });
         }
         try {
           window.localStorage.setItem(

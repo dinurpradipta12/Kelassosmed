@@ -38,7 +38,10 @@ import {
   type AssigneeLearner,
   type ContentVersionItem,
 } from "@/lib/phase2-data";
-import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import {
+  isItemInSharedCohortProject,
+  useRuangSosmedStore,
+} from "@/context/RuangSosmedStore";
 import { ContentBadge } from "@/components/ui/ContentBadge";
 import { ModalDialog } from "@/components/ui/ModalDialog";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
@@ -273,7 +276,13 @@ export function ContentDetailView({
       assignedSet.has("all learners") ||
       assignedSet.has("batch oktober 2026") ||
       assignedSet.has("ruang sosmed class") ||
-      assignedSet.has("creator growth lab");
+      assignedSet.has("creator growth lab") ||
+      assignedSet.has("specialist growth lab");
+    const isSharedAllProject = isItemInSharedCohortProject(
+      liveExplorerItem,
+      explorerItems,
+      cohortProjects
+    );
 
     const dbByNameOrEmail = new Map<string, DbEnrollmentRow>();
     const dbById = new Map<string, DbEnrollmentRow>();
@@ -318,7 +327,7 @@ export function ContentDetailView({
       };
     };
 
-    if (hasCohortWide) {
+    if (hasCohortWide || isSharedAllProject) {
       allPlatformLearners.forEach((a) => {
         if (!matchedIds.has(a.id)) {
           matchedIds.add(a.id);
@@ -397,6 +406,7 @@ export function ContentDetailView({
       "batch oktober 2026",
       "ruang sosmed class",
       "creator growth lab",
+      "specialist growth lab",
     ]);
     const nonEmailPrefixes = new Set(
       rawAssigned
@@ -445,6 +455,7 @@ export function ContentDetailView({
   }, [
     liveExplorerItem,
     explorerItems,
+    cohortProjects,
     allPlatformLearners,
     dbEnrollments,
     totalChaptersCount,

@@ -1352,6 +1352,7 @@ function matchesLearnerAssignedArray(
     "batch oktober 2026",
     "ruang sosmed class",
     "creator growth lab",
+    "specialist growth lab",
   ]);
 
   return assignedList.some((entry) => {
@@ -1383,30 +1384,8 @@ export function isLearnerAssignedToContentTitle(
     return false;
   }
 
-  const sharedProjectNames = new Set(
-    (cohortProjects || [])
-      .filter((p) => p.shareWithAllLearners)
-      .map((p) => (p.name || "").trim().toLowerCase())
-      .filter(Boolean)
-  );
-  const folderProjectMap = new Map<string, string>();
-  explorerItems.forEach((e) => {
-    if (e.type === "Folder" && e.title && e.cohort) {
-      folderProjectMap.set(
-        e.title.trim().toLowerCase(),
-        e.cohort.trim().toLowerCase()
-      );
-    }
-  });
-  const isInSharedProject = (e: ExplorerContentItem): boolean => {
-    if (sharedProjectNames.size === 0) return false;
-    const itemProj = (e.cohort || "").trim().toLowerCase();
-    if (itemProj && sharedProjectNames.has(itemProj)) return true;
-    const fProj = e.folderName
-      ? folderProjectMap.get(e.folderName.trim().toLowerCase())
-      : undefined;
-    return Boolean(fProj && sharedProjectNames.has(fProj));
-  };
+  const isInSharedProject = (e: ExplorerContentItem): boolean =>
+    isItemInSharedCohortProject(e, explorerItems, cohortProjects);
 
   const userEmail = (learner.email || "").toLowerCase().trim();
   const userName = (learner.name || "").toLowerCase().trim();
@@ -1512,30 +1491,8 @@ export function doesLearnerOwnAnyMaterial(
   cohortProjects?: CohortProjectItem[]
 ): boolean {
   if (!Array.isArray(explorerItems) || explorerItems.length === 0) return false;
-  const sharedProjectNames = new Set(
-    (cohortProjects || [])
-      .filter((p) => p.shareWithAllLearners)
-      .map((p) => (p.name || "").trim().toLowerCase())
-      .filter(Boolean)
-  );
-  const folderProjectMap = new Map<string, string>();
-  explorerItems.forEach((e) => {
-    if (e.type === "Folder" && e.title && e.cohort) {
-      folderProjectMap.set(
-        e.title.trim().toLowerCase(),
-        e.cohort.trim().toLowerCase()
-      );
-    }
-  });
-  const isInSharedProject = (e: ExplorerContentItem): boolean => {
-    if (sharedProjectNames.size === 0) return false;
-    const itemProj = (e.cohort || "").trim().toLowerCase();
-    if (itemProj && sharedProjectNames.has(itemProj)) return true;
-    const fProj = e.folderName
-      ? folderProjectMap.get(e.folderName.trim().toLowerCase())
-      : undefined;
-    return Boolean(fProj && sharedProjectNames.has(fProj));
-  };
+  const isInSharedProject = (e: ExplorerContentItem): boolean =>
+    isItemInSharedCohortProject(e, explorerItems, cohortProjects);
 
   const assignedFolderNames = new Set(
     explorerItems
@@ -2288,6 +2245,137 @@ export function doesItemMatchCohortProject(
   return false;
 }
 
+/** Resolve effective project/cohort for a folder or child item (inherits parent folder cohort). */
+export function resolveItemEffectiveCohort(
+  item: ExplorerContentItem,
+  explorerItems: ExplorerContentItem[]
+): string {
+  if (item.type !== "Folder" && item.folderName) {
+    const fKey = item.folderName.trim().toLowerCase();
+    const parentFolder = (explorerItems || []).find(
+      (f) => f.type === "Folder" && (f.title || "").trim().toLowerCase() === fKey
+    );
+    if (parentFolder?.cohort) {
+      return normalizeCohortProjectName(parentFolder.cohort);
+    }
+  }
+  return normalizeCohortProjectName(item.cohort);
+}
+
+/** Check whether a folder or material belongs to any Project/Cohort with `shareWithAllLearners: true`. */
+export function isItemInSharedCohortProject(
+  item: ExplorerContentItem,
+  explorerItems: ExplorerContentItem[],
+  cohortProjects?: CohortProjectItem[]
+): boolean {
+  if (!cohortProjects || cohortProjects.length === 0) return false;
+  const effectiveCohort = resolveItemEffectiveCohort(item, explorerItems);
+  return cohortProjects.some(
+    (p) =>
+      Boolean(p.shareWithAllLearners) &&
+      doesItemMatchCohortProject(effectiveCohort, p.name)
+  );
+}
+
+function mergeUniqueLearnerNames(
+  existing: string[] | undefined,
+  additions: string[]
+): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const pushClean = (raw?: string | null) => {
+    const trimmed = String(raw || "").trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(trimmed);
+  };
+  (existing || []).forEach(pushClean);
+  additions.forEach(pushClean);
+  return result;
+}
+
+function getActiveLearnerNames(
+  assignees: AssigneeLearner[],
+  leaderboard: LeaderboardLearner[]
+): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const pushIfLearner = (rawName?: string | null) => {
+    const clean = String(rawName || "").trim();
+    if (!clean) return;
+    const lower = clean.toLowerCase();
+    if (
+      lower === "admin@ruangsosmed.id" ||
+      lower === "all learners" ||
+      seen.has(lower)
+    ) {
+      return;
+    }
+    seen.add(lower);
+    names.push(clean);
+  };
+  (assignees || []).forEach((a) => pushIfLearner(a.name));
+  (leaderboard || []).forEach((l) => pushIfLearner(l.name));
+  return names;
+}
+
+async function upsertSupabaseEnrollmentsForItems(
+  items: ExplorerContentItem[],
+  learners: Array<{ id?: string | null; name?: string | null }>
+): Promise<void> {
+  if (!isSupabaseConfigured || !items.length || !learners.length) return;
+  try {
+    const contentIds = Array.from(
+      new Set(
+        items
+          .filter((i) => i && i.type !== "Folder" && !i.isArchived && isUuid(i.id))
+          .map((i) => i.id)
+      )
+    );
+    const learnerIds = Array.from(
+      new Set(
+        learners
+          .map((l) => String(l?.id || "").trim())
+          .filter((id) => isUuid(id))
+      )
+    );
+    if (contentIds.length === 0 || learnerIds.length === 0) return;
+
+    const rows: Array<{
+      content_id: string;
+      learner_id: string;
+      status: "not_started";
+      progress_percent: number;
+      completed_chapter_ids: string[];
+    }> = [];
+    for (const contentId of contentIds) {
+      for (const learnerId of learnerIds) {
+        rows.push({
+          content_id: contentId,
+          learner_id: learnerId,
+          status: "not_started",
+          progress_percent: 0,
+          completed_chapter_ids: [],
+        });
+      }
+    }
+
+    const CHUNK = 200;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      await supabase
+        .from("enrollments")
+        .upsert(rows.slice(i, i + CHUNK), {
+          onConflict: "content_id,learner_id",
+          ignoreDuplicates: true,
+        });
+    }
+  } catch {
+    // Best-effort sync; SQL trigger/RPC ensures authoritative DB consistency
+  }
+}
+
 const CANONICAL_COHORT_ORDER: Record<string, number> = {
   "ruang sosmed class": 0,
   "specialist growth lab": 1,
@@ -2933,6 +3021,8 @@ export function RuangSosmedProvider({
   const recentCurriculumMutationUntilRef = useRef<Map<string, number>>(new Map());
   const lastCohortMutationTsRef = useRef<number>(0);
   const lastRemoteCohortSyncSigRef = useRef<string>("");
+  const lastAutoSharedSyncSigRef = useRef<string>("");
+  const lastMySharedSyncKeyRef = useRef<string>("");
   const recentLocalThreadPostsRef = useRef<Map<string, number>>(new Map());
   const recentLocalReplyPostsRef = useRef<Map<string, number>>(new Map());
   const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
@@ -5695,6 +5785,83 @@ export function RuangSosmedProvider({
             }
           }
 
+          // Auto-assign seluruh folder & materi pada project yang mengaktifkan `shareWithAllLearners: true`
+          const activeSharedProjects = nextCohortProjects.filter(
+            (p) => p.shareWithAllLearners
+          );
+          if (activeSharedProjects.length > 0 && nextAssignees.length > 0) {
+            const allLearnerNames = nextAssignees
+              .map((a) => (a.name || "").trim())
+              .filter(Boolean);
+            let hadMissingLearners = false;
+            const matchedItemIds: string[] = [];
+
+            nextExplorer = nextExplorer.map((item) => {
+              if (item.isArchived) return item;
+              if (
+                !isItemInSharedCohortProject(
+                  item,
+                  nextExplorer,
+                  nextCohortProjects
+                )
+              ) {
+                return item;
+              }
+              matchedItemIds.push(item.id);
+              const existingList = Array.isArray(item.assignedLearners)
+                ? item.assignedLearners
+                : [];
+              const mergedList = mergeUniqueLearnerNames(
+                existingList,
+                allLearnerNames
+              );
+              const existingKeys = new Set(
+                existingList.map((n) => String(n || "").trim().toLowerCase())
+              );
+              const missingSome = allLearnerNames.some(
+                (n) => !existingKeys.has(n.toLowerCase())
+              );
+              if (missingSome) {
+                hadMissingLearners = true;
+              }
+              if (
+                missingSome ||
+                mergedList.length !== existingList.length ||
+                item.assignedCount !== mergedList.length
+              ) {
+                return {
+                  ...item,
+                  assignedLearners: mergedList,
+                  assignedCount: mergedList.length,
+                };
+              }
+              return item;
+            });
+
+            if (hadMissingLearners && isStaffSession && isSupabaseConfigured) {
+              const sharedSyncSig = JSON.stringify({
+                projects: activeSharedProjects.map((p) => p.name).sort(),
+                learnersCount: allLearnerNames.length,
+                itemsCount: matchedItemIds.length,
+              });
+              if (
+                typeof window !== "undefined" &&
+                sharedSyncSig !== lastAutoSharedSyncSigRef.current
+              ) {
+                lastAutoSharedSyncSigRef.current = sharedSyncSig;
+                window.setTimeout(() => {
+                  void (async () => {
+                    try {
+                      await supabase.rpc("sync_shared_project_enrollments", {
+                        p_project_name: null,
+                      });
+                    } catch {}
+                  })();
+                }, 0);
+              }
+            }
+          }
+
           // Deteksi penambahan materi baru dari server untuk notifikasi Learner (termasuk project shareWithAllLearners)
           if (!contentsRes.error && Array.isArray(contentsRes.data)) {
             nextExplorer.forEach((exp) => {
@@ -6973,14 +7140,40 @@ export function RuangSosmedProvider({
                   effectiveFolderName.trim().toLowerCase()
             )
           : undefined;
-      const inheritedLearners: string[] = Array.from(
-        new Set([
+      const effectiveCohort = normalizeCohortProjectName(
+        parentFolder?.cohort || cohort || existingSameTitle?.cohort
+      );
+      const isInSharedProject = (stateRef.current.cohortProjects || []).some(
+        (p) =>
+          Boolean(p.shareWithAllLearners) &&
+          doesItemMatchCohortProject(effectiveCohort, p.name)
+      );
+      const allPlatformNames = isInSharedProject
+        ? getActiveLearnerNames(
+            stateRef.current.assignees,
+            stateRef.current.leaderboard
+          )
+        : [];
+      const inheritedLearners: string[] = mergeUniqueLearnerNames(
+        [
           ...(existingSameTitle?.assignedLearners || []),
           ...(parentFolder?.assignedLearners || []),
-        ])
+        ],
+        allPlatformNames
       );
       const candidateId =
         existingSameTitle?.id || (isFolder ? `folder-${nowId}` : `exp-${nowId}`);
+      if (isInSharedProject && inheritedLearners.length > 0) {
+        const lockExp = Date.now() + 15000;
+        recentAssignmentLocksRef.current.set(candidateId, {
+          assignedLearners: inheritedLearners,
+          expiresAt: lockExp,
+        });
+        recentAssignmentLocksRef.current.set(title.trim().toLowerCase(), {
+          assignedLearners: inheritedLearners,
+          expiresAt: lockExp,
+        });
+      }
       const normalizedAccessCode = getItemAccessCode({
         title,
         type,
@@ -7100,12 +7293,29 @@ export function RuangSosmedProvider({
             sections ?? null
           );
           if (dbId) {
+            if (isInSharedProject && inheritedLearners.length > 0) {
+              recentAssignmentLocksRef.current.set(dbId, {
+                assignedLearners: inheritedLearners,
+                expiresAt: Date.now() + 15000,
+              });
+            }
             setState((prev) => ({
               ...prev,
               explorerItems: prev.explorerItems.map((e) =>
                 e.id === newExplorerItem.id ? { ...e, id: dbId } : e
               ),
             }));
+            if (isInSharedProject) {
+              await upsertSupabaseEnrollmentsForItems(
+                [{ ...newExplorerItem, id: dbId }],
+                stateRef.current.assignees
+              );
+              try {
+                await supabase.rpc("sync_shared_project_enrollments", {
+                  p_project_name: effectiveCohort || null,
+                });
+              } catch {}
+            }
           } else {
             if (process.env.NODE_ENV !== "production") {
               console.warn(
@@ -7340,12 +7550,27 @@ export function RuangSosmedProvider({
               i.title.trim().toLowerCase() === cleanFolder.toLowerCase()
           )
         : undefined;
+      const effectiveCohort = normalizeCohortProjectName(
+        destFolder?.cohort || targetItem?.cohort
+      );
+      const isInSharedProject = (stateRef.current.cohortProjects || []).some(
+        (p) =>
+          Boolean(p.shareWithAllLearners) &&
+          doesItemMatchCohortProject(effectiveCohort, p.name)
+      );
+      const sharedNames = isInSharedProject
+        ? getActiveLearnerNames(
+            stateRef.current.assignees,
+            stateRef.current.leaderboard
+          )
+        : [];
       const inheritedList = targetItem
-        ? Array.from(
-            new Set([
+        ? mergeUniqueLearnerNames(
+            [
               ...(targetItem.assignedLearners || []),
               ...(destFolder?.assignedLearners || []),
-            ])
+            ],
+            sharedNames
           )
         : [];
 
@@ -7359,14 +7584,30 @@ export function RuangSosmedProvider({
           }
         : null;
 
+      if (updatedForPush && isInSharedProject && inheritedList.length > 0) {
+        const lockExp = Date.now() + 15000;
+        recentAssignmentLocksRef.current.set(updatedForPush.id, {
+          assignedLearners: inheritedList,
+          expiresAt: lockExp,
+        });
+        recentAssignmentLocksRef.current.set(
+          updatedForPush.title.trim().toLowerCase(),
+          {
+            assignedLearners: inheritedList,
+            expiresAt: lockExp,
+          }
+        );
+      }
+
       setState((prev) => {
         const nextItems = prev.explorerItems.map((item) => {
           if (item.id !== itemId) return item;
-          const nextLearners = Array.from(
-            new Set([
+          const nextLearners = mergeUniqueLearnerNames(
+            [
               ...(item.assignedLearners || []),
               ...(destFolder?.assignedLearners || []),
-            ])
+            ],
+            sharedNames
           );
           return {
             ...item,
@@ -7391,12 +7632,25 @@ export function RuangSosmedProvider({
       });
 
       if (updatedForPush) {
-        void pushContentToSupabase(
-          updatedForPush,
-          stateRef.current.courseCurriculums?.[
-            updatedForPush.title.trim().toLowerCase()
-          ] ?? null
-        );
+        void (async () => {
+          await pushContentToSupabase(
+            updatedForPush,
+            stateRef.current.courseCurriculums?.[
+              updatedForPush.title.trim().toLowerCase()
+            ] ?? null
+          );
+          if (isInSharedProject) {
+            await upsertSupabaseEnrollmentsForItems(
+              [updatedForPush],
+              stateRef.current.assignees
+            );
+            try {
+              await supabase.rpc("sync_shared_project_enrollments", {
+                p_project_name: effectiveCohort || null,
+              });
+            } catch {}
+          }
+        })();
       }
     },
     []
@@ -8276,6 +8530,28 @@ export function RuangSosmedProvider({
           ] ?? null
         );
       });
+
+      const assignKeys = new Set(
+        learnerNames.map((n) => String(n || "").trim().toLowerCase()).filter(Boolean)
+      );
+      const isCohortWideAssign =
+        assignKeys.has("all learners") ||
+        assignKeys.has("batch oktober 2026") ||
+        assignKeys.has("ruang sosmed class") ||
+        assignKeys.has("creator growth lab") ||
+        assignKeys.has("specialist growth lab") ||
+        (stateRef.current.cohortProjects || []).some((p) =>
+          assignKeys.has((p.name || "").trim().toLowerCase())
+        );
+      const matchingAssignees = isCohortWideAssign
+        ? stateRef.current.assignees
+        : stateRef.current.assignees.filter((a) => {
+            const ak = (a.name || "").trim().toLowerCase();
+            return (ak && assignKeys.has(ak)) || assignKeys.has(a.id.toLowerCase());
+          });
+      if (matchingAssignees.length > 0) {
+        void upsertSupabaseEnrollmentsForItems(itemsToPush, matchingAssignees);
+      }
     },
     [addLearnerNotification]
   );
@@ -10617,6 +10893,45 @@ export function RuangSosmedProvider({
         return;
       }
 
+      const cleanName = (profile.name || "").trim();
+      const snapshotState = stateRef.current;
+      const sharedItemsToUpdate: ExplorerContentItem[] = [];
+      if (cleanName) {
+        const lockExp = Date.now() + 15000;
+        (snapshotState.explorerItems || []).forEach((item) => {
+          if (item.isArchived) return;
+          if (
+            !isItemInSharedCohortProject(
+              item,
+              snapshotState.explorerItems,
+              snapshotState.cohortProjects
+            )
+          ) {
+            return;
+          }
+          const nextLearners = mergeUniqueLearnerNames(item.assignedLearners, [
+            cleanName,
+          ]);
+          const updatedItem: ExplorerContentItem = {
+            ...item,
+            assignedLearners: nextLearners,
+            assignedCount: nextLearners.length,
+          };
+          sharedItemsToUpdate.push(updatedItem);
+          recentAssignmentLocksRef.current.set(item.id, {
+            assignedLearners: nextLearners,
+            expiresAt: lockExp,
+          });
+          recentAssignmentLocksRef.current.set(
+            item.title.trim().toLowerCase(),
+            {
+              assignedLearners: nextLearners,
+              expiresAt: lockExp,
+            }
+          );
+        });
+      }
+
       setState((prev) => {
         const initials =
           profile.name
@@ -10668,12 +10983,82 @@ export function RuangSosmedProvider({
               .sort((a, b) => b.points - a.points)
               .map((l, idx) => ({ ...l, rank: idx + 1 }));
 
+        const nextExplorer = cleanName
+          ? prev.explorerItems.map((item) => {
+              if (
+                item.isArchived ||
+                !isItemInSharedCohortProject(
+                  item,
+                  prev.explorerItems,
+                  prev.cohortProjects
+                )
+              ) {
+                return item;
+              }
+              const nextLearners = mergeUniqueLearnerNames(
+                item.assignedLearners,
+                [cleanName]
+              );
+              if (
+                nextLearners.length === (item.assignedLearners || []).length &&
+                item.assignedCount === nextLearners.length
+              ) {
+                return item;
+              }
+              return {
+                ...item,
+                assignedLearners: nextLearners,
+                assignedCount: nextLearners.length,
+              };
+            })
+          : prev.explorerItems;
+
         return {
           ...prev,
           assignees: nextAssignees,
           leaderboard: nextLeaderboard,
+          explorerItems: nextExplorer,
         };
       });
+
+      if (isSupabaseConfigured) {
+        const identityKey = `${(profile.email || "").trim().toLowerCase()}||${cleanName.toLowerCase()}`;
+        if (identityKey !== lastMySharedSyncKeyRef.current) {
+          lastMySharedSyncKeyRef.current = identityKey;
+          void (async () => {
+            try {
+              const {
+                data: { session },
+              } = await supabase.auth.getSession();
+              const sessionEmail = (session?.user?.email || "")
+                .trim()
+                .toLowerCase();
+              const profileEmail = (profile.email || "").trim().toLowerCase();
+              const isSelfLearnerSession =
+                Boolean(session?.user) &&
+                (!profileEmail || sessionEmail === profileEmail) &&
+                !sessionEmail.includes("dinur") &&
+                sessionEmail !== "admin@ruangsosmed.id";
+
+              if (isSelfLearnerSession) {
+                await supabase.rpc("sync_my_shared_project_enrollments");
+              } else if (sharedItemsToUpdate.length > 0) {
+                for (const item of sharedItemsToUpdate) {
+                  await pushContentToSupabase(
+                    item,
+                    stateRef.current.courseCurriculums?.[
+                      item.title.trim().toLowerCase()
+                    ] ?? null
+                  );
+                }
+                await supabase.rpc("sync_shared_project_enrollments", {
+                  p_project_name: null,
+                });
+              }
+            } catch {}
+          })();
+        }
+      }
     },
     []
   );
@@ -11026,7 +11411,7 @@ export function RuangSosmedProvider({
   };
 
   const persistCohortProjects = useCallback(
-    (nextCohorts: CohortProjectItem[]) => {
+    (nextCohorts: CohortProjectItem[]): Promise<void> => {
       const nowMs = Date.now();
       lastCohortMutationTsRef.current = nowMs;
       recentCohortMutationUntilRef.current = nowMs + 15000;
@@ -11069,7 +11454,7 @@ export function RuangSosmedProvider({
           );
         }
       } catch {}
-      void syncCohortProjectsToSupabase(
+      return syncCohortProjectsToSupabase(
         nextCohorts,
         deletedSnapshot,
         nowMs
@@ -11117,7 +11502,15 @@ export function RuangSosmedProvider({
         ...prev,
         cohortProjects: nextCohorts,
       }));
-      persistCohortProjects(nextCohorts);
+      void persistCohortProjects(nextCohorts).then(async () => {
+        if (shareWithAllLearners && isSupabaseConfigured) {
+          try {
+            await supabase.rpc("sync_shared_project_enrollments", {
+              p_project_name: trimmed,
+            });
+          } catch {}
+        }
+      });
     },
     [persistCohortProjects]
   );
@@ -11172,19 +11565,79 @@ export function RuangSosmedProvider({
         })
       );
 
-      const affectedItems = isRenamed
-        ? (stateRef.current.explorerItems || [])
-            .filter(
-              (it) =>
-                normalizeCohortProjectName(it.cohort).toLowerCase() ===
-                  oldNameLower ||
-                (it.cohort || "").trim().toLowerCase() === oldNameLower
-            )
-            .map((it) => ({ ...it, cohort: nextName }))
+      const updatedCohort = nextCohorts.find(
+        (c) =>
+          c.id === target.id || c.name.trim().toLowerCase() === nextNameLower
+      );
+      const isShareAllActive = Boolean(updatedCohort?.shareWithAllLearners);
+      const shouldAutoAssignShared =
+        isShareAllActive &&
+        (updates.shareWithAllLearners === true || isRenamed);
+
+      const snapshotExplorer = stateRef.current.explorerItems || [];
+      const renamedSnapshot = isRenamed
+        ? snapshotExplorer.map((it) =>
+            normalizeCohortProjectName(it.cohort).toLowerCase() ===
+              oldNameLower ||
+            (it.cohort || "").trim().toLowerCase() === oldNameLower
+              ? { ...it, cohort: nextName }
+              : it
+          )
+        : snapshotExplorer;
+
+      const allLearnerNames = shouldAutoAssignShared
+        ? getActiveLearnerNames(
+            stateRef.current.assignees,
+            stateRef.current.leaderboard
+          )
         : [];
 
+      const affectedForPushMap = new Map<string, ExplorerContentItem>();
+      if (isRenamed) {
+        renamedSnapshot.forEach((it) => {
+          const orig = snapshotExplorer.find((o) => o.id === it.id);
+          if (orig && orig.cohort !== it.cohort) {
+            affectedForPushMap.set(it.id, it);
+          }
+        });
+      }
+
+      const sharedAffectedItems: ExplorerContentItem[] = [];
+      if (shouldAutoAssignShared) {
+        const lockExp = Date.now() + 15000;
+        renamedSnapshot.forEach((it) => {
+          if (it.isArchived) return;
+          const effectiveC = resolveItemEffectiveCohort(it, renamedSnapshot);
+          if (!doesItemMatchCohortProject(effectiveC, nextName)) return;
+          const mergedLearners = mergeUniqueLearnerNames(
+            it.assignedLearners,
+            allLearnerNames
+          );
+          const updatedItem: ExplorerContentItem = {
+            ...it,
+            assignedLearners: mergedLearners,
+            assignedCount: mergedLearners.length,
+          };
+          sharedAffectedItems.push(updatedItem);
+          affectedForPushMap.set(updatedItem.id, updatedItem);
+          recentAssignmentLocksRef.current.set(updatedItem.id, {
+            assignedLearners: mergedLearners,
+            expiresAt: lockExp,
+          });
+          recentAssignmentLocksRef.current.set(
+            updatedItem.title.trim().toLowerCase(),
+            {
+              assignedLearners: mergedLearners,
+              expiresAt: lockExp,
+            }
+          );
+        });
+      }
+
+      const itemsToPush = Array.from(affectedForPushMap.values());
+
       setState((prev) => {
-        const nextExplorer = isRenamed
+        let nextExplorer = isRenamed
           ? prev.explorerItems.map((it) =>
               normalizeCohortProjectName(it.cohort).toLowerCase() ===
                 oldNameLower ||
@@ -11193,7 +11646,29 @@ export function RuangSosmedProvider({
                 : it
             )
           : prev.explorerItems;
-        if (isRenamed && typeof window !== "undefined") {
+
+        if (shouldAutoAssignShared) {
+          const namesForState = getActiveLearnerNames(
+            prev.assignees,
+            prev.leaderboard
+          );
+          nextExplorer = nextExplorer.map((it) => {
+            if (it.isArchived) return it;
+            const effectiveC = resolveItemEffectiveCohort(it, nextExplorer);
+            if (!doesItemMatchCohortProject(effectiveC, nextName)) return it;
+            const mergedLearners = mergeUniqueLearnerNames(
+              it.assignedLearners,
+              namesForState
+            );
+            return {
+              ...it,
+              assignedLearners: mergedLearners,
+              assignedCount: mergedLearners.length,
+            };
+          });
+        }
+
+        if ((isRenamed || shouldAutoAssignShared) && typeof window !== "undefined") {
           try {
             window.localStorage.setItem(
               "ruang_sosmed_explorer_items_v2",
@@ -11207,25 +11682,42 @@ export function RuangSosmedProvider({
           explorerItems: nextExplorer,
         };
       });
-      persistCohortProjects(nextCohorts);
 
-      if (isRenamed && isSupabaseConfigured) {
+      const persistPromise = persistCohortProjects(nextCohorts);
+
+      if ((isRenamed || shouldAutoAssignShared) && isSupabaseConfigured) {
         void (async () => {
-          try {
-            await supabase
-              .from("contents")
-              .update({
-                cohort: nextName,
-                updated_at: new Date().toISOString(),
-              })
-              .ilike("cohort", oldName);
-          } catch {}
-          for (const item of affectedItems) {
+          await persistPromise;
+          if (isRenamed) {
+            try {
+              await supabase
+                .from("contents")
+                .update({
+                  cohort: nextName,
+                  updated_at: new Date().toISOString(),
+                })
+                .ilike("cohort", oldName);
+            } catch {}
+          }
+          for (const item of itemsToPush) {
             const key = item.title.trim().toLowerCase();
             await pushContentToSupabase(
               item,
               stateRef.current.courseCurriculums?.[key]
             );
+          }
+          if (shouldAutoAssignShared) {
+            if (sharedAffectedItems.length > 0) {
+              await upsertSupabaseEnrollmentsForItems(
+                sharedAffectedItems,
+                stateRef.current.assignees
+              );
+            }
+            try {
+              await supabase.rpc("sync_shared_project_enrollments", {
+                p_project_name: nextName,
+              });
+            } catch {}
           }
         })();
       }

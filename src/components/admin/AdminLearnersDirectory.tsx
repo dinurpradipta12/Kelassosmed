@@ -43,6 +43,7 @@ import {
   computeTrial3DaysPriceIdr,
   computeTrial7DaysPriceIdr,
   formatIdr,
+  isItemInSharedCohortProject,
   isTrialBillingCycle,
 } from "@/context/RuangSosmedStore";
 import { type ExplorerContentItem } from "@/lib/phase2-data";
@@ -756,13 +757,30 @@ export function AdminLearnersDirectory({
       "batch oktober 2026",
       "ruang sosmed class",
       "creator growth lab",
+      "specialist growth lab",
     ]);
 
     return (explorerItems || []).filter((exp: ExplorerContentItem) => {
       if (exp.type === "Folder") return false;
-      const assignedList = Array.isArray(exp.assignedLearners)
-        ? exp.assignedLearners
-        : [];
+      if (
+        inspectedMember.accessRole === "Learner" &&
+        isItemInSharedCohortProject(exp, explorerItems || [], cohortProjects)
+      ) {
+        return true;
+      }
+      const parentFolder = exp.folderName
+        ? (explorerItems || []).find(
+            (f: ExplorerContentItem) =>
+              f.type === "Folder" &&
+              f.title.trim().toLowerCase() === exp.folderName!.trim().toLowerCase()
+          )
+        : undefined;
+      const assignedList = [
+        ...(Array.isArray(exp.assignedLearners) ? exp.assignedLearners : []),
+        ...(Array.isArray(parentFolder?.assignedLearners)
+          ? parentFolder.assignedLearners
+          : []),
+      ];
       if (assignedList.length === 0) return false;
       return assignedList.some((entry) => {
         const norm = String(entry || "").toLowerCase().trim();
@@ -774,7 +792,7 @@ export function AdminLearnersDirectory({
         return false;
       });
     });
-  }, [inspectedMember, explorerItems]);
+  }, [inspectedMember, explorerItems, cohortProjects]);
 
   const memberUnassignedMaterials = useMemo(() => {
     const assignedIds = new Set(memberAssignedItems.map((m) => m.id));
@@ -1199,7 +1217,23 @@ export function AdminLearnersDirectory({
 
     const actualAssignedCount = (explorerItems || []).filter((exp) => {
       if (exp.type === "Folder") return false;
-      const list = exp.assignedLearners || [];
+      if (
+        resolvedRole === "Learner" &&
+        isItemInSharedCohortProject(exp, explorerItems || [], cohortProjects)
+      ) {
+        return true;
+      }
+      const parentFolder = exp.folderName
+        ? (explorerItems || []).find(
+            (f) =>
+              f.type === "Folder" &&
+              f.title.trim().toLowerCase() === exp.folderName!.trim().toLowerCase()
+          )
+        : undefined;
+      const list = [
+        ...(exp.assignedLearners || []),
+        ...(parentFolder?.assignedLearners || []),
+      ];
       if (list.length === 0) return false;
       return list.some((entry) => {
         const norm = String(entry || "").toLowerCase().trim();
@@ -1208,6 +1242,7 @@ export function AdminLearnersDirectory({
           norm === "batch oktober 2026" ||
           norm === "ruang sosmed class" ||
           norm === "creator growth lab" ||
+          norm === "specialist growth lab" ||
           (key && norm === key) ||
           (preferredName && norm === preferredName.toLowerCase()) ||
           (existing.email && norm === existing.email.toLowerCase())
