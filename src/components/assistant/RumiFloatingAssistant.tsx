@@ -105,36 +105,6 @@ const DECK_ICON_MAP: Record<RumiDeckIconName, LucideIcon> = {
   sparkles: Sparkles,
 };
 
-const DECK_ACCENT_STYLES: Record<
-  RumiDeckAccent,
-  { iconBox: string; activeRing: string }
-> = {
-  indigo: {
-    iconBox: "bg-[#4F39F6]/25 text-[#A5B4FC] border-[#6366F1]/40",
-    activeRing: "ring-2 ring-[#6366F1] bg-[#252340]",
-  },
-  sky: {
-    iconBox: "bg-[#0EA5E9]/20 text-[#7DD3FC] border-[#38BDF8]/35",
-    activeRing: "ring-2 ring-[#38BDF8] bg-[#1D2A38]",
-  },
-  emerald: {
-    iconBox: "bg-[#10B981]/20 text-[#6EE7B7] border-[#34D399]/35",
-    activeRing: "ring-2 ring-[#34D399] bg-[#1B2F2A]",
-  },
-  rose: {
-    iconBox: "bg-[#F43F5E]/20 text-[#FDA4AF] border-[#FB7185]/35",
-    activeRing: "ring-2 ring-[#FB7185] bg-[#331F28]",
-  },
-  amber: {
-    iconBox: "bg-[#F59E0B]/20 text-[#FCD34D] border-[#FBBF24]/35",
-    activeRing: "ring-2 ring-[#FBBF24] bg-[#332B1D]",
-  },
-  violet: {
-    iconBox: "bg-[#8B5CF6]/25 text-[#DDD6FE] border-[#A78BFA]/40",
-    activeRing: "ring-2 ring-[#A78BFA] bg-[#29223B]",
-  },
-};
-
 interface RumiFloatingAssistantProps {
   roleMode: "learner" | "admin";
   userKey?: string | null;
@@ -695,14 +665,14 @@ export function RumiFloatingAssistant({
                 onClick={() => setActiveModalTab("deck")}
                 className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-bold transition-all cursor-pointer ${
                   activeModalTab === "deck"
-                    ? "bg-[#121215] text-white shadow-xs"
+                    ? "bg-[#FFFFFF] text-[#121215] shadow-xs"
                     : "text-[#5E5E5E] hover:text-[#121215]"
                 }`}
               >
                 <Zap
                   size={12}
                   className={
-                    activeModalTab === "deck" ? "text-[#FBBF24]" : "text-[#4F39F6]"
+                    activeModalTab === "deck" ? "text-[#4F39F6]" : "text-[#5E5E5E]"
                   }
                 />
                 <span>Deck</span>
@@ -767,32 +737,26 @@ export function RumiFloatingAssistant({
               <div className="space-y-2.5">
                 {quickActions.length > 0 ? (
                   <>
-                    <div className="rounded-2xl bg-[#121216] p-2.5 border border-[#23232A] shadow-inner">
+                    <div className="rs-rumi-deck-tray rounded-2xl p-2.5">
                       <div className="grid grid-cols-3 gap-2">
                         {quickActions.map((act) => {
                           const IconComp = act.icon
                             ? DECK_ICON_MAP[act.icon]
                             : LayoutGrid;
-                          const accentStyle =
-                            DECK_ACCENT_STYLES[act.accent || "indigo"];
                           return (
                             <button
                               key={act.id}
                               type="button"
+                              data-accent={act.accent || "indigo"}
+                              data-active={act.isActive ? "true" : "false"}
                               onClick={() => {
                                 setIsOpen(false);
                                 act.onClick();
                               }}
-                              className={`group relative flex flex-col items-start justify-between rounded-xl border border-white/10 p-2.5 text-left transition-all duration-150 cursor-pointer active:scale-[0.96] min-h-[78px] ${
-                                act.isActive
-                                  ? accentStyle.activeRing
-                                  : "bg-[#1C1C24] hover:bg-[#262632] hover:border-white/25"
-                              }`}
+                              className="rs-rumi-deck-tile group relative flex flex-col items-start justify-between rounded-xl p-2.5 text-left transition-all duration-150 cursor-pointer active:scale-[0.96] min-h-[78px]"
                             >
                               <div className="flex w-full items-start justify-between gap-1">
-                                <span
-                                  className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-transform duration-150 group-hover:scale-105 ${accentStyle.iconBox}`}
-                                >
+                                <span className="rs-rumi-deck-icon flex h-7 w-7 items-center justify-center rounded-lg transition-transform duration-150 group-hover:scale-105">
                                   <IconComp size={14} />
                                 </span>
 
@@ -803,7 +767,7 @@ export function RumiFloatingAssistant({
                                     </span>
                                   )}
                                   {act.shortcutKey && (
-                                    <kbd className="rounded border border-white/15 bg-black/50 px-1 py-0.5 font-mono text-[9px] font-bold text-white/75 leading-none">
+                                    <kbd className="rs-rumi-deck-kbd rounded px-1 py-0.5 font-mono text-[9px] font-bold leading-none">
                                       {act.shortcutKey}
                                     </kbd>
                                   )}
@@ -811,11 +775,11 @@ export function RumiFloatingAssistant({
                               </div>
 
                               <div className="mt-2 w-full min-w-0">
-                                <p className="truncate text-[11px] font-bold text-white leading-tight">
+                                <p className="rs-rumi-deck-label truncate text-[11px] font-bold leading-tight">
                                   {act.label}
                                 </p>
                                 {act.sublabel && (
-                                  <p className="truncate text-[9px] text-white/55 mt-0.5 leading-none">
+                                  <p className="rs-rumi-deck-sublabel truncate text-[9px] mt-0.5 leading-none">
                                     {act.sublabel}
                                   </p>
                                 )}
