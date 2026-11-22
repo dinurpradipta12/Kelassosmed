@@ -366,6 +366,7 @@ const DELETED_THREADS_STORAGE_KEY = "ruang_sosmed_deleted_threads_v1";
 const DELETED_REPLIES_STORAGE_KEY = "ruang_sosmed_deleted_replies_v1";
 const DELETED_CONTENT_IDS_STORAGE_KEY = "ruang_sosmed_deleted_content_ids_v1";
 const DELETED_CONTENT_TITLES_STORAGE_KEY = "ruang_sosmed_deleted_content_titles_v1";
+const DELETED_COHORTS_STORAGE_KEY = "ruang_sosmed_deleted_cohorts_v1";
 const CONTENT_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function readStoredTombstoneMap(storageKey: string): Map<string, number> {
@@ -1105,17 +1106,22 @@ async function syncLearnerPagesConfigToSupabase(
 }
 
 async function syncCohortProjectsToSupabase(
-  cohorts: CohortProjectItem[]
+  cohorts: CohortProjectItem[],
+  deletedNames?: string[]
 ): Promise<void> {
   if (!isSupabaseConfigured || !Array.isArray(cohorts) || cohorts.length === 0) {
     return;
   }
   try {
     const existing = await getLatestSystemContentRow("__SYSTEM_COHORT_PROJECTS__");
+    const nowIso = new Date().toISOString();
 
     const payload = {
       cohortProjects: cohorts,
-      updatedAt: new Date().toISOString(),
+      ...(Array.isArray(deletedNames) && deletedNames.length > 0
+        ? { deletedNames }
+        : {}),
+      updatedAt: nowIso,
     };
 
     if (existing?.id) {
@@ -1124,8 +1130,9 @@ async function syncCohortProjectsToSupabase(
         .update({
           settings_json: payload,
           status: "published",
+          updated_at: nowIso,
         })
-        .eq("id", existing.id);
+        .eq("title", "__SYSTEM_COHORT_PROJECTS__");
     } else {
       await supabase.from("contents").insert({
         id: newUuid(),
@@ -1136,6 +1143,7 @@ async function syncCohortProjectsToSupabase(
         urgency: "not_urgent",
         estimated_minutes: 0,
         points_reward: 0,
+        updated_at: nowIso,
         settings_json: payload,
       });
     }
@@ -2842,6 +2850,8 @@ export function RuangSosmedProvider({
   const deletedReplyIdsRef = useRef<Set<string>>(new Set());
   const deletedContentIdsRef = useRef<Set<string>>(new Set());
   const deletedContentTitlesRef = useRef<Map<string, number>>(new Map());
+  const deletedCohortNamesRef = useRef<Set<string>>(new Set());
+  const recentCohortMutationUntilRef = useRef<number>(0);
   const recentLocalThreadPostsRef = useRef<Map<string, number>>(new Map());
   const recentLocalReplyPostsRef = useRef<Map<string, number>>(new Map());
   const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
@@ -2986,6 +2996,7 @@ export function RuangSosmedProvider({
       deletedContentTitlesRef.current = readStoredTombstoneMap(
         DELETED_CONTENT_TITLES_STORAGE_KEY
       );
+      deletedCohortNamesRef.current = readStoredIdSet(DELETED_COHORTS_STORAGE_KEY);
       let parsed: Partial<PersistedGlobalState> | null = null;
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -3191,17 +3202,24 @@ export function RuangSosmedProvider({
             if (cRaw) {
               const cParsed = JSON.parse(cRaw);
               if (Array.isArray(cParsed) && cParsed.length > 0) {
-                const map = new Map<string, CohortProjectItem>();
-                [...(parsed.cohortProjects || []), ...cParsed].forEach((c) => {
-                  if (c?.name) map.set(c.name.trim().toLowerCase(), c);
-                });
-                if (map.size > 0) return Array.from(map.values());
+                const filtered = cParsed.filter(
+                  (c: CohortProjectItem) =>
+                    c?.name &&
+                    !deletedCohortNamesRef.current.has(c.name.trim().toLowerCase())
+                );
+                if (filtered.length > 0) return filtered;
               }
             }
           } catch {}
-          return parsed.cohortProjects && parsed.cohortProjects.length > 0
-            ? parsed.cohortProjects
-            : INITIAL_COHORT_PROJECTS;
+          const fromParsed =
+            parsed.cohortProjects && parsed.cohortProjects.length > 0
+              ? parsed.cohortProjects.filter(
+                  (c: CohortProjectItem) =>
+                    c?.name &&
+                    !deletedCohortNamesRef.current.has(c.name.trim().toLowerCase())
+                )
+              : [];
+          return fromParsed.length > 0 ? fromParsed : INITIAL_COHORT_PROJECTS;
         })();
 
         const mergedCohorts = dedupeCohortProjectIds(
@@ -4874,12 +4892,35 @@ export function RuangSosmedProvider({
             ...(prev.courseCurriculums || {}),
           };
 
-          const pickLatestSystemRow = (sysTitle: string) =>
-            Array.isArray(contentsRes.data)
-              ? (contentsRes.data as any[])
-                  .filter((r) => r?.title === sysTitle)
-                  .pop() || null
-              : null;
+          const pickLatestSystemRow = (sysTitle: string) => {
+            if (!Array.isArray(contentsRes.data)) return null;
+            const matches = (contentsRes.data as any[]).filter(
+              (r) => r?.title === sysTitle
+            );
+            if (matches.length === 0) return null;
+            matches.sort((a, b) => {
+              const tA =
+                Date.parse(
+                  String(
+                    a?.settings_json?.updatedAt ||
+                      a?.updated_at ||
+                      a?.created_at ||
+                      ""
+                  )
+                ) || 0;
+              const tB =
+                Date.parse(
+                  String(
+                    b?.settings_json?.updatedAt ||
+                      b?.updated_at ||
+                      b?.created_at ||
+                      ""
+                  )
+                ) || 0;
+              return tA - tB;
+            });
+            return matches[matches.length - 1] || null;
+          };
 
           // Ambil row __SYSTEM_REWARDS_CATALOG__ untuk sinkronisasi katalog hadiah lintas user
           const systemRewardsRow = pickLatestSystemRow(
@@ -4981,6 +5022,28 @@ export function RuangSosmedProvider({
           )
             ? systemCohortProjectsRow.settings_json.cohortProjects
             : null;
+          const remoteDeletedCohorts: string[] = Array.isArray(
+            systemCohortProjectsRow?.settings_json?.deletedNames
+          )
+            ? systemCohortProjectsRow.settings_json.deletedNames
+            : [];
+          if (remoteDeletedCohorts.length > 0) {
+            const activeRemoteKeys = new Set(
+              (remoteCohortProjects || [])
+                .map((c) => (c?.name || "").trim().toLowerCase())
+                .filter(Boolean)
+            );
+            remoteDeletedCohorts.forEach((dn) => {
+              const key = String(dn || "").trim().toLowerCase();
+              if (key && !activeRemoteKeys.has(key)) {
+                deletedCohortNamesRef.current.add(key);
+              }
+            });
+            persistStoredIdSet(
+              DELETED_COHORTS_STORAGE_KEY,
+              deletedCohortNamesRef.current
+            );
+          }
 
           const systemAdminNotifsRow = pickLatestSystemRow(
             "__SYSTEM_ADMIN_NOTIFICATIONS__"
@@ -5384,7 +5447,7 @@ export function RuangSosmedProvider({
             nextExplorer = deduplicateExplorerItems(nextExplorer);
           }
 
-          // Sinkronkan & gabungkan Cohort Projects dari __SYSTEM_COHORT_PROJECTS__, state lokal, dan cohort aktif di folder/materi
+          // Sinkronkan & gabungkan Cohort Projects tanpa menimpa warna asli atau membangkitkan cohort yang sudah dihapus/diubah
           const cohortMap = new Map<string, CohortProjectItem>();
           const registerCohort = (
             candidate: Partial<CohortProjectItem> & { name?: string }
@@ -5395,8 +5458,9 @@ export function RuangSosmedProvider({
               rawName.toLowerCase() === "ruang sosmed core"
                 ? "Ruang Sosmed Class"
                 : rawName;
-            if (normalizedName.toLowerCase() === "meta ads bootcamp") return;
             const cKey = normalizedName.toLowerCase();
+            if (cKey === "meta ads bootcamp") return;
+            if (deletedCohortNamesRef.current.has(cKey)) return;
             const existing = cohortMap.get(cKey);
             cohortMap.set(cKey, {
               id:
@@ -5416,18 +5480,37 @@ export function RuangSosmedProvider({
             });
           };
 
-          (remoteCohortProjects || []).forEach(registerCohort);
-          if (!remoteCohortProjects || remoteCohortProjects.length === 0 || isStaffSession) {
-            (prev.cohortProjects || []).forEach(registerCohort);
+          const inRecentCohortMutation =
+            Date.now() < recentCohortMutationUntilRef.current;
+
+          if (inRecentCohortMutation && prev.cohortProjects?.length) {
+            prev.cohortProjects.forEach(registerCohort);
+          } else if (remoteCohortProjects && remoteCohortProjects.length > 0) {
+            remoteCohortProjects.forEach(registerCohort);
+          } else if (prev.cohortProjects && prev.cohortProjects.length > 0) {
+            prev.cohortProjects.forEach(registerCohort);
           }
+
           nextExplorer.forEach((it) => {
-            if (it.cohort && it.cohort.trim()) {
-              registerCohort({
-                name: it.cohort.trim(),
-                color: "#0EA5E9",
-                description: "Cohort / Program Pembelajaran",
-              });
+            const rawC = (it.cohort || "").trim();
+            if (!rawC) return;
+            const normalizedC =
+              rawC.toLowerCase() === "ruang sosmed core"
+                ? "Ruang Sosmed Class"
+                : rawC;
+            const cKey = normalizedC.toLowerCase();
+            if (
+              cKey === "meta ads bootcamp" ||
+              deletedCohortNamesRef.current.has(cKey) ||
+              cohortMap.has(cKey)
+            ) {
+              return;
             }
+            registerCohort({
+              name: normalizedC,
+              color: "#4F39F6",
+              description: "Cohort / Program Pembelajaran",
+            });
           });
           if (cohortMap.size === 0) {
             INITIAL_COHORT_PROJECTS.forEach(registerCohort);
@@ -5450,18 +5533,17 @@ export function RuangSosmedProvider({
           }
 
           if (isStaffSession && !contentsRes.error) {
-            const remoteCohortNames = new Set(
-              (remoteCohortProjects || []).map((c) =>
-                (c.name || "").trim().toLowerCase()
-              )
-            );
-            const missingCohortInRemote =
+            const remoteSerialized = JSON.stringify(remoteCohortProjects || []);
+            const nextSerialized = JSON.stringify(nextCohortProjects);
+            if (
               !remoteCohortProjects ||
-              nextCohortProjects.some(
-                (c) => !remoteCohortNames.has(c.name.trim().toLowerCase())
+              inRecentCohortMutation ||
+              remoteSerialized !== nextSerialized
+            ) {
+              void syncCohortProjectsToSupabase(
+                nextCohortProjects,
+                Array.from(deletedCohortNamesRef.current)
               );
-            if (missingCohortInRemote) {
-              void syncCohortProjectsToSupabase(nextCohortProjects);
             }
           }
 
@@ -10746,6 +10828,10 @@ export function RuangSosmedProvider({
   // 9. Cohorts / Projects Management Handlers
   const persistCohortProjects = useCallback(
     (nextCohorts: CohortProjectItem[]) => {
+      recentCohortMutationUntilRef.current = Date.now() + 12000;
+      cachedContentsRowsRef.current = null;
+      lastContentsWmKeyRef.current = "";
+      lastWatermarkRef.current = "";
       try {
         if (typeof window !== "undefined") {
           window.localStorage.setItem(
@@ -10754,7 +10840,10 @@ export function RuangSosmedProvider({
           );
         }
       } catch {}
-      void syncCohortProjectsToSupabase(nextCohorts);
+      void syncCohortProjectsToSupabase(
+        nextCohorts,
+        Array.from(deletedCohortNamesRef.current)
+      );
     },
     []
   );
@@ -10768,9 +10857,17 @@ export function RuangSosmedProvider({
     ) => {
       const trimmed = name.trim();
       if (!trimmed) return;
+      const cleanKey = trimmed.toLowerCase();
+      if (deletedCohortNamesRef.current.has(cleanKey)) {
+        deletedCohortNamesRef.current.delete(cleanKey);
+        persistStoredIdSet(
+          DELETED_COHORTS_STORAGE_KEY,
+          deletedCohortNamesRef.current
+        );
+      }
       const current = stateRef.current.cohortProjects || [];
       if (
-        current.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())
+        current.some((c) => c.name.toLowerCase() === cleanKey)
       ) {
         return;
       }
@@ -10781,7 +10878,7 @@ export function RuangSosmedProvider({
         description: description || "Custom Cohort / Track",
         shareWithAllLearners: Boolean(shareWithAllLearners),
       };
-      const nextCohorts = [...current, newCohort];
+      const nextCohorts = dedupeCohortProjectIds([...current, newCohort]);
       setState((prev) => ({
         ...prev,
         cohortProjects: nextCohorts,
@@ -10801,47 +10898,156 @@ export function RuangSosmedProvider({
         shareWithAllLearners?: boolean;
       }
     ) => {
+      const needleLower = idOrName.trim().toLowerCase();
       const current = stateRef.current.cohortProjects || [];
-      const nextCohorts = current.map((c) => {
-        if (c.id === idOrName || c.name === idOrName) {
-          return {
-            ...c,
-            name: updates.name?.trim() || c.name,
-            color: updates.color || c.color,
-            description:
-              updates.description !== undefined
-                ? updates.description
-                : c.description,
-            shareWithAllLearners:
-              updates.shareWithAllLearners !== undefined
-                ? Boolean(updates.shareWithAllLearners)
-                : c.shareWithAllLearners,
-          };
+      const target = current.find(
+        (c) =>
+          c.id === idOrName ||
+          c.name.trim().toLowerCase() === needleLower
+      );
+      if (!target) return;
+
+      const oldName = target.name.trim();
+      const oldNameLower = oldName.toLowerCase();
+      const nextName = updates.name?.trim() || oldName;
+      const nextNameLower = nextName.toLowerCase();
+      const isRenamed = oldNameLower !== nextNameLower;
+
+      if (isRenamed) {
+        deletedCohortNamesRef.current.add(oldNameLower);
+        deletedCohortNamesRef.current.delete(nextNameLower);
+        persistStoredIdSet(
+          DELETED_COHORTS_STORAGE_KEY,
+          deletedCohortNamesRef.current
+        );
+      }
+
+      const nextCohorts = dedupeCohortProjectIds(
+        current.map((c) => {
+          if (c.id === target.id || c.name.trim().toLowerCase() === oldNameLower) {
+            return {
+              ...c,
+              name: nextName,
+              color: updates.color || c.color,
+              description:
+                updates.description !== undefined
+                  ? updates.description
+                  : c.description,
+              shareWithAllLearners:
+                updates.shareWithAllLearners !== undefined
+                  ? Boolean(updates.shareWithAllLearners)
+                  : c.shareWithAllLearners,
+            };
+          }
+          return c;
+        })
+      );
+
+      setState((prev) => {
+        const nextExplorer = isRenamed
+          ? prev.explorerItems.map((it) =>
+              (it.cohort || "").trim().toLowerCase() === oldNameLower
+                ? { ...it, cohort: nextName }
+                : it
+            )
+          : prev.explorerItems;
+        if (isRenamed && typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              "ruang_sosmed_explorer_items_v2",
+              JSON.stringify(nextExplorer)
+            );
+          } catch {}
         }
-        return c;
+        return {
+          ...prev,
+          cohortProjects: nextCohorts,
+          explorerItems: nextExplorer,
+        };
       });
-      setState((prev) => ({
-        ...prev,
-        cohortProjects: nextCohorts,
-      }));
       persistCohortProjects(nextCohorts);
+
+      if (isRenamed && isSupabaseConfigured) {
+        void (async () => {
+          try {
+            await supabase
+              .from("contents")
+              .update({
+                cohort: nextName,
+                updated_at: new Date().toISOString(),
+              })
+              .ilike("cohort", oldName);
+          } catch {}
+        })();
+      }
     },
     [persistCohortProjects]
   );
 
   const deleteCohortProject = useCallback(
     (idOrName: string) => {
+      const needleLower = idOrName.trim().toLowerCase();
       const current = stateRef.current.cohortProjects || [];
+      const target = current.find(
+        (c) =>
+          c.id === idOrName ||
+          c.name.trim().toLowerCase() === needleLower
+      );
+      if (!target) return;
+
+      const deletedName = target.name.trim();
+      const deletedNameLower = deletedName.toLowerCase();
+      deletedCohortNamesRef.current.add(deletedNameLower);
+      persistStoredIdSet(
+        DELETED_COHORTS_STORAGE_KEY,
+        deletedCohortNamesRef.current
+      );
+
       const filtered = current.filter(
-        (c) => c.id !== idOrName && c.name !== idOrName
+        (c) =>
+          c.id !== target.id &&
+          c.name.trim().toLowerCase() !== deletedNameLower
       );
       const nextCohorts =
         filtered.length > 0 ? filtered : INITIAL_COHORT_PROJECTS;
-      setState((prev) => ({
-        ...prev,
-        cohortProjects: nextCohorts,
-      }));
+      const fallbackCohort =
+        nextCohorts[0]?.name || INITIAL_COHORT_PROJECTS[0].name;
+
+      setState((prev) => {
+        const nextExplorer = prev.explorerItems.map((it) =>
+          (it.cohort || "").trim().toLowerCase() === deletedNameLower
+            ? { ...it, cohort: fallbackCohort }
+            : it
+        );
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              "ruang_sosmed_explorer_items_v2",
+              JSON.stringify(nextExplorer)
+            );
+          } catch {}
+        }
+        return {
+          ...prev,
+          cohortProjects: nextCohorts,
+          explorerItems: nextExplorer,
+        };
+      });
       persistCohortProjects(nextCohorts);
+
+      if (isSupabaseConfigured) {
+        void (async () => {
+          try {
+            await supabase
+              .from("contents")
+              .update({
+                cohort: fallbackCohort,
+                updated_at: new Date().toISOString(),
+              })
+              .ilike("cohort", deletedName);
+          } catch {}
+        })();
+      }
     },
     [persistCohortProjects]
   );

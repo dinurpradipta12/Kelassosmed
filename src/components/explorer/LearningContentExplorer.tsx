@@ -558,12 +558,30 @@ export function LearningContentExplorer({
   onSelectProject,
   onBackToProjects,
 }: LearningContentExplorerProps) {
-  const { assignees, cohortProjects, addCohortProject, updateCohortProject } =
-    useRuangSosmedStore();
+  const {
+    assignees,
+    cohortProjects,
+    addCohortProject,
+    updateCohortProject,
+    deleteCohortProject,
+  } = useRuangSosmedStore();
   const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newProjectColor, setNewProjectColor] = useState("#4F39F6");
   const [newProjectShareAll, setNewProjectShareAll] = useState(true);
+  const [editingProject, setEditingProject] = useState<{
+    id: string;
+    name: string;
+    color: string;
+    shareWithAllLearners?: boolean;
+  } | null>(null);
+  const [editProjectTitle, setEditProjectTitle] = useState("");
+  const [editProjectColor, setEditProjectColor] = useState("#4F39F6");
+  const [editProjectShareAll, setEditProjectShareAll] = useState(true);
+  const [deletingProject, setDeletingProject] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const getItemAssignedCount = (item: ExplorerContentItem) => {
     const raw = item.assignedLearners;
     if (Array.isArray(raw)) {
@@ -1186,7 +1204,7 @@ export function LearningContentExplorer({
                 className="group relative flex flex-col justify-between rounded-2xl bg-white border border-[#EAECEF] hover:border-[#4F39F6]/60 p-5 text-left shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:shadow-[0_10px_28px_rgba(79,57,246,0.10)] transition-all cursor-pointer"
               >
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span
                         className="h-3.5 w-3.5 rounded-[4px] shrink-0 shadow-2xs"
@@ -1196,10 +1214,52 @@ export function LearningContentExplorer({
                         {proj.name}
                       </h2>
                     </div>
-                    <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#F8F9FB] border border-[#EAECEF] px-2.5 py-0.5 text-[11px] font-semibold text-[#475569]">
-                      <Folder size={11} className="text-[#4F39F6]" />
-                      {projFolders.length} Folder
-                    </span>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#F8F9FB] border border-[#EAECEF] px-2 py-0.5 text-[11px] font-semibold text-[#475569]">
+                        <Folder size={11} className="text-[#4F39F6]" />
+                        {projFolders.length} Folder
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingProject({
+                            id: proj.id || proj.name,
+                            name: proj.name,
+                            color: proj.color || "#4F39F6",
+                            shareWithAllLearners: proj.shareWithAllLearners,
+                          });
+                          setEditProjectTitle(proj.name);
+                          setEditProjectColor(proj.color || "#4F39F6");
+                          setEditProjectShareAll(
+                            Boolean(proj.shareWithAllLearners)
+                          );
+                        }}
+                        title={`Edit nama & warna "${proj.name}"`}
+                        aria-label={`Edit nama & warna ${proj.name}`}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-lg border border-transparent hover:border-[#EAECEF] hover:bg-[#F8F9FB] text-[#64748B] hover:text-[#4F39F6] transition-colors cursor-pointer"
+                      >
+                        <Edit3 size={12} />
+                      </button>
+                      {(cohortProjects || []).length > 1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeletingProject({
+                              id: proj.id || proj.name,
+                              name: proj.name,
+                            });
+                          }}
+                          title={`Hapus project "${proj.name}"`}
+                          aria-label={`Hapus project ${proj.name}`}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-lg border border-transparent hover:border-rose-200 hover:bg-rose-50 text-[#64748B] hover:text-rose-600 transition-colors cursor-pointer"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 min-h-[26px]">
@@ -1327,8 +1387,8 @@ export function LearningContentExplorer({
               <label className="block text-xs font-semibold text-[#121215] mb-1.5">
                 Warna Label
               </label>
-              <div className="flex items-center gap-2">
-                {["#4F39F6", "#EC4899", "#10B981", "#0EA5E9", "#F59E0B", "#8B5CF6"].map(
+              <div className="flex flex-wrap items-center gap-2">
+                {["#4F39F6", "#EC4899", "#10B981", "#0EA5E9", "#F59E0B", "#8B5CF6", "#EF4444", "#14B8A6"].map(
                   (c) => (
                     <button
                       key={c}
@@ -1343,6 +1403,18 @@ export function LearningContentExplorer({
                     />
                   )
                 )}
+                <label
+                  title="Pilih warna kustom"
+                  className="inline-flex items-center gap-1 rounded-lg border border-[#EAECEF] bg-[#F8F9FB] px-2 py-1 text-[10px] font-semibold text-[#475569] cursor-pointer"
+                >
+                  <input
+                    type="color"
+                    value={newProjectColor}
+                    onChange={(e) => setNewProjectColor(e.target.value)}
+                    className="h-4 w-4 cursor-pointer rounded border-0 bg-transparent p-0"
+                  />
+                  <span>Custom</span>
+                </label>
               </div>
             </div>
 
@@ -1379,6 +1451,155 @@ export function LearningContentExplorer({
               </button>
             </div>
           </form>
+        </ModalDialog>
+
+        {/* Modal Edit Nama & Warna Project / Cohort */}
+        <ModalDialog
+          open={Boolean(editingProject)}
+          onClose={() => setEditingProject(null)}
+          titleId="edit-project-modal-title"
+          title="Edit Project / Cohort & Warna"
+          subtitle="Ubah nama, warna label, atau pengaturan akses untuk project ini."
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!editingProject) return;
+              const trimmed = editProjectTitle.trim();
+              if (!trimmed) return;
+              updateCohortProject(editingProject.id, {
+                name: trimmed,
+                color: editProjectColor,
+                shareWithAllLearners: editProjectShareAll,
+              });
+              onShowToast(`Project "${trimmed}" berhasil diperbarui!`);
+              setEditingProject(null);
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <label className="block text-xs font-semibold text-[#121215] mb-1.5">
+                Nama Project / Cohort
+              </label>
+              <input
+                type="text"
+                required
+                value={editProjectTitle}
+                onChange={(e) => setEditProjectTitle(e.target.value)}
+                placeholder="Nama project..."
+                className="w-full rounded-xl border border-[#EAECEF] bg-[#F8F9FB] px-3 py-2 text-xs text-[#121215] focus:bg-white focus:border-[#4F39F6] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[#121215] mb-1.5">
+                Warna Label
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                {["#4F39F6", "#EC4899", "#10B981", "#0EA5E9", "#F59E0B", "#8B5CF6", "#EF4444", "#14B8A6"].map(
+                  (c) => (
+                    <button
+                      key={`edit-color-${c}`}
+                      type="button"
+                      onClick={() => setEditProjectColor(c)}
+                      className={`h-7 w-7 rounded-lg transition-transform cursor-pointer ${
+                        editProjectColor.toLowerCase() === c.toLowerCase()
+                          ? "ring-2 ring-offset-2 ring-[#4F39F6] scale-110"
+                          : "hover:scale-105"
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  )
+                )}
+                <label
+                  title="Pilih warna kustom"
+                  className="inline-flex items-center gap-1 rounded-lg border border-[#EAECEF] bg-[#F8F9FB] px-2 py-1 text-[10px] font-semibold text-[#475569] cursor-pointer"
+                >
+                  <input
+                    type="color"
+                    value={editProjectColor}
+                    onChange={(e) => setEditProjectColor(e.target.value)}
+                    className="h-4 w-4 cursor-pointer rounded border-0 bg-transparent p-0"
+                  />
+                  <span>Custom</span>
+                </label>
+              </div>
+            </div>
+
+            <label className="flex items-start gap-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200 p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editProjectShareAll}
+                onChange={(e) => setEditProjectShareAll(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <div>
+                <span className="block text-xs font-bold text-emerald-950">
+                  🌐 Bagikan ke Semua Siswa Sekaligus
+                </span>
+                <span className="block text-[11px] text-emerald-800 mt-0.5">
+                  Semua siswa yang mendaftar otomatis melihat folder &amp; materi di project ini.
+                </span>
+              </div>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditingProject(null)}
+                className="rounded-xl border border-[#EAECEF] px-3.5 py-2 text-xs font-semibold text-[#5E5E5E] hover:bg-[#F8F9FB] cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white cursor-pointer"
+              >
+                Simpan Perubahan
+              </button>
+            </div>
+          </form>
+        </ModalDialog>
+
+        {/* Modal Konfirmasi Hapus Project / Cohort */}
+        <ModalDialog
+          open={Boolean(deletingProject)}
+          onClose={() => setDeletingProject(null)}
+          titleId="delete-project-modal-title"
+          title="Hapus Project / Cohort"
+          subtitle="Folder & materi di dalamnya otomatis dipindahkan ke project utama agar data tetap aman."
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-[#5E5E5E] leading-relaxed">
+              Apakah Anda yakin ingin menghapus project{" "}
+              <strong className="text-[#121215]">
+                &ldquo;{deletingProject?.name}&rdquo;
+              </strong>
+              ? Project yang dihapus tidak akan muncul kembali.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeletingProject(null)}
+                className="rounded-xl border border-[#EAECEF] px-3.5 py-2 text-xs font-semibold text-[#5E5E5E] hover:bg-[#F8F9FB] cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!deletingProject) return;
+                  const removedName = deletingProject.name;
+                  deleteCohortProject(deletingProject.id);
+                  setDeletingProject(null);
+                  onShowToast(`Project "${removedName}" berhasil dihapus.`);
+                }}
+                className="rounded-xl bg-[#EF4444] hover:bg-[#DC2626] px-4 py-2 text-xs font-bold text-white cursor-pointer"
+              >
+                Ya, Hapus Project
+              </button>
+            </div>
+          </div>
         </ModalDialog>
       </div>
     );
