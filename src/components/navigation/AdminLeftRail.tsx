@@ -38,6 +38,7 @@ import { type AuthenticatedUser } from "./GlobalRoleSwitcher";
 import { MentorGuideModal } from "@/components/admin/MentorGuideModal";
 import { ThemeSwitchDockButton } from "@/components/theme/ThemeCustomizerModal";
 import {
+  doesItemMatchCohortProject,
   useRuangSosmedStore,
   type CohortProjectItem,
 } from "@/context/RuangSosmedStore";
@@ -203,22 +204,9 @@ export function AdminLeftRail({
   ).length;
   const unreadInboxCount = awaitingReplyCount + openIssuesCount;
 
-  const activeP = (activeProject || "Ruang Sosmed Class").trim().toLowerCase();
-  const primaryName = (
-    cohortProjects[0]?.name || "Ruang Sosmed Class"
-  ).trim().toLowerCase();
-  const isActivePrimary =
-    activeP === primaryName ||
-    (activeP.includes("ruang sosmed") && primaryName.includes("ruang sosmed"));
-
-  const projectScopedItems = (explorerItems || []).filter((item) => {
-    const itemC = (item.cohort || "").trim().toLowerCase();
-    if (itemC === activeP) return true;
-    if (isActivePrimary && (!itemC || itemC.includes("ruang sosmed"))) {
-      return true;
-    }
-    return false;
-  });
+  const projectScopedItems = (explorerItems || []).filter((item) =>
+    doesItemMatchCohortProject(item.cohort, activeProject)
+  );
 
   const recentCount = projectScopedItems.filter(
     (i) => i.type === "Folder" && !i.isArchived && !i.isTemplate
@@ -334,28 +322,13 @@ export function AdminLeftRail({
       .toUpperCase() || "DP";
 
   const getComputedCohortCount = (proj: CohortProjectItem) => {
-    const pName = proj.name.trim().toLowerCase();
-    const isPrimaryCohort =
-      pName.includes("ruang sosmed") ||
-      (cohortProjects?.[0]?.name &&
-        pName === cohortProjects[0].name.toLowerCase());
-
-    const count = (explorerItems || []).filter((item) => {
-      if (item.type !== "Folder" || item.isArchived || item.isTemplate) {
-        return false;
-      }
-      const itemCohort = (item.cohort || "").trim().toLowerCase();
-      if (itemCohort === pName) return true;
-      if (
-        isPrimaryCohort &&
-        (!itemCohort || itemCohort.includes("ruang sosmed"))
-      ) {
-        return true;
-      }
-      return false;
-    }).length;
-
-    return count;
+    return (explorerItems || []).filter(
+      (item) =>
+        item.type === "Folder" &&
+        !item.isArchived &&
+        !item.isTemplate &&
+        doesItemMatchCohortProject(item.cohort, proj.name)
+    ).length;
   };
 
   const handleOpenCreateCohort = () => {

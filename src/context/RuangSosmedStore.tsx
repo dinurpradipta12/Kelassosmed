@@ -283,7 +283,7 @@ export function buildAdminActivityNotification(params: {
 
 export const INITIAL_COHORT_PROJECTS: CohortProjectItem[] = [
   { id: "cohort-1", name: "Ruang Sosmed Class", color: "#EC4899", description: "Batch Utama Ruang Sosmed" },
-  { id: "cohort-2", name: "Creator Growth Lab", color: "#10B981", description: "Short-Form Video Track" },
+  { id: "cohort-2", name: "Specialist Growth Lab", color: "#10B981", description: "Short-Form Video Track" },
 ];
 
 interface PersistedGlobalState {
@@ -755,6 +755,8 @@ async function pushContentToSupabase(
       : preservedAssignedLearners;
 
     const resolvedAccessCode = getItemAccessCode(item);
+    const normalizedCohort =
+      normalizeCohortProjectName(item.cohort) || "Ruang Sosmed Class";
 
     const upsertPayload: Record<string, any> = {
       id: dbId,
@@ -763,6 +765,7 @@ async function pushContentToSupabase(
       description: item.description || "",
       thumbnail_url: item.thumbnailUrl || null,
       folder_name: item.folderName || null,
+      cohort: normalizedCohort,
       access_code: resolvedAccessCode,
       points_reward: 100,
       is_pro_only: Boolean(item.isPro),
@@ -794,7 +797,7 @@ async function pushContentToSupabase(
             item.bannerAccent || (item.type === "Folder" ? "blue" : undefined),
           bannerPattern: item.bannerPattern,
           language: item.language,
-          cohort: item.cohort,
+          cohort: normalizedCohort,
           thumbnailUrl: item.thumbnailUrl,
           folderName: item.folderName,
           accessCode: resolvedAccessCode,
@@ -814,7 +817,7 @@ async function pushContentToSupabase(
       .from("contents")
       .upsert(upsertPayload, { onConflict: "id" });
 
-    // Fallback aman bila enum DB belum memiliki `'folder'` atau kolom `folder_name`/`access_code` belum dibuat
+    // Fallback aman bila enum DB belum memiliki `'folder'` atau kolom `folder_name`/`access_code`/`cohort` belum dibuat
     if (error && upsertPayload.type === "folder") {
       const retryPayload: Record<string, any> = {
         ...upsertPayload,
@@ -827,13 +830,17 @@ async function pushContentToSupabase(
       if (
         error &&
         (String(error.message || "").includes("folder_name") ||
-          String(error.message || "").includes("access_code"))
+          String(error.message || "").includes("access_code") ||
+          String(error.message || "").includes("cohort"))
       ) {
         if (String(error.message || "").includes("folder_name")) {
           delete retryPayload.folder_name;
         }
         if (String(error.message || "").includes("access_code")) {
           delete retryPayload.access_code;
+        }
+        if (String(error.message || "").includes("cohort")) {
+          delete retryPayload.cohort;
         }
         const retryNoCol = await supabase
           .from("contents")
@@ -843,7 +850,8 @@ async function pushContentToSupabase(
     } else if (
       error &&
       (String(error.message || "").includes("folder_name") ||
-        String(error.message || "").includes("access_code"))
+        String(error.message || "").includes("access_code") ||
+        String(error.message || "").includes("cohort"))
     ) {
       const retryPayload: Record<string, any> = { ...upsertPayload };
       if (String(error.message || "").includes("folder_name")) {
@@ -851,6 +859,9 @@ async function pushContentToSupabase(
       }
       if (String(error.message || "").includes("access_code")) {
         delete retryPayload.access_code;
+      }
+      if (String(error.message || "").includes("cohort")) {
+        delete retryPayload.cohort;
       }
       const retryNoCol = await supabase
         .from("contents")
@@ -2246,19 +2257,79 @@ function deduplicateExplorerItems(
   return result;
 }
 
+export function normalizeCohortProjectName(raw?: string | null): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  if (lower === "ruang sosmed core") return "Ruang Sosmed Class";
+  if (lower === "creator growth lab") return "Specialist Growth Lab";
+  return trimmed;
+}
+
+/** Match an item's cohort to a target project name after alias normalization. */
+export function doesItemMatchCohortProject(
+  itemCohort?: string | null,
+  projectName?: string | null
+): boolean {
+  const pNorm = normalizeCohortProjectName(projectName).toLowerCase();
+  if (!pNorm) return false;
+  const cNorm = normalizeCohortProjectName(itemCohort).toLowerCase();
+  if (cNorm === pNorm) return true;
+  if (pNorm.includes("ruang sosmed") && (!cNorm || cNorm.includes("ruang sosmed"))) {
+    return true;
+  }
+  return false;
+}
+
+const CANONICAL_COHORT_ORDER: Record<string, number> = {
+  "ruang sosmed class": 0,
+  "specialist growth lab": 1,
+  "mini bootcamp social media specialist": 2,
+};
+
 function dedupeCohortProjectIds(
   list: CohortProjectItem[]
 ): CohortProjectItem[] {
-  const usedIds = new Set<string>();
-  const seenNames = new Set<string>();
-  const result: CohortProjectItem[] = [];
+  const byName = new Map<string, CohortProjectItem & { _wasAlias: boolean; _order: number }>();
 
   list.forEach((c, idx) => {
-    const cleanName = (c.name || "").trim();
-    const nameKey = cleanName.toLowerCase();
-    if (!nameKey || seenNames.has(nameKey)) return;
-    seenNames.add(nameKey);
+    const rawTrimmed = (c.name || "").trim();
+    const normalizedName = normalizeCohortProjectName(rawTrimmed);
+    const nameKey = normalizedName.toLowerCase();
+    if (!nameKey || nameKey === "meta ads bootcamp") return;
 
+    const wasAlias = rawTrimmed.toLowerCase() !== nameKey;
+    const existing = byName.get(nameKey);
+
+    if (!existing) {
+      byName.set(nameKey, {
+        ...c,
+        name: normalizedName,
+        _wasAlias: wasAlias,
+        _order: idx,
+      });
+    } else if (existing._wasAlias && !wasAlias) {
+      // Prefer canonical non-alias entry (e.g., "Specialist Growth Lab" over legacy "Creator Growth Lab")
+      byName.set(nameKey, {
+        ...existing,
+        ...c,
+        name: normalizedName,
+        _wasAlias: false,
+        _order: existing._order,
+      });
+    }
+  });
+
+  const sorted = Array.from(byName.values()).sort((a, b) => {
+    const rankA = CANONICAL_COHORT_ORDER[a.name.toLowerCase()] ?? 3;
+    const rankB = CANONICAL_COHORT_ORDER[b.name.toLowerCase()] ?? 3;
+    if (rankA !== rankB) return rankA - rankB;
+    return a._order - b._order;
+  });
+
+  const usedIds = new Set<string>();
+  return sorted.map(({ _wasAlias: _wa, _order: _o, ...c }, idx) => {
+    const nameKey = c.name.toLowerCase();
     let nextId =
       (c.id || "").trim() || `cohort-${nameKey.replace(/[^a-z0-9]/g, "-")}`;
     if (usedIds.has(nextId)) {
@@ -2270,10 +2341,8 @@ function dedupeCohortProjectIds(
       }
     }
     usedIds.add(nextId);
-    result.push({ ...c, id: nextId, name: cleanName });
+    return { ...c, id: nextId };
   });
-
-  return result;
 }
 
 function syncLearnerCatalogWithExplorer(
@@ -3170,10 +3239,7 @@ export function RuangSosmedProvider({
               wikiReadTime: item.wikiReadTime || cachedWikiDoc?.readTime,
               thumbnailUrl: item.thumbnailUrl || cachedThumb || undefined,
               cohort:
-                !item.cohort ||
-                item.cohort.toLowerCase() === "ruang sosmed core"
-                  ? "Ruang Sosmed Class"
-                  : item.cohort,
+                normalizeCohortProjectName(item.cohort) || "Ruang Sosmed Class",
             };
           }
         );
@@ -3202,38 +3268,36 @@ export function RuangSosmedProvider({
             if (cRaw) {
               const cParsed = JSON.parse(cRaw);
               if (Array.isArray(cParsed) && cParsed.length > 0) {
-                const filtered = cParsed.filter(
-                  (c: CohortProjectItem) =>
-                    c?.name &&
-                    !deletedCohortNamesRef.current.has(c.name.trim().toLowerCase())
-                );
+                const filtered = cParsed.filter((c: CohortProjectItem) => {
+                  const normKey = normalizeCohortProjectName(c?.name).toLowerCase();
+                  return (
+                    Boolean(normKey) &&
+                    !deletedCohortNamesRef.current.has(normKey)
+                  );
+                });
                 if (filtered.length > 0) return filtered;
               }
             }
           } catch {}
           const fromParsed =
             parsed.cohortProjects && parsed.cohortProjects.length > 0
-              ? parsed.cohortProjects.filter(
-                  (c: CohortProjectItem) =>
-                    c?.name &&
-                    !deletedCohortNamesRef.current.has(c.name.trim().toLowerCase())
-                )
+              ? parsed.cohortProjects.filter((c: CohortProjectItem) => {
+                  const normKey = normalizeCohortProjectName(c?.name).toLowerCase();
+                  return (
+                    Boolean(normKey) &&
+                    !deletedCohortNamesRef.current.has(normKey)
+                  );
+                })
               : [];
           return fromParsed.length > 0 ? fromParsed : INITIAL_COHORT_PROJECTS;
         })();
 
         const mergedCohorts = dedupeCohortProjectIds(
-          rawCohorts
-            .map((c: CohortProjectItem) => {
-              if (c.name.toLowerCase() === "ruang sosmed core") {
-                return { ...c, name: "Ruang Sosmed Class" };
-              }
-              return c;
-            })
-            .filter(
-              (c: CohortProjectItem) =>
-                c.name.toLowerCase() !== "meta ads bootcamp"
-            )
+          rawCohorts.filter(
+            (c: CohortProjectItem) =>
+              normalizeCohortProjectName(c.name).toLowerCase() !==
+              "meta ads bootcamp"
+          )
         );
 
         const savedRewardsCatalog = (() => {
@@ -5351,13 +5415,10 @@ export function RuangSosmedProvider({
                         meta.unlockPointsCost ?? local?.unlockPointsCost,
                     }
                   : {}),
-                cohort: (() => {
-                  const raw = r.cohort || meta.cohort || local?.cohort;
-                  if (!raw || raw.toLowerCase() === "ruang sosmed core") {
-                    return "Ruang Sosmed Class";
-                  }
-                  return raw;
-                })(),
+                cohort:
+                  normalizeCohortProjectName(
+                    r.cohort || meta.cohort || local?.cohort
+                  ) || "Ruang Sosmed Class",
                 thumbnailUrl:
                   r.thumbnail_url ||
                   meta.thumbnailUrl ||
@@ -5449,35 +5510,43 @@ export function RuangSosmedProvider({
 
           // Sinkronkan & gabungkan Cohort Projects tanpa menimpa warna asli atau membangkitkan cohort yang sudah dihapus/diubah
           const cohortMap = new Map<string, CohortProjectItem>();
+          const canonicalCohortRegistered = new Set<string>();
           const registerCohort = (
             candidate: Partial<CohortProjectItem> & { name?: string }
           ) => {
             const rawName = (candidate.name || "").trim();
             if (!rawName) return;
-            const normalizedName =
-              rawName.toLowerCase() === "ruang sosmed core"
-                ? "Ruang Sosmed Class"
-                : rawName;
+            const normalizedName = normalizeCohortProjectName(rawName);
             const cKey = normalizedName.toLowerCase();
             if (cKey === "meta ads bootcamp") return;
             if (deletedCohortNamesRef.current.has(cKey)) return;
+
+            const isCanonicalName = rawName.toLowerCase() === cKey;
             const existing = cohortMap.get(cKey);
-            cohortMap.set(cKey, {
-              id:
-                candidate.id ||
-                existing?.id ||
-                `cohort-${cKey.replace(/[^a-z0-9]/g, "-")}`,
-              name: normalizedName,
-              color: candidate.color || existing?.color || "#4F39F6",
-              description:
-                candidate.description ||
-                existing?.description ||
-                "Custom Cohort / Track",
-              shareWithAllLearners:
-                candidate.shareWithAllLearners !== undefined
-                  ? Boolean(candidate.shareWithAllLearners)
-                  : Boolean(existing?.shareWithAllLearners),
-            });
+            if (!existing) {
+              cohortMap.set(cKey, {
+                id:
+                  candidate.id ||
+                  `cohort-${cKey.replace(/[^a-z0-9]/g, "-")}`,
+                name: normalizedName,
+                color: candidate.color || "#4F39F6",
+                description: candidate.description || "Custom Cohort / Track",
+                shareWithAllLearners: Boolean(candidate.shareWithAllLearners),
+              });
+              if (isCanonicalName) canonicalCohortRegistered.add(cKey);
+            } else if (isCanonicalName && !canonicalCohortRegistered.has(cKey)) {
+              cohortMap.set(cKey, {
+                id: candidate.id || existing.id,
+                name: normalizedName,
+                color: candidate.color || existing.color,
+                description: candidate.description || existing.description,
+                shareWithAllLearners:
+                  candidate.shareWithAllLearners !== undefined
+                    ? Boolean(candidate.shareWithAllLearners)
+                    : Boolean(existing.shareWithAllLearners),
+              });
+              canonicalCohortRegistered.add(cKey);
+            }
           };
 
           const inRecentCohortMutation =
@@ -5494,10 +5563,7 @@ export function RuangSosmedProvider({
           nextExplorer.forEach((it) => {
             const rawC = (it.cohort || "").trim();
             if (!rawC) return;
-            const normalizedC =
-              rawC.toLowerCase() === "ruang sosmed core"
-                ? "Ruang Sosmed Class"
-                : rawC;
+            const normalizedC = normalizeCohortProjectName(rawC);
             const cKey = normalizedC.toLowerCase();
             if (
               cKey === "meta ads bootcamp" ||
@@ -10943,9 +11009,22 @@ export function RuangSosmedProvider({
         })
       );
 
+      const affectedItems = isRenamed
+        ? (stateRef.current.explorerItems || [])
+            .filter(
+              (it) =>
+                normalizeCohortProjectName(it.cohort).toLowerCase() ===
+                  oldNameLower ||
+                (it.cohort || "").trim().toLowerCase() === oldNameLower
+            )
+            .map((it) => ({ ...it, cohort: nextName }))
+        : [];
+
       setState((prev) => {
         const nextExplorer = isRenamed
           ? prev.explorerItems.map((it) =>
+              normalizeCohortProjectName(it.cohort).toLowerCase() ===
+                oldNameLower ||
               (it.cohort || "").trim().toLowerCase() === oldNameLower
                 ? { ...it, cohort: nextName }
                 : it
@@ -10978,6 +11057,13 @@ export function RuangSosmedProvider({
               })
               .ilike("cohort", oldName);
           } catch {}
+          for (const item of affectedItems) {
+            const key = item.title.trim().toLowerCase();
+            await pushContentToSupabase(
+              item,
+              stateRef.current.courseCurriculums?.[key]
+            );
+          }
         })();
       }
     },
@@ -11013,8 +11099,19 @@ export function RuangSosmedProvider({
       const fallbackCohort =
         nextCohorts[0]?.name || INITIAL_COHORT_PROJECTS[0].name;
 
+      const affectedItems = (stateRef.current.explorerItems || [])
+        .filter(
+          (it) =>
+            normalizeCohortProjectName(it.cohort).toLowerCase() ===
+              deletedNameLower ||
+            (it.cohort || "").trim().toLowerCase() === deletedNameLower
+        )
+        .map((it) => ({ ...it, cohort: fallbackCohort }));
+
       setState((prev) => {
         const nextExplorer = prev.explorerItems.map((it) =>
+          normalizeCohortProjectName(it.cohort).toLowerCase() ===
+            deletedNameLower ||
           (it.cohort || "").trim().toLowerCase() === deletedNameLower
             ? { ...it, cohort: fallbackCohort }
             : it
@@ -11046,6 +11143,13 @@ export function RuangSosmedProvider({
               })
               .ilike("cohort", deletedName);
           } catch {}
+          for (const item of affectedItems) {
+            const key = item.title.trim().toLowerCase();
+            await pushContentToSupabase(
+              item,
+              stateRef.current.courseCurriculums?.[key]
+            );
+          }
         })();
       }
     },

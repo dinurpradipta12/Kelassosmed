@@ -120,6 +120,7 @@ import {
 } from "@/lib/phase2-data";
 import { type CourseSectionAccordion } from "@/lib/phase5-data";
 import {
+  normalizeCohortProjectName,
   RuangSosmedProvider,
   useRuangSosmedStore,
 } from "@/context/RuangSosmedStore";
@@ -149,6 +150,7 @@ export type ActiveAuthoringMode =
 function RuangSosmedStudioInner() {
   const {
     explorerItems,
+    cohortProjects,
     ungradedQuizzes: quizzes,
     reportedIssues,
     discussionThreads,
@@ -205,11 +207,25 @@ function RuangSosmedStudioInner() {
         const saved = window.localStorage.getItem(
           "ruang_sosmed_admin_active_project_v1"
         );
-        if (saved) return saved;
+        const normalized = normalizeCohortProjectName(saved);
+        if (normalized) return normalized;
       } catch {}
     }
     return "Ruang Sosmed Class";
   });
+
+  useEffect(() => {
+    if (!Array.isArray(cohortProjects) || cohortProjects.length === 0) return;
+    const normalizedCurrent = normalizeCohortProjectName(activeProject);
+    const matching = cohortProjects.find(
+      (c) => c.name.trim().toLowerCase() === normalizedCurrent.toLowerCase()
+    );
+    const targetName =
+      matching?.name || cohortProjects[0]?.name || "Ruang Sosmed Class";
+    if (targetName && targetName !== activeProject) {
+      setActiveProject(targetName);
+    }
+  }, [cohortProjects, activeProject]);
   const [showProjectHub, setShowProjectHub] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
       try {

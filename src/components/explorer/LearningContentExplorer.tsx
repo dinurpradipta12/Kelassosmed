@@ -56,7 +56,11 @@ import {
 } from "@/lib/phase2-data";
 import { ContentBadge, ContentIconBox } from "@/components/ui/ContentBadge";
 import { ModalDialog } from "@/components/ui/ModalDialog";
-import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import {
+  doesItemMatchCohortProject,
+  normalizeCohortProjectName,
+  useRuangSosmedStore,
+} from "@/context/RuangSosmedStore";
 import { InviteCollaboratorModal } from "@/components/explorer/InviteCollaboratorModal";
 import { UploadAssetModal } from "@/components/explorer/UploadAssetModal";
 import { ThumbnailPickerModal } from "@/components/ui/ThumbnailPickerModal";
@@ -979,14 +983,6 @@ export function LearningContentExplorer({
 
   // Cohort-scoped items: each cohort/project only sees its own contents!
   const cohortScopedItems = React.useMemo(() => {
-    const activeP = activeProjectName.trim().toLowerCase();
-    const primaryName = (
-      cohortProjects?.[0]?.name || "Ruang Sosmed Class"
-    ).trim().toLowerCase();
-    const isActivePrimary =
-      activeP === primaryName ||
-      (activeP.includes("ruang sosmed") && primaryName.includes("ruang sosmed"));
-
     return items.filter((item) => {
       // Jika sedang membuka folder tertentu, tampilkan semua materi di dalam folder tersebut
       if (
@@ -1010,14 +1006,9 @@ export function LearningContentExplorer({
         return Boolean(item.isArchived);
       }
 
-      const itemC = (item.cohort || "").trim().toLowerCase();
-      if (itemC === activeP) return true;
-      if (isActivePrimary && (!itemC || itemC.includes("ruang sosmed"))) {
-        return true;
-      }
-      return false;
+      return doesItemMatchCohortProject(item.cohort, activeProjectName);
     });
-  }, [items, activeProjectName, activeSubView, cohortProjects, currentFolder]);
+  }, [items, activeProjectName, activeSubView, currentFolder]);
 
   // Filter items based on tab + sub-view + search query + currentFolder
   const filteredItems = cohortScopedItems
@@ -1110,7 +1101,9 @@ export function LearningContentExplorer({
   };
 
   const activeCohortObj = (cohortProjects || []).find(
-    (c) => c.name.trim().toLowerCase() === activeProjectName.trim().toLowerCase()
+    (c) =>
+      normalizeCohortProjectName(c.name).toLowerCase() ===
+      normalizeCohortProjectName(activeProjectName).toLowerCase()
   );
   const activeCohortColor = activeCohortObj?.color || "#EC4899";
 
@@ -1121,12 +1114,6 @@ export function LearningContentExplorer({
     (selectedTab === "All" || selectedTab === "Folder");
 
   if (showProjectPicker && !currentFolder && activeSubView === "recents") {
-    const primaryProjectName = (
-      cohortProjects[0]?.name || "Ruang Sosmed Class"
-    )
-      .trim()
-      .toLowerCase();
-
     return (
       <div
         key="project-picker-hub"
@@ -1154,23 +1141,13 @@ export function LearningContentExplorer({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {(cohortProjects || []).map((proj) => {
-            const pName = proj.name.trim().toLowerCase();
-            const isPrimary =
-              pName === primaryProjectName ||
-              (pName.includes("ruang sosmed") &&
-                primaryProjectName.includes("ruang sosmed"));
-
-            const projFolders = items.filter((it) => {
-              if (it.type !== "Folder" || it.isArchived || it.isTemplate) {
-                return false;
-              }
-              const itemC = (it.cohort || "").trim().toLowerCase();
-              if (itemC === pName) return true;
-              if (isPrimary && (!itemC || itemC.includes("ruang sosmed"))) {
-                return true;
-              }
-              return false;
-            });
+            const projFolders = items.filter(
+              (it) =>
+                it.type === "Folder" &&
+                !it.isArchived &&
+                !it.isTemplate &&
+                doesItemMatchCohortProject(it.cohort, proj.name)
+            );
 
             const projFolderNames = new Set(
               projFolders.map((f) => f.title.trim().toLowerCase())
@@ -1467,11 +1444,19 @@ export function LearningContentExplorer({
               if (!editingProject) return;
               const trimmed = editProjectTitle.trim();
               if (!trimmed) return;
+              const oldName = editingProject.name;
               updateCohortProject(editingProject.id, {
                 name: trimmed,
                 color: editProjectColor,
                 shareWithAllLearners: editProjectShareAll,
               });
+              if (
+                oldName.trim().toLowerCase() ===
+                  activeProjectName.trim().toLowerCase() &&
+                trimmed !== oldName
+              ) {
+                onSelectProject?.(trimmed);
+              }
               onShowToast(`Project "${trimmed}" berhasil diperbarui!`);
               setEditingProject(null);
             }}
@@ -1591,6 +1576,20 @@ export function LearningContentExplorer({
                   if (!deletingProject) return;
                   const removedName = deletingProject.name;
                   deleteCohortProject(deletingProject.id);
+                  if (
+                    removedName.trim().toLowerCase() ===
+                    activeProjectName.trim().toLowerCase()
+                  ) {
+                    const remaining = (cohortProjects || []).filter(
+                      (c) =>
+                        c.id !== deletingProject.id &&
+                        c.name.trim().toLowerCase() !==
+                          removedName.trim().toLowerCase()
+                    );
+                    onSelectProject?.(
+                      remaining[0]?.name || "Ruang Sosmed Class"
+                    );
+                  }
                   setDeletingProject(null);
                   onShowToast(`Project "${removedName}" berhasil dihapus.`);
                 }}

@@ -44,7 +44,10 @@ import {
   type RumiAssistantPrefs,
   type RumiAssistantSize,
 } from "@/lib/rumi-assistant-prefs";
-import { useRuangSosmedStore } from "@/context/RuangSosmedStore";
+import {
+  doesItemMatchCohortProject,
+  useRuangSosmedStore,
+} from "@/context/RuangSosmedStore";
 import { type AuthenticatedUser } from "@/components/navigation/GlobalRoleSwitcher";
 import { ContentBadge } from "@/components/ui/ContentBadge";
 import {
@@ -2816,23 +2819,13 @@ export function UserProfileScreen({
                   },
                 ]
             ).map((grp) => {
-              const isPrimary =
-                grp.name.toLowerCase().includes("ruang sosmed") ||
-                grp.name.toLowerCase().includes("class") ||
-                (cohortProjects?.[0]?.name &&
-                  grp.name.toLowerCase() ===
-                    cohortProjects[0].name.toLowerCase());
-
-              const cohortItemsCount = (explorerItems || []).filter((item) => {
-                if (item.cohort) {
-                  return item.cohort.toLowerCase() === grp.name.toLowerCase();
-                }
-                return isPrimary;
-              }).length;
+              const cohortItemsCount = (explorerItems || []).filter((item) =>
+                doesItemMatchCohortProject(item.cohort, grp.name)
+              ).length;
 
               return (
                 <div
-                  key={grp.id}
+                  key={`${grp.id || "cohort"}-${grp.name}`}
                   className="rounded-2xl bg-[#F8F9FB] p-5 border border-[#EAECEF] space-y-3 shadow-2xs"
                 >
                   <div className="flex items-center justify-between">
