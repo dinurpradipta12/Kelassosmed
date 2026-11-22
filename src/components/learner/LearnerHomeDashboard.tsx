@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ArrowRight,
   Award,
@@ -45,6 +45,7 @@ import {
   RumiEvolutionModal,
   RumiMascotIllustration,
 } from "@/components/learner/RumiEvolutionMascot";
+import { LiveLocalWeatherBar } from "@/components/learner/LiveLocalWeatherBar";
 
 export interface LearnerHomeFolderItem {
   name: string;
@@ -147,6 +148,19 @@ export function LearnerHomeDashboard({
   const [hoveredCourseId, setHoveredCourseId] = useState<string | null>(null);
   const [mascotPaused, setMascotPaused] = useState(false);
   const [evolutionModalOpen, setEvolutionModalOpen] = useState(false);
+  const [liveGreeting, setLiveGreeting] = useState<string | null>(null);
+
+  const handleHourChange = useCallback((hour24: number) => {
+    if (hour24 < 11) {
+      setLiveGreeting("Selamat pagi");
+    } else if (hour24 < 15) {
+      setLiveGreeting("Selamat siang");
+    } else if (hour24 < 18) {
+      setLiveGreeting("Selamat sore");
+    } else {
+      setLiveGreeting("Selamat malam");
+    }
+  }, []);
   const [mobileStatsOpen, setMobileStatsOpen] = useState(false);
 
   // Exclude unfoldered zero-progress spam items from Home KPIs & charts whenever real folders exist
@@ -340,32 +354,6 @@ export function LearnerHomeDashboard({
       rank,
     };
   }, [leaderboard, learnerDisplayName, totalPoints]);
-
-  // Cute speech bubble line reflecting Rumi evolution & next milestone
-  const mascotQuote = useMemo(() => {
-    if (stats.totalCourses === 0) {
-      return `Halo! Aku ${levelInfo.formName} ${levelInfo.emoji} Masukkan kode kelas dari mentor agar kita bisa mulai kumpulkan XP & berevolusi!`;
-    }
-    if (levelInfo.stage === 5) {
-      return `Wujud Superior tercapai! 🏆 Aku kini Superior Rumi berbekal ${levelInfo.xp} XP. Pertahankan dominasimu sebagai Agency Legend!`;
-    }
-    if (stats.overallPct >= 100) {
-      return `Keren banget! Semua kelas selesai. Kumpulkan ${levelInfo.xpToNext} XP lagi biar aku berevolusi jadi ${levelInfo.nextTier?.formName}! ✨`;
-    }
-    if (stats.completedChaptersAll > 0) {
-      return `Sekarang aku ${levelInfo.formName} (${levelInfo.title}). Butuh ${levelInfo.xpToNext} XP lagi untuk berevolusi ke ${levelInfo.nextTier?.formName}! 🚀`;
-    }
-    return `Aku ${levelInfo.formName} ${levelInfo.emoji} Selesaikan 1 bab (+${chapterXpReward} XP) atau login tiap hari (+${
-      computeAwardedXp("daily_login", activeTierKind).xp
-    } XP) biar aku makin dewasa!`;
-  }, [
-    stats.totalCourses,
-    stats.overallPct,
-    stats.completedChaptersAll,
-    levelInfo,
-    chapterXpReward,
-    activeTierKind,
-  ]);
 
   // Search filter across all assignedItems & learnerFolders when top navbar search is typed
   const searchResults = useMemo(() => {
@@ -620,11 +608,9 @@ export function LearnerHomeDashboard({
 
               <div>
                 <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#121215]">
-                  {timeGreeting}, {learnerFirstName}! 👋
+                  {liveGreeting || timeGreeting}, {learnerFirstName}! 👋
                 </h1>
-                <p className="mt-1 text-xs sm:text-[13px] font-medium text-[#475569] leading-relaxed max-w-2xl">
-                  {mascotQuote}
-                </p>
+                <LiveLocalWeatherBar onHourChange={handleHourChange} />
               </div>
 
               {/* XP Progress Bar + Evolution Modal Trigger */}
