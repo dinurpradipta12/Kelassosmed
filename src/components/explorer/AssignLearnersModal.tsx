@@ -137,7 +137,7 @@ export function AssignLearnersModal({
       if (!seenNames.has(name.toLowerCase())) {
         seenNames.add(name.toLowerCase());
         list.push({
-          id: cp.id || name,
+          id: `${cp.id || "cohort"}-${name}`,
           name,
           count: cp.count ?? candidateLearners.length,
         });

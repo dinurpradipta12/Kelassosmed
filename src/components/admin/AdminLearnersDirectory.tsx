@@ -3163,7 +3163,10 @@ export function AdminLearnersDirectory({
                 className="w-full rounded-lg bg-[#F8F9FB] px-3 py-2 text-xs text-[#121215] border border-[#EAECEF]"
               >
                 {(cohortProjects || []).map((cp) => (
-                  <option key={cp.id || cp.name} value={cp.name}>
+                  <option
+                    key={`${cp.id || "cohort"}-${cp.name}`}
+                    value={cp.name}
+                  >
                     {cp.name}
                   </option>
                 ))}

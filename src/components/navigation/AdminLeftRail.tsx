@@ -639,7 +639,10 @@ export function AdminLeftRail({
                       const isSelected = activeProject === proj.name;
                       const count = getComputedCohortCount(proj);
                       return (
-                        <li key={proj.id || proj.name} className="group/item relative">
+                        <li
+                          key={`${proj.id || "cohort"}-${proj.name}`}
+                          className="group/item relative"
+                        >
                           <div
                             className={`w-full flex items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs transition-all ${
                               isSelected

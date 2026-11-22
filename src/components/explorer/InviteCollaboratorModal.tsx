@@ -352,7 +352,10 @@ export function InviteCollaboratorModal({
                 className="w-full rounded-xl bg-[#FFFFFF] px-3.5 py-2.5 text-xs text-[#121215] border border-[#EAECEF] focus:border-[#4F39F6] focus:outline-none transition-colors"
               >
                 {(cohortProjects || []).map((cp) => (
-                  <option key={cp.id} value={cp.name}>
+                  <option
+                    key={`${cp.id || "cohort"}-${cp.name}`}
+                    value={cp.name}
+                  >
                     {cp.name}
                   </option>
                 ))}

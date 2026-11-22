@@ -2238,6 +2238,36 @@ function deduplicateExplorerItems(
   return result;
 }
 
+function dedupeCohortProjectIds(
+  list: CohortProjectItem[]
+): CohortProjectItem[] {
+  const usedIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const result: CohortProjectItem[] = [];
+
+  list.forEach((c, idx) => {
+    const cleanName = (c.name || "").trim();
+    const nameKey = cleanName.toLowerCase();
+    if (!nameKey || seenNames.has(nameKey)) return;
+    seenNames.add(nameKey);
+
+    let nextId =
+      (c.id || "").trim() || `cohort-${nameKey.replace(/[^a-z0-9]/g, "-")}`;
+    if (usedIds.has(nextId)) {
+      const slug = nameKey.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      nextId = slug ? `cohort-${slug}` : `cohort-item-${idx}`;
+      let suffix = 2;
+      while (usedIds.has(nextId)) {
+        nextId = `${slug ? `cohort-${slug}` : "cohort-item"}-${suffix++}`;
+      }
+    }
+    usedIds.add(nextId);
+    result.push({ ...c, id: nextId, name: cleanName });
+  });
+
+  return result;
+}
+
 function syncLearnerCatalogWithExplorer(
   explorerItems: ExplorerContentItem[],
   learnerItems: LearnerAssignedItem[],
@@ -3174,17 +3204,19 @@ export function RuangSosmedProvider({
             : INITIAL_COHORT_PROJECTS;
         })();
 
-        const mergedCohorts = rawCohorts
-          .map((c: CohortProjectItem) => {
-            if (c.name.toLowerCase() === "ruang sosmed core") {
-              return { ...c, name: "Ruang Sosmed Class" };
-            }
-            return c;
-          })
-          .filter(
-            (c: CohortProjectItem) =>
-              c.name.toLowerCase() !== "meta ads bootcamp"
-          );
+        const mergedCohorts = dedupeCohortProjectIds(
+          rawCohorts
+            .map((c: CohortProjectItem) => {
+              if (c.name.toLowerCase() === "ruang sosmed core") {
+                return { ...c, name: "Ruang Sosmed Class" };
+              }
+              return c;
+            })
+            .filter(
+              (c: CohortProjectItem) =>
+                c.name.toLowerCase() !== "meta ads bootcamp"
+            )
+        );
 
         const savedRewardsCatalog = (() => {
           try {
@@ -5401,7 +5433,9 @@ export function RuangSosmedProvider({
             INITIAL_COHORT_PROJECTS.forEach(registerCohort);
           }
 
-          const nextCohortProjects = Array.from(cohortMap.values());
+          const nextCohortProjects = dedupeCohortProjectIds(
+            Array.from(cohortMap.values())
+          );
           const cohortProjectsChanged =
             JSON.stringify(prev.cohortProjects || []) !==
             JSON.stringify(nextCohortProjects);

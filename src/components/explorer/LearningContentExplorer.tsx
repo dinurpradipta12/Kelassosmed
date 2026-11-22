@@ -1170,7 +1170,7 @@ export function LearningContentExplorer({
 
             return (
               <div
-                key={proj.id || proj.name}
+                key={`${proj.id || "cohort"}-${proj.name}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelectProject?.(proj.name)}
