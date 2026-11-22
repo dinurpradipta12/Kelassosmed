@@ -4745,11 +4745,20 @@ export function RuangSosmedProvider({
                 .slice(0, 2)
                 .toUpperCase() || "LN";
 
-            if (
-              !nextAssignees.some(
-                (a) => a.name.toLowerCase() === lrn.name.toLowerCase()
-              )
-            ) {
+            const lrnNameKey = lrn.name.trim().toLowerCase();
+            const existingAsgIdx = nextAssignees.findIndex(
+              (a) =>
+                (lrn.id && a.id === lrn.id) ||
+                a.name.trim().toLowerCase() === lrnNameKey
+            );
+            if (existingAsgIdx >= 0) {
+              nextAssignees[existingAsgIdx] = {
+                ...nextAssignees[existingAsgIdx],
+                id: lrn.id || nextAssignees[existingAsgIdx].id,
+                name: lrn.name,
+                initials,
+              };
+            } else {
               nextAssignees.push({
                 id: lrn.id,
                 name: lrn.name,
@@ -4807,6 +4816,19 @@ export function RuangSosmedProvider({
               });
             }
           });
+
+          const seenAsgIds = new Set<string>();
+          const seenAsgNames = new Set<string>();
+          const dedupedAssignees = nextAssignees.filter((a) => {
+            const idKey = (a.id || "").trim();
+            const nameKey = a.name.trim().toLowerCase();
+            if (!nameKey || seenAsgNames.has(nameKey)) return false;
+            if (idKey && seenAsgIds.has(idKey)) return false;
+            if (idKey) seenAsgIds.add(idKey);
+            seenAsgNames.add(nameKey);
+            return true;
+          });
+          nextAssignees.splice(0, nextAssignees.length, ...dedupedAssignees);
 
           const sortedLb = nextLeaderboard
             .sort((a, b) => b.points - a.points)
@@ -5472,6 +5494,7 @@ export function RuangSosmedProvider({
             prev.assignees.some(
               (a, idx) =>
                 a.id !== nextAssignees[idx]?.id ||
+                a.name !== nextAssignees[idx]?.name ||
                 a.roleBadge !== nextAssignees[idx]?.roleBadge
             );
           const lbChanged =
@@ -8454,7 +8477,9 @@ export function RuangSosmedProvider({
             .toUpperCase() || "LN";
 
         const nextAssignees = prev.assignees.some(
-          (a) => a.name.toLowerCase() === displayName.toLowerCase()
+          (a) =>
+            (learner.id && a.id === learner.id) ||
+            a.name.trim().toLowerCase() === displayName.trim().toLowerCase()
         )
           ? prev.assignees
           : [

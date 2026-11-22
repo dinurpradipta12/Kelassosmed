@@ -87,38 +87,41 @@ export function AssignLearnersModal({
       text: string;
       batch: string;
     }[] = [];
-    const seen = new Set<string>();
+    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
 
     for (const a of assignees || []) {
       const nameKey = a.name.trim().toLowerCase();
-      if (!seen.has(nameKey)) {
-        seen.add(nameKey);
-        list.push({
-          id: a.id,
-          name: a.name,
-          role: a.roleBadge || "Learner",
-          initials: a.initials,
-          bg: a.avatarBg || "#EEF2FF",
-          text: a.avatarText || "#4F39F6",
-          batch: "Registered Learners",
-        });
-      }
+      const idKey = (a.id || "").trim() || `asg-${nameKey}`;
+      if (!nameKey || seenNames.has(nameKey) || seenIds.has(idKey)) continue;
+      seenNames.add(nameKey);
+      seenIds.add(idKey);
+      list.push({
+        id: idKey,
+        name: a.name,
+        role: a.roleBadge || "Learner",
+        initials: a.initials,
+        bg: a.avatarBg || "#EEF2FF",
+        text: a.avatarText || "#4F39F6",
+        batch: "Registered Learners",
+      });
     }
 
     for (const l of leaderboard || []) {
       const nameKey = l.name.trim().toLowerCase();
-      if (!seen.has(nameKey)) {
-        seen.add(nameKey);
-        list.push({
-          id: `cand-${l.rank}-${l.name}`,
-          name: l.name,
-          role: l.role || "Learner",
-          initials: l.initials,
-          bg: l.avatarBg || "#EEF2FF",
-          text: l.avatarText || "#4F39F6",
-          batch: "Registered Learners",
-        });
-      }
+      const idKey = `cand-${l.rank}-${nameKey}`;
+      if (!nameKey || seenNames.has(nameKey) || seenIds.has(idKey)) continue;
+      seenNames.add(nameKey);
+      seenIds.add(idKey);
+      list.push({
+        id: idKey,
+        name: l.name,
+        role: l.role || "Learner",
+        initials: l.initials,
+        bg: l.avatarBg || "#EEF2FF",
+        text: l.avatarText || "#4F39F6",
+        batch: "Registered Learners",
+      });
     }
 
     return list;

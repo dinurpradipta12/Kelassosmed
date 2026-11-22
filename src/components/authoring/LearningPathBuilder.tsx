@@ -331,38 +331,41 @@ export function LearningPathBuilder({
 
   const candidateLearners: CandidateLearner[] = React.useMemo(() => {
     const list: CandidateLearner[] = [];
-    const seen = new Set<string>();
+    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
 
     for (const a of assignees || []) {
       const nameKey = a.name.trim().toLowerCase();
-      if (!seen.has(nameKey)) {
-        seen.add(nameKey);
-        list.push({
-          id: a.id,
-          name: a.name,
-          initials: a.initials,
-          role: a.roleBadge || "Learner",
-          department: "Marketing",
-          avatarBg: a.avatarBg || "#EEF2FF",
-          avatarText: a.avatarText || "#4F39F6",
-        });
-      }
+      const idKey = (a.id || "").trim() || `asg-${nameKey}`;
+      if (!nameKey || seenNames.has(nameKey) || seenIds.has(idKey)) continue;
+      seenNames.add(nameKey);
+      seenIds.add(idKey);
+      list.push({
+        id: idKey,
+        name: a.name,
+        initials: a.initials,
+        role: a.roleBadge || "Learner",
+        department: "Marketing",
+        avatarBg: a.avatarBg || "#EEF2FF",
+        avatarText: a.avatarText || "#4F39F6",
+      });
     }
 
     for (const l of leaderboard || []) {
       const nameKey = l.name.trim().toLowerCase();
-      if (!seen.has(nameKey)) {
-        seen.add(nameKey);
-        list.push({
-          id: `cand-${l.rank}-${l.name}`,
-          name: l.name,
-          initials: l.initials,
-          role: l.role || "Learner",
-          department: "Growth",
-          avatarBg: l.avatarBg || "#EEF2FF",
-          avatarText: l.avatarText || "#4F39F6",
-        });
-      }
+      const idKey = `cand-${l.rank}-${nameKey}`;
+      if (!nameKey || seenNames.has(nameKey) || seenIds.has(idKey)) continue;
+      seenNames.add(nameKey);
+      seenIds.add(idKey);
+      list.push({
+        id: idKey,
+        name: l.name,
+        initials: l.initials,
+        role: l.role || "Learner",
+        department: "Growth",
+        avatarBg: l.avatarBg || "#EEF2FF",
+        avatarText: l.avatarText || "#4F39F6",
+      });
     }
     return list;
   }, [assignees, leaderboard]);
