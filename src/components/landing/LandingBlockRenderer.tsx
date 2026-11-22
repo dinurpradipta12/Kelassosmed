@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useId, useRef } from "react";
 import {
   Sparkles,
   ArrowRight,
@@ -10,21 +10,28 @@ import {
   Award,
   Library,
   ChevronDown,
-  Play,
-  PlayCircle,
   ShieldCheck,
   Zap,
-  Lock,
-  CheckCircle2,
   X,
   Layers,
   ChevronRight,
+  KeyRound,
+  BookOpen,
+  MessageSquare,
+  Bot,
+  Gift,
+  Clock,
+  Compass,
+  FolderOpen,
+  FileText,
+  GraduationCap,
 } from "lucide-react";
 import type { LandingBlock, PricingTierItem } from "@/types/landing";
 import type { CheckoutItem } from "./PaymentCheckoutModal";
 import {
   HeroBlockRenderer,
   BenefitsBlockRenderer,
+  SystemShowcaseBlockRenderer,
   PaymentBlockRenderer,
   TextBlockRenderer,
   ImageBlockRenderer,
@@ -32,6 +39,32 @@ import {
   ClassBlockRenderer,
   CatalogBlockRenderer,
 } from "./editor/renderers";
+import { RumiMascotIllustration } from "@/components/learner/RumiEvolutionMascot";
+
+const FEATURE_ICON_MAP: Record<
+  string,
+  React.ComponentType<{ size?: number; className?: string }>
+> = {
+  Sparkles,
+  Users,
+  Award,
+  Library,
+  KeyRound,
+  BookOpen,
+  MessageSquare,
+  Bot,
+  Gift,
+  Clock,
+  ShieldCheck,
+  Zap,
+  Compass,
+  FolderOpen,
+  FileText,
+  Star,
+  GraduationCap,
+};
+
+const FALLBACK_FEATURE_ICONS = [Sparkles, Users, Award, Library] as const;
 
 interface LandingBlockRendererProps {
   block: LandingBlock;
@@ -63,6 +96,30 @@ export function LandingBlockRenderer({
   };
 
   const [selectedCurriculum, setSelectedCurriculum] = useState<any | null>(null);
+  const faqHeadingId = useId();
+  const faqListRef = useRef<HTMLDivElement>(null);
+  const [allFaqsOpen, setAllFaqsOpen] = useState(false);
+
+  const syncAllFaqsOpenState = () => {
+    const container = faqListRef.current;
+    if (!container) return;
+    const items = Array.from(
+      container.querySelectorAll<HTMLDetailsElement>(":scope > details")
+    );
+    setAllFaqsOpen(items.length > 0 && items.every((d) => d.open));
+  };
+
+  const handleToggleAllFaqs = () => {
+    const container = faqListRef.current;
+    if (!container) return;
+    const nextOpen = !allFaqsOpen;
+    for (const details of container.querySelectorAll<HTMLDetailsElement>(
+      ":scope > details"
+    )) {
+      details.open = nextOpen;
+    }
+    setAllFaqsOpen(nextOpen);
+  };
 
   useEffect(() => {
     if (!selectedCurriculum) return;
@@ -84,7 +141,10 @@ export function LandingBlockRenderer({
       const body = block.subheadline || block.body || data.body || "Deskripsi produk dan penawaran Anda.";
       const buttonLabel = block.ctaText || block.buttonLabel || data.buttonLabel || "Mulai Sekarang";
       const secondaryLabel = block.secondaryButtonLabel ?? data.secondaryButtonLabel;
+      const secondaryTargetId = data.secondaryTargetId || "flow-section";
       const imageUrl = block.imageUrl ?? data.imageUrl;
+      const stats = Array.isArray(data.stats) ? data.stats : [];
+      const showSystemPreview = Boolean(data.showSystemPreview) && !imageUrl;
 
       if (styleCfg.layoutVariant === "split") {
         return (
@@ -125,7 +185,7 @@ export function LandingBlockRenderer({
 
               <h1
                 style={styleCfg.textColor ? { color: styleCfg.textColor } : undefined}
-                className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#121215] leading-[1.15]"
+                className="text-3xl sm:text-5xl lg:text-[3.25rem] font-extrabold tracking-tight text-[#121215] leading-[1.15]"
               >
                 {headline}
               </h1>
@@ -153,7 +213,9 @@ export function LandingBlockRenderer({
                   <button
                     type="button"
                     onClick={() => {
-                      const el = document.getElementById("topics-section");
+                      const el =
+                        document.getElementById(secondaryTargetId) ||
+                        document.getElementById("topics-section");
                       el?.scrollIntoView({ behavior: "smooth" });
                     }}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#FFFFFF] hover:bg-[#F8F9FB] px-5 py-3.5 text-xs sm:text-sm font-bold text-[#121215] border border-[#EAECEF] hover:border-[#D1D5DB] transition-all cursor-pointer"
@@ -164,9 +226,28 @@ export function LandingBlockRenderer({
               </div>
             </div>
 
-            {/* Visual Image Banner Mockup */}
-            {imageUrl && (
-              <div className="mt-12 sm:mt-16 max-w-4xl mx-auto rounded-2xl p-2 sm:p-3 bg-gradient-to-b from-[#EAECEF] to-[#FFFFFF] border border-[#EAECEF] shadow-[0_20px_50px_rgba(16,15,17,0.08)]">
+            {/* System Stats Strip */}
+            {stats.length > 0 && (
+              <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto">
+                {stats.map((st: any, sIdx: number) => (
+                  <div
+                    key={sIdx}
+                    className="rounded-2xl bg-white border border-[#EAECEF] px-4 py-3 text-center shadow-2xs"
+                  >
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#5E5E5E]">
+                      {st.label}
+                    </div>
+                    <div className="mt-0.5 text-xs sm:text-sm font-extrabold text-[#121215]">
+                      {st.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Live Portal System Preview OR Uploaded Hero Image */}
+            {imageUrl ? (
+              <div className="mt-12 sm:mt-14 max-w-4xl mx-auto rounded-2xl p-2 sm:p-3 bg-gradient-to-b from-[#EAECEF] to-[#FFFFFF] border border-[#EAECEF] shadow-[0_20px_50px_rgba(16,15,17,0.08)]">
                 <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-[#121215]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -177,6 +258,82 @@ export function LandingBlockRenderer({
                   <div className="absolute inset-0 bg-gradient-to-t from-[#121215]/60 via-transparent to-transparent pointer-events-none" />
                 </div>
               </div>
+            ) : (
+              showSystemPreview && (
+                <div className="mt-12 sm:mt-14 max-w-4xl mx-auto rounded-3xl p-2 sm:p-3 bg-gradient-to-b from-[#EAECEF] to-[#FFFFFF] border border-[#EAECEF] shadow-[0_20px_50px_rgba(16,15,17,0.07)]">
+                  <div className="rounded-2xl bg-white border border-[#EAECEF] p-4 sm:p-6 space-y-5">
+                    {/* Top Mini Hero Bar inside Preview */}
+                    <div className="rounded-2xl bg-gradient-to-r from-[#EEF2FF]/90 via-white to-[#FFFBEB]/80 border border-[#EAECEF] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <RumiMascotIllustration
+                          stage={4}
+                          mood="happy"
+                          sizeClass="h-14 w-14"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-white border border-[#EAECEF] px-2.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                              👑 Lv.4 • Pro Rumi
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                              Auto-Assign + Redeem Kode
+                            </span>
+                          </div>
+                          <div className="text-sm sm:text-base font-extrabold text-[#121215] truncate">
+                            Portal Belajar &amp; Studio Karir Ruang Sosmed 2.0
+                          </div>
+                          <p className="text-[11px] text-[#5E5E5E] truncate">
+                            Lanjut bab terakhir, kumpulkan XP &amp; Poin Bintang, atau diskusi langsung dengan Mentor.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-1 shrink-0 sm:border-l sm:border-[#EAECEF] sm:pl-4 text-right">
+                        <div className="flex items-baseline gap-1 font-extrabold text-[#121215]">
+                          <span className="text-lg sm:text-xl tracking-tight">09:41</span>
+                          <span className="text-[10px] text-[#5E5E5E]">AM • WIB</span>
+                        </div>
+                        <span className="text-[10px] font-medium text-[#5E5E5E]">
+                          ☀️ 28°C Cerah • Realtime
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 3 Core Workspace Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3.5 space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-[#121215]">
+                          <BookOpen size={14} style={{ color: accent }} />
+                          <span>Ruang Kelas &amp; Wiki SOP</span>
+                        </div>
+                        <p className="text-[11px] text-[#5E5E5E] leading-relaxed">
+                          Video HD, halaman panduan, Wiki SOP agensi, Catatan per bab, dan Diskusi Q&amp;A Mentor.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3.5 space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-[#121215]">
+                          <Bot size={14} style={{ color: accent }} />
+                          <span>Rumi XP &amp; Stream Deck</span>
+                        </div>
+                        <p className="text-[11px] text-[#5E5E5E] leading-relaxed">
+                          Tumbuhkan Baby → Superior Rumi (Lv.1–5) dan navigasi cepat pakai pintasan Stream Deck 1–6.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl bg-[#F8F9FB] border border-[#EAECEF] p-3.5 space-y-1">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-[#121215]">
+                          <Award size={14} style={{ color: accent }} />
+                          <span>Rewards &amp; Sertifikat HD</span>
+                        </div>
+                        <p className="text-[11px] text-[#5E5E5E] leading-relaxed">
+                          Tukar Poin Bintang di Rewards Shop dan raih Sertifikat Kelulusan HD setelah kelas tuntas.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
             )}
           </div>
         </section>
@@ -185,16 +342,37 @@ export function LandingBlockRenderer({
 
     case "benefits":
       return (
-        <section style={customSectionStyle} className={`${paddingClass} bg-white border-b border-[#EAECEF]`}>
+        <section
+          id="flow-section"
+          style={customSectionStyle}
+          className={`scroll-mt-20 ${paddingClass} bg-white border-b border-[#EAECEF]`}
+        >
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
-            <BenefitsBlockRenderer block={block as any} />
+            <BenefitsBlockRenderer block={block as any} accentColor={accent} />
+          </div>
+        </section>
+      );
+
+    case "system_showcase":
+      return (
+        <section
+          id="ecosystem-section"
+          style={customSectionStyle}
+          className={`scroll-mt-20 rs-landing-deferred-section ${paddingClass} bg-[#F8F9FB] border-b border-[#EAECEF]`}
+        >
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <SystemShowcaseBlockRenderer
+              block={block as any}
+              accentColor={accent}
+              onActionClick={onActionClick}
+            />
           </div>
         </section>
       );
 
     case "payment":
       return (
-        <section id="payment-section" style={customSectionStyle} className={`${paddingClass} bg-white border-b border-[#EAECEF]`}>
+        <section id="payment-section" style={customSectionStyle} className={`scroll-mt-20 ${paddingClass} bg-white border-b border-[#EAECEF]`}>
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <PaymentBlockRenderer block={block as any} />
           </div>
@@ -252,7 +430,7 @@ export function LandingBlockRenderer({
         <section
           id="features-section"
           style={customSectionStyle}
-          className={`${paddingClass} bg-[#FFFFFF] border-b border-[#EAECEF]`}
+          className={`scroll-mt-20 ${paddingClass} bg-[#FFFFFF] border-b border-[#EAECEF]`}
         >
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <div className="text-center max-w-2xl mx-auto mb-12">
@@ -272,34 +450,31 @@ export function LandingBlockRenderer({
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {items.map((feat: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="rounded-2xl bg-[#F8F9FB] p-6 border border-[#EAECEF] hover:border-[#4F39F6]/40 hover:bg-[#FFFFFF] transition-all duration-200"
-                >
-                  <span
-                    style={{ backgroundColor: `${accent}18`, color: accent }}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl mb-4"
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {items.map((feat: any, idx: number) => {
+                const IconComponent =
+                  (feat.icon && FEATURE_ICON_MAP[feat.icon]) ||
+                  FALLBACK_FEATURE_ICONS[idx % FALLBACK_FEATURE_ICONS.length];
+                return (
+                  <div
+                    key={idx}
+                    className="rounded-2xl bg-[#F8F9FB] p-6 border border-[#EAECEF] hover:border-[#4F39F6]/40 hover:bg-[#FFFFFF] transition-all duration-200"
                   >
-                    {idx === 0 || feat.icon === "Sparkles" ? (
-                      <Sparkles size={18} />
-                    ) : idx === 1 || feat.icon === "Users" ? (
-                      <Users size={18} />
-                    ) : idx === 2 || feat.icon === "Award" ? (
-                      <Award size={18} />
-                    ) : (
-                      <Library size={18} />
-                    )}
-                  </span>
-                  <h3 className="text-sm font-bold text-[#121215] mb-1.5">
-                    {feat.title}
-                  </h3>
-                  <p className="text-xs text-[#5E5E5E] leading-relaxed">
-                    {feat.description}
-                  </p>
-                </div>
-              ))}
+                    <span
+                      style={{ backgroundColor: `${accent}18`, color: accent }}
+                      className="flex h-10 w-10 items-center justify-center rounded-xl mb-4"
+                    >
+                      <IconComponent size={18} />
+                    </span>
+                    <h3 className="text-sm font-bold text-[#121215] mb-1.5">
+                      {feat.title}
+                    </h3>
+                    <p className="text-xs text-[#5E5E5E] leading-relaxed">
+                      {feat.description}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -311,7 +486,7 @@ export function LandingBlockRenderer({
         <section
           id="topics-section"
           style={customSectionStyle}
-          className={`${paddingClass} bg-[#F8F9FB] border-b border-[#EAECEF]`}
+          className={`scroll-mt-20 rs-landing-deferred-section ${paddingClass} bg-[#F8F9FB] border-b border-[#EAECEF]`}
         >
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
             {/* Header Learning Center */}
@@ -540,13 +715,14 @@ export function LandingBlockRenderer({
 
     case "pricing":
       const tiers = Array.isArray(data.tiers) ? data.tiers : [];
+      const pricingFootnote = data.footnote;
       return (
         <section
           id="pricing-section"
           style={customSectionStyle}
-          className={`${paddingClass} bg-[#FFFFFF] border-b border-[#EAECEF]`}
+          className={`scroll-mt-20 rs-landing-deferred-section ${paddingClass} bg-[#FFFFFF] border-b border-[#EAECEF]`}
         >
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className={`${tiers.length >= 3 ? "max-w-6xl" : "max-w-5xl"} mx-auto px-4 sm:px-6`}>
             <div className="text-center max-w-2xl mx-auto mb-12">
               <h2
                 style={styleCfg.textColor ? { color: styleCfg.textColor } : undefined}
@@ -564,7 +740,7 @@ export function LandingBlockRenderer({
               )}
             </div>
 
-            <div className={`grid grid-cols-1 ${tiers.length === 3 ? "md:grid-cols-3" : tiers.length === 1 ? "max-w-md mx-auto" : "md:grid-cols-2"} gap-8 items-stretch`}>
+            <div className={`grid grid-cols-1 ${tiers.length === 3 ? "md:grid-cols-3" : tiers.length === 1 ? "max-w-md mx-auto" : "md:grid-cols-2"} gap-6 lg:gap-8 items-stretch`}>
               {tiers.map((tier: any, idx: number) => {
                 const isHighlight = tier.highlighted;
                 const handleTierClick = (e: React.MouseEvent) => {
@@ -665,6 +841,24 @@ export function LandingBlockRenderer({
                 );
               })}
             </div>
+
+            {pricingFootnote && (
+              <div className="mt-8 rounded-2xl bg-[#F8F9FB] border border-[#EAECEF] px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#5E5E5E]">
+                <div className="flex items-start sm:items-center gap-2.5">
+                  <KeyRound size={16} style={{ color: accent }} className="shrink-0 mt-0.5 sm:mt-0" />
+                  <p className="leading-relaxed">{pricingFootnote}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onActionClick?.("login")}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold shrink-0 hover:underline cursor-pointer"
+                  style={{ color: accent }}
+                >
+                  <span>Redeem Kode / Login</span>
+                  <ArrowRight size={13} />
+                </button>
+              </div>
+            )}
           </div>
         </section>
       );
@@ -674,7 +868,7 @@ export function LandingBlockRenderer({
       return (
         <section
           style={customSectionStyle}
-          className={`${paddingClass} bg-[#F8F9FB] border-b border-[#EAECEF]`}
+          className={`rs-landing-deferred-section ${paddingClass} bg-[#F8F9FB] border-b border-[#EAECEF]`}
         >
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <div className="text-center max-w-2xl mx-auto mb-12">
@@ -694,7 +888,7 @@ export function LandingBlockRenderer({
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className={`grid grid-cols-1 ${reviews.length >= 3 ? "md:grid-cols-3" : "md:grid-cols-2"} gap-6`}>
               {reviews.map((rev: any, idx: number) => (
                 <div
                   key={idx}
@@ -737,12 +931,14 @@ export function LandingBlockRenderer({
       return (
         <section
           id="faq-section"
+          aria-labelledby={faqHeadingId}
           style={customSectionStyle}
-          className={`${paddingClass} bg-[#FFFFFF] border-b border-[#EAECEF]`}
+          className={`scroll-mt-20 rs-landing-deferred-section ${paddingClass} bg-[#FFFFFF] border-b border-[#EAECEF]`}
         >
           <div className="max-w-3xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-12">
+            <div className="text-center mb-8">
               <h2
+                id={faqHeadingId}
                 style={styleCfg.textColor ? { color: styleCfg.textColor } : undefined}
                 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#121215]"
               >
@@ -758,18 +954,32 @@ export function LandingBlockRenderer({
               )}
             </div>
 
-            <div className="space-y-4">
+            {faqs.length > 1 && (
+              <div className="flex justify-end mb-4">
+                <button
+                  type="button"
+                  onClick={handleToggleAllFaqs}
+                  aria-expanded={allFaqsOpen}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#EAECEF] bg-[#F8F9FB] hover:bg-[#EAECEF]/70 px-3 py-1.5 text-[11px] font-bold text-[#121215] transition-colors cursor-pointer"
+                >
+                  <span>{allFaqsOpen ? "Tutup Semua" : "Buka Semua"}</span>
+                </button>
+              </div>
+            )}
+
+            <div ref={faqListRef} className="space-y-3">
               {faqs.map((faq: any, idx: number) => (
                 <details
                   key={idx}
-                  className="group rounded-2xl bg-[#F8F9FB] border border-[#EAECEF] p-5 [&_summary::-webkit-details-marker]:hidden"
+                  onToggle={syncAllFaqsOpenState}
+                  className="rs-faq-details group rounded-2xl bg-[#F8F9FB] border border-[#EAECEF] p-5 [&_summary::-webkit-details-marker]:hidden"
                 >
-                  <summary className="flex cursor-pointer items-center justify-between gap-4 font-semibold text-[#121215] text-xs sm:text-sm">
-                    <span>{faq.question}</span>
+                  <summary className="flex cursor-pointer list-none items-center gap-3 font-semibold text-[#121215] text-xs sm:text-sm">
                     <ChevronDown
                       size={16}
-                      className="transition duration-200 group-open:rotate-180 text-[#5E5E5E]"
+                      className="shrink-0 transition duration-200 -rotate-90 group-open:rotate-0 text-[#5E5E5E]"
                     />
+                    <span>{faq.question}</span>
                   </summary>
                   <p className="mt-3 text-xs text-[#5E5E5E] leading-relaxed pt-2 border-t border-[#EAECEF]">
                     {faq.answer}
@@ -788,7 +998,7 @@ export function LandingBlockRenderer({
             backgroundColor: styleCfg.bgColor || "#121215",
             color: styleCfg.textColor || "#FFFFFF",
           }}
-          className={`${paddingClass}`}
+          className={`rs-landing-deferred-section ${paddingClass}`}
         >
           <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-6">
             <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
@@ -797,7 +1007,7 @@ export function LandingBlockRenderer({
             <p className="text-xs sm:text-sm opacity-75 max-w-xl mx-auto leading-relaxed">
               {data.body || "Bergabung bersama komunitas pembelajar Ruang Sosmed 2.0."}
             </p>
-            <div className="pt-2">
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
                 style={{ backgroundColor: accent }}
@@ -807,6 +1017,16 @@ export function LandingBlockRenderer({
                 <span>{data.buttonLabel || "Daftar Akun Sekarang"}</span>
                 <ArrowRight size={16} />
               </button>
+
+              {data.secondaryButtonLabel && (
+                <button
+                  type="button"
+                  onClick={() => onActionClick?.("login")}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 px-6 py-3.5 text-xs sm:text-sm font-bold text-white transition-all cursor-pointer"
+                >
+                  <span>{data.secondaryButtonLabel}</span>
+                </button>
+              )}
             </div>
           </div>
         </section>

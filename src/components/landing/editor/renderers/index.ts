@@ -1,5 +1,6 @@
 export * from "./HeroBlockRenderer";
 export * from "./BenefitsBlockRenderer";
+export * from "./SystemShowcaseBlockRenderer";
 export * from "./PaymentBlockRenderer";
 export * from "./TextBlockRenderer";
 export * from "./ImageBlockRenderer";

@@ -24,6 +24,8 @@ import type {
   LandingBlock,
   HeroBlock,
   BenefitsBlock,
+  SystemShowcaseBlock,
+  SystemShowcaseTabItem,
   PaymentBlock,
   TextBlock,
   ImageBlock,
@@ -40,6 +42,7 @@ import {
   DEFAULT_HEADER_CONFIG,
   DEFAULT_PAYMENT_CONFIG,
   DEFAULT_FOOTER_CONFIG,
+  DEFAULT_SYSTEM_SHOWCASE_TABS,
 } from "@/types/landing";
 import { STORAGE_BUCKETS } from "@/lib/supabase/client";
 import { uploadOptimizedImageToStorage } from "@/lib/supabase/media-upload";
@@ -477,7 +480,19 @@ export function InspectorPanel({
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-100">
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <label className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                  <span>Tampilkan Live Preview Portal 2.0 (jika tanpa foto)</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedBlock.data?.showSystemPreview)}
+                    onChange={(e) =>
+                      handleFieldChange("showSystemPreview", e.target.checked)
+                    }
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                </label>
+
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Gambar Banner / Produk Hero
                 </label>
@@ -635,12 +650,163 @@ export function InspectorPanel({
                       className="w-full rounded-lg bg-white px-2 py-1 text-[11px] border border-slate-200"
                     >
                       <option value="Sparkles">Icon: Sparkles</option>
-                      <option value="Users">Icon: Users / Tim</option>
+                      <option value="KeyRound">Icon: Kunci / Redeem Kode</option>
+                      <option value="BookOpen">Icon: Buku / Ruang Kelas</option>
+                      <option value="MessageSquare">Icon: Diskusi / Catatan</option>
+                      <option value="Bot">Icon: Bot / Rumi Maskot</option>
+                      <option value="Gift">Icon: Hadiah / Rewards</option>
                       <option value="Award">Icon: Award / Sertifikat</option>
+                      <option value="Zap">Icon: Petir / Paket &amp; Trial</option>
+                      <option value="Clock">Icon: Jam / Realtime</option>
+                      <option value="ShieldCheck">Icon: Keamanan Akses</option>
+                      <option value="Compass">Icon: Katalog / Eksplorasi</option>
+                      <option value="FolderOpen">Icon: Folder Materi</option>
+                      <option value="Users">Icon: Users / Tim</option>
                       <option value="Library">Icon: Library / Dokumen</option>
                     </select>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* 2B. SYSTEM SHOWCASE BLOCK (Tab Ekosistem & Alur 2.0) */}
+          {selectedBlock.type === "system_showcase" && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Eyebrow Label
+                </label>
+                <input
+                  type="text"
+                  value={
+                    (selectedBlock as SystemShowcaseBlock).eyebrow ??
+                    selectedBlock.data?.eyebrow ??
+                    ""
+                  }
+                  onChange={(e) => handleFieldChange("eyebrow", e.target.value)}
+                  placeholder="EKSPLORASI EKOSISTEM 2.0"
+                  className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Judul Bagian (Heading)
+                </label>
+                <input
+                  type="text"
+                  value={
+                    (selectedBlock as SystemShowcaseBlock).heading ??
+                    selectedBlock.data?.heading ??
+                    ""
+                  }
+                  onChange={(e) => handleFieldChange("heading", e.target.value)}
+                  placeholder="Lihat Cara Kerja Setiap Sistem..."
+                  className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Sub-judul (Subtitle)
+                </label>
+                <textarea
+                  rows={2}
+                  value={
+                    (selectedBlock as SystemShowcaseBlock).subtitle ??
+                    selectedBlock.data?.subtitle ??
+                    ""
+                  }
+                  onChange={(e) => handleFieldChange("subtitle", e.target.value)}
+                  className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-none resize-y"
+                />
+              </div>
+
+              <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                <span className="text-xs font-bold text-slate-800 block">
+                  Tab Sistem (
+                  {(
+                    (selectedBlock as SystemShowcaseBlock).tabs ||
+                    selectedBlock.data?.tabs ||
+                    DEFAULT_SYSTEM_SHOWCASE_TABS
+                  ).length}
+                  )
+                </span>
+                {(
+                  (selectedBlock as SystemShowcaseBlock).tabs ||
+                  selectedBlock.data?.tabs ||
+                  DEFAULT_SYSTEM_SHOWCASE_TABS
+                ).map((tab: SystemShowcaseTabItem, tIdx: number) => {
+                  const updateTab = (patch: Partial<SystemShowcaseTabItem>) => {
+                    const baseTabs: SystemShowcaseTabItem[] = [
+                      ...((selectedBlock as SystemShowcaseBlock).tabs ||
+                        selectedBlock.data?.tabs ||
+                        DEFAULT_SYSTEM_SHOWCASE_TABS),
+                    ];
+                    baseTabs[tIdx] = { ...baseTabs[tIdx], ...patch };
+                    handleFieldChange("tabs", baseTabs);
+                  };
+
+                  return (
+                    <div
+                      key={tab.id || tIdx}
+                      className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2"
+                    >
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <input
+                          type="text"
+                          value={tab.tabLabel || ""}
+                          onChange={(e) => updateTab({ tabLabel: e.target.value })}
+                          placeholder="Label Tab"
+                          className="w-full rounded-lg bg-white px-2 py-1.5 text-xs border border-slate-200 font-bold"
+                        />
+                        <input
+                          type="text"
+                          value={tab.badge || ""}
+                          onChange={(e) => updateTab({ badge: e.target.value })}
+                          placeholder="Badge"
+                          className="w-full rounded-lg bg-white px-2 py-1.5 text-xs border border-slate-200"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={tab.title || ""}
+                        onChange={(e) => updateTab({ title: e.target.value })}
+                        placeholder="Judul Panel"
+                        className="w-full rounded-lg bg-white px-2 py-1.5 text-xs border border-slate-200 font-semibold"
+                      />
+                      <textarea
+                        rows={2}
+                        value={tab.subtitle || ""}
+                        onChange={(e) => updateTab({ subtitle: e.target.value })}
+                        placeholder="Deskripsi singkat..."
+                        className="w-full rounded-lg bg-white px-2 py-1.5 text-xs border border-slate-200"
+                      />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <select
+                          value={tab.visualType || "learner_portal"}
+                          onChange={(e) =>
+                            updateTab({ visualType: e.target.value as any })
+                          }
+                          className="w-full rounded-lg bg-white px-2 py-1 text-[11px] border border-slate-200"
+                        >
+                          <option value="learner_portal">Visual: Portal Siswa</option>
+                          <option value="rumi_evolution">Visual: Evolusi Rumi 1–5</option>
+                          <option value="access_rewards">Visual: Akses &amp; Hadiah</option>
+                          <option value="admin_studio">Visual: Admin Studio</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={tab.ctaLabel || ""}
+                          onChange={(e) => updateTab({ ctaLabel: e.target.value })}
+                          placeholder="Teks Tombol CTA"
+                          className="w-full rounded-lg bg-white px-2 py-1 text-[11px] border border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1206,6 +1372,19 @@ export function InspectorPanel({
                   );
                 })}
               </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Catatan Kaki Paket / Info Redeem Kode (Opsional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={selectedBlock.data?.footnote || ""}
+                  onChange={(e) => handleFieldChange("footnote", e.target.value)}
+                  placeholder="Punya Kode Akses Folder atau Kode Voucher PRO? ..."
+                  className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
             </div>
           )}
 
@@ -1491,15 +1670,46 @@ export function InspectorPanel({
                   className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-none"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Tombol Sekunder (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={selectedBlock.data?.secondaryButtonLabel || ""}
+                  onChange={(e) =>
+                    handleFieldChange("secondaryButtonLabel", e.target.value)
+                  }
+                  placeholder="Masuk & Redeem Kode"
+                  className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
             </div>
           )}
 
-          {/* 8. BENEFITS BLOCK */}
+          {/* 8. BENEFITS / ALUR FLOW BLOCK */}
           {selectedBlock.type === "benefits" && (
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Judul Bagian Manfaat
+                  Eyebrow Label (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={
+                    (selectedBlock as BenefitsBlock).eyebrow ??
+                    selectedBlock.data?.eyebrow ??
+                    ""
+                  }
+                  onChange={(e) => handleFieldChange("eyebrow", e.target.value)}
+                  placeholder="ALUR & FLOW SISTEM"
+                  className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Judul Bagian Manfaat / Alur
                 </label>
                 <input
                   type="text"
@@ -1517,10 +1727,27 @@ export function InspectorPanel({
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Sub-judul (Opsional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={
+                    (selectedBlock as BenefitsBlock).subtitle ??
+                    selectedBlock.data?.subtitle ??
+                    ""
+                  }
+                  onChange={(e) => handleFieldChange("subtitle", e.target.value)}
+                  placeholder="Deskripsi ringkas alur atau manfaat..."
+                  className="w-full rounded-xl bg-slate-50 px-3 py-2 text-xs border border-slate-200 focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
               <div className="space-y-3 pt-2 border-t border-slate-100">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-800">
-                    Daftar Kartu Manfaat
+                    Daftar Kartu Manfaat / Langkah
                   </span>
                   <button
                     type="button"
@@ -1529,8 +1756,9 @@ export function InspectorPanel({
                       const newItem = {
                         id: `benefit-${Date.now()}`,
                         number: current.length + 1,
-                        title: `Keunggulan ${current.length + 1}`,
-                        description: "Deskripsi singkat keunggulan produk Anda.",
+                        tag: "",
+                        title: `Langkah ${current.length + 1}`,
+                        description: "Deskripsi singkat langkah atau keunggulan.",
                       };
                       handleFieldChange("items", [...current, newItem]);
                     }}
@@ -1568,13 +1796,25 @@ export function InspectorPanel({
 
                     <input
                       type="text"
+                      value={item.tag || ""}
+                      onChange={(e) => {
+                        const current = [...((selectedBlock as BenefitsBlock).items || [])];
+                        current[idx] = { ...current[idx], tag: e.target.value };
+                        handleFieldChange("items", current);
+                      }}
+                      placeholder="Label Tahap (opsional, mis: Onboarding)"
+                      className="w-full rounded-lg bg-white px-2.5 py-1 text-[11px] border border-slate-200 text-slate-600 focus:outline-none"
+                    />
+
+                    <input
+                      type="text"
                       value={item.title || ""}
                       onChange={(e) => {
                         const current = [...((selectedBlock as BenefitsBlock).items || [])];
                         current[idx] = { ...current[idx], title: e.target.value };
                         handleFieldChange("items", current);
                       }}
-                      placeholder="Judul Keunggulan"
+                      placeholder="Judul Keunggulan / Langkah"
                       className="w-full rounded-lg bg-white px-2.5 py-1.5 text-xs border border-slate-200 font-semibold text-slate-800 focus:outline-none"
                     />
 
@@ -2321,10 +2561,10 @@ export function InspectorPanel({
                     className="w-full text-left p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     <div className="font-bold text-slate-900">
-                      🎓 Template Ruang Sosmed Official
+                      🎓 Template Ruang Sosmed 2.0 (Full Sistem &amp; Alur)
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5">
-                      Hero, Keunggulan, 3 Seri Kurikulum, Paket Harga + QRIS, Testimoni, FAQ &amp; CTA.
+                      Hero Live Preview, Alur 6 Langkah, Tab Ekosistem &amp; Rumi, 8 Fitur, 3 Kurikulum, Paket FREE/Basic/PRO, Testimoni, FAQ &amp; CTA.
                     </div>
                   </button>
                   <button

@@ -1734,3 +1734,63 @@ html[data-theme-mode="dark"] .rs-rumi-deck-tile[data-accent="violet"],
 .rs-rumi-deck-sublabel {
   color: var(--rumi-sublabel);
 }
+
+/* ============================================================================
+   Landing Page 2.0 — Smooth Anchor Scroll, Tabs, Accordion & Deferred Content
+   ============================================================================ */
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+.rs-landing-deferred-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 620px;
+}
+
+.rs-faq-details::details-content {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  contain: layout;
+}
+
+.rs-faq-details:not([open])::details-content {
+  block-size: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rs-faq-details::details-content {
+    transition-property: block-size, content-visibility, display;
+    transition-duration: 0.28s;
+    transition-timing-function: ease-in-out;
+    transition-behavior: allow-discrete;
+  }
+}
+
+.rs-system-tablist {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: inline proximity;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.rs-system-tablist::-webkit-scrollbar {
+  display: none;
+}
+
+.rs-system-tab {
+  position: relative;
+  flex: none;
+  scroll-snap-align: start;
+}
+
+.rs-system-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  border-block-end: 3px solid var(--rs-tab-accent, #4F39F6);
+}
+

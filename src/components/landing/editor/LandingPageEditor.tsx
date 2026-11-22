@@ -7,6 +7,7 @@ import type {
   BlockType,
   HeroBlock,
   BenefitsBlock,
+  SystemShowcaseBlock,
   PaymentBlock,
   TextBlock,
   ImageBlock,
@@ -18,6 +19,7 @@ import type {
 import {
   DEFAULT_EDITOR_LANDING_PAGE,
   INITIAL_LANDING_BLOCKS,
+  DEFAULT_SYSTEM_SHOWCASE_TABS,
   DEFAULT_HEADER_CONFIG,
   DEFAULT_PAYMENT_CONFIG,
   DEFAULT_FOOTER_CONFIG,
@@ -336,6 +338,19 @@ export function LandingPageEditor({
             heading: "Katalog Produk & Penawaran",
           },
         } as CatalogBlock;
+
+      case "system_showcase":
+        return {
+          id,
+          type: "system_showcase",
+          data: {
+            eyebrow: "EKSPLORASI EKOSISTEM 2.0",
+            heading: "Lihat Cara Kerja Setiap Sistem di Dalam Ruang Sosmed 2.0",
+            subtitle:
+              "Klik tiap tab untuk mengeksplorasi alur Portal Siswa, Evolusi Maskot Rumi 5 Tahap, Sistem Paket/Kode/Rewards, hingga Admin & Mentor Studio.",
+            tabs: JSON.parse(JSON.stringify(DEFAULT_SYSTEM_SHOWCASE_TABS)),
+          },
+        } as SystemShowcaseBlock;
 
       case "features":
         return {
@@ -682,17 +697,19 @@ export function LandingPageEditor({
         slug: "home",
         title: "Ruang Sosmed 2.0 — Official Platform",
         description:
-          "Kelas fundamental untuk belajar strategi social media organik, konten, dan roadmap menjadi Social Media Specialist profesional.",
-        headerImageUrl: "",
+          "Ekosistem LMS Social Media Specialist 100% Full Organik dengan Ruang Kelas interaktif, Rumi XP, Rewards Shop & Sertifikat HD.",
+        headerImageUrl: pageData.headerImageUrl || "",
         headerConfig: DEFAULT_HEADER_CONFIG,
-        paymentConfig: DEFAULT_PAYMENT_CONFIG,
+        paymentConfig: pageData.paymentConfig || DEFAULT_PAYMENT_CONFIG,
         footerConfig: DEFAULT_FOOTER_CONFIG,
         theme: "violet",
         status: "PUBLISHED",
-        blocks: INITIAL_LANDING_BLOCKS,
+        blocks: JSON.parse(JSON.stringify(INITIAL_LANDING_BLOCKS)),
       };
       pushState(officialPage);
-      onShowToast?.("Template Kursus Ruang Sosmed berhasil dimuat!");
+      onShowToast?.(
+        "Template Ruang Sosmed 2.0 (Full Sistem & Alur) berhasil dimuat!"
+      );
     }
   };
 
@@ -725,16 +742,16 @@ export function LandingPageEditor({
 
     setCheckoutItem(
       paidTier || {
-        name: "Learner PRO",
-        price: "Rp 149.000",
-        period: "Akses 1 Tahun",
-        badge: "Paling Diminati",
+        name: "PRO Unlimited",
+        price: "Rp 150.000",
+        period: "bulan",
+        badge: "Paling Lengkap • 100% Tanpa Batas",
         description:
           "Simulasi popup checkout QRIS & transfer bank berdasarkan konfigurasi pembayaran Anda.",
         features: [
-          "Akses penuh seluruh modul & studi kasus",
-          "Download template SOP & Rate Card",
-          "Sertifikat kelulusan resmi",
+          "Semua 7 Fitur Premium Tanpa Batas + 2× Multiplier XP Rumi",
+          "Unduh Template Dokumen Kerja & Wiki SOP",
+          "Sertifikat Kelulusan HD Resmi",
         ],
       }
     );
@@ -751,7 +768,7 @@ export function LandingPageEditor({
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem(
-            "ruang_sosmed_landing_config_v5",
+            "ruang_sosmed_landing_config_v6",
             JSON.stringify(pageData)
           );
         } catch (e) {

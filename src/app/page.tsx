@@ -496,13 +496,13 @@ function RuangSosmedStudioInner() {
     }
   };
 
-  // Landing Page & Public View state (v5 3 curriculums: Fundamental -> Intermediate -> Masterclass)
+  // Landing Page & Public View state (v6 Full System & Flow)
   const [landingConfig, setLandingConfig] = useState<LandingPageConfig>({
     id: "landing-main",
     slug: "home",
     title: "Ruang Sosmed 2.0 — Official Platform",
     description:
-      "Kelas fundamental untuk belajar strategi social media organik, konten, dan roadmap menjadi Social Media Specialist profesional.",
+      "Ekosistem LMS Social Media Specialist 100% Full Organik dengan Ruang Kelas interaktif, Rumi XP, Rewards Shop & Sertifikat HD.",
     headerImageUrl: "",
     headerConfig: DEFAULT_HEADER_CONFIG,
     paymentConfig: DEFAULT_PAYMENT_CONFIG,
@@ -518,7 +518,7 @@ function RuangSosmedStudioInner() {
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(
-          "ruang_sosmed_landing_config_v5",
+          "ruang_sosmed_landing_config_v6",
           JSON.stringify(newConfig)
         );
       } catch {}
@@ -541,30 +541,66 @@ function RuangSosmedStudioInner() {
         if (cancelled || error || !data) return;
 
         if (Array.isArray(data.blocks) && data.blocks.length > 0) {
+          const remoteBlocks = data.blocks as any[];
+          const hasV6Structure = remoteBlocks.some(
+            (b) => b?.type === "system_showcase" || b?.id === "block-flow"
+          );
+          const heroHeadline =
+            remoteBlocks.find((b) => b?.type === "hero")?.data?.headline || "";
+          const pricingTiers =
+            remoteBlocks.find((b) => b?.type === "pricing")?.data?.tiers || [];
+          const isUntouchedLegacyV5 =
+            !hasV6Structure &&
+            heroHeadline ===
+              "Belajar Strategi Konten & Roadmap Social Media Specialist dari Nol" &&
+            Array.isArray(pricingTiers) &&
+            pricingTiers.length === 2 &&
+            pricingTiers.some((t: any) =>
+              String(t?.price || "").includes("149.000")
+            );
+
           setLandingConfig((prev) => {
-            const merged: LandingPageConfig = {
-              ...prev,
-              id: data.id || prev.id,
-              slug: data.slug || prev.slug,
-              title: data.title || prev.title,
-              description: data.description ?? prev.description,
-              headerImageUrl: data.header_image_url ?? prev.headerImageUrl,
-              headerConfig: data.header_config
-                ? { ...DEFAULT_HEADER_CONFIG, ...data.header_config }
-                : prev.headerConfig || DEFAULT_HEADER_CONFIG,
-              paymentConfig: data.payment_config
-                ? { ...DEFAULT_PAYMENT_CONFIG, ...data.payment_config }
-                : prev.paymentConfig || DEFAULT_PAYMENT_CONFIG,
-              footerConfig: data.footer_config
-                ? { ...DEFAULT_FOOTER_CONFIG, ...data.footer_config }
-                : prev.footerConfig || DEFAULT_FOOTER_CONFIG,
-              theme: (data.theme as any) || prev.theme,
-              status: (data.status as any) || prev.status,
-              blocks: data.blocks,
-            };
+            const merged: LandingPageConfig = isUntouchedLegacyV5
+              ? {
+                  ...prev,
+                  id: data.id || prev.id,
+                  slug: data.slug || prev.slug,
+                  title: "Ruang Sosmed 2.0 — Official Platform",
+                  description:
+                    "Ekosistem LMS Social Media Specialist 100% Full Organik dengan Ruang Kelas interaktif, Rumi XP, Rewards Shop & Sertifikat HD.",
+                  headerImageUrl: data.header_image_url ?? prev.headerImageUrl,
+                  headerConfig: DEFAULT_HEADER_CONFIG,
+                  paymentConfig: data.payment_config
+                    ? { ...DEFAULT_PAYMENT_CONFIG, ...data.payment_config }
+                    : prev.paymentConfig || DEFAULT_PAYMENT_CONFIG,
+                  footerConfig: DEFAULT_FOOTER_CONFIG,
+                  theme: (data.theme as any) || prev.theme,
+                  status: (data.status as any) || prev.status,
+                  blocks: INITIAL_LANDING_BLOCKS,
+                }
+              : {
+                  ...prev,
+                  id: data.id || prev.id,
+                  slug: data.slug || prev.slug,
+                  title: data.title || prev.title,
+                  description: data.description ?? prev.description,
+                  headerImageUrl: data.header_image_url ?? prev.headerImageUrl,
+                  headerConfig: data.header_config
+                    ? { ...DEFAULT_HEADER_CONFIG, ...data.header_config }
+                    : prev.headerConfig || DEFAULT_HEADER_CONFIG,
+                  paymentConfig: data.payment_config
+                    ? { ...DEFAULT_PAYMENT_CONFIG, ...data.payment_config }
+                    : prev.paymentConfig || DEFAULT_PAYMENT_CONFIG,
+                  footerConfig: data.footer_config
+                    ? { ...DEFAULT_FOOTER_CONFIG, ...data.footer_config }
+                    : prev.footerConfig || DEFAULT_FOOTER_CONFIG,
+                  theme: (data.theme as any) || prev.theme,
+                  status: (data.status as any) || prev.status,
+                  blocks: data.blocks,
+                };
             try {
               window.localStorage.setItem(
-                "ruang_sosmed_landing_config_v5",
+                "ruang_sosmed_landing_config_v6",
                 JSON.stringify(merged)
               );
             } catch {}
@@ -610,7 +646,7 @@ function RuangSosmedStudioInner() {
   useEffect(() => {
     try {
       const cachedLanding = window.localStorage.getItem(
-        "ruang_sosmed_landing_config_v5"
+        "ruang_sosmed_landing_config_v6"
       );
       if (cachedLanding) {
         const parsedLanding = JSON.parse(cachedLanding);

@@ -41,6 +41,14 @@ const PRIMARY_LANDING_BLOCKS: BlockItemMeta[] = [
     iconColor: "text-amber-600",
   },
   {
+    type: "system_showcase",
+    title: "Ekosistem & Alur",
+    description: "Tab fitur, Rumi XP & Studio",
+    icon: Layers,
+    iconBg: "bg-violet-50",
+    iconColor: "text-violet-600",
+  },
+  {
     type: "features",
     title: "Keunggulan (Grid)",
     description: "4 kartu keunggulan roadmap",
