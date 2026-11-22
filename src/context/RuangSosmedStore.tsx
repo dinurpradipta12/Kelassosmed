@@ -367,6 +367,7 @@ const DELETED_REPLIES_STORAGE_KEY = "ruang_sosmed_deleted_replies_v1";
 const DELETED_CONTENT_IDS_STORAGE_KEY = "ruang_sosmed_deleted_content_ids_v1";
 const DELETED_CONTENT_TITLES_STORAGE_KEY = "ruang_sosmed_deleted_content_titles_v1";
 const DELETED_COHORTS_STORAGE_KEY = "ruang_sosmed_deleted_cohorts_v1";
+const COHORT_PROJECTS_TS_STORAGE_KEY = "ruang_sosmed_cohort_projects_ts_v1";
 const CONTENT_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function readStoredTombstoneMap(storageKey: string): Map<string, number> {
@@ -1118,14 +1119,19 @@ async function syncLearnerPagesConfigToSupabase(
 
 async function syncCohortProjectsToSupabase(
   cohorts: CohortProjectItem[],
-  deletedNames?: string[]
+  deletedNames?: string[],
+  updatedAtMs?: number
 ): Promise<void> {
   if (!isSupabaseConfigured || !Array.isArray(cohorts) || cohorts.length === 0) {
     return;
   }
   try {
     const existing = await getLatestSystemContentRow("__SYSTEM_COHORT_PROJECTS__");
-    const nowIso = new Date().toISOString();
+    const nowMs =
+      typeof updatedAtMs === "number" && Number.isFinite(updatedAtMs) && updatedAtMs > 0
+        ? updatedAtMs
+        : Date.now();
+    const nowIso = new Date(nowMs).toISOString();
 
     const payload = {
       cohortProjects: cohorts,
@@ -1133,6 +1139,7 @@ async function syncCohortProjectsToSupabase(
         ? { deletedNames }
         : {}),
       updatedAt: nowIso,
+      updatedAtMs: nowMs,
     };
 
     if (existing?.id) {
@@ -2921,6 +2928,8 @@ export function RuangSosmedProvider({
   const deletedContentTitlesRef = useRef<Map<string, number>>(new Map());
   const deletedCohortNamesRef = useRef<Set<string>>(new Set());
   const recentCohortMutationUntilRef = useRef<number>(0);
+  const lastCohortMutationTsRef = useRef<number>(0);
+  const lastRemoteCohortSyncSigRef = useRef<string>("");
   const recentLocalThreadPostsRef = useRef<Map<string, number>>(new Map());
   const recentLocalReplyPostsRef = useRef<Map<string, number>>(new Map());
   const knownAdminNotifIdsRef = useRef<Set<string>>(new Set());
@@ -3066,6 +3075,14 @@ export function RuangSosmedProvider({
         DELETED_CONTENT_TITLES_STORAGE_KEY
       );
       deletedCohortNamesRef.current = readStoredIdSet(DELETED_COHORTS_STORAGE_KEY);
+      try {
+        const rawCohortTs = Number(
+          window.localStorage.getItem(COHORT_PROJECTS_TS_STORAGE_KEY) || "0"
+        );
+        if (Number.isFinite(rawCohortTs) && rawCohortTs > 0) {
+          lastCohortMutationTsRef.current = rawCohortTs;
+        }
+      } catch {}
       let parsed: Partial<PersistedGlobalState> | null = null;
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -5086,6 +5103,21 @@ export function RuangSosmedProvider({
           )
             ? systemCohortProjectsRow.settings_json.cohortProjects
             : null;
+          const remoteCohortUpdatedAtMs = (() => {
+            const explicitMs = Number(
+              systemCohortProjectsRow?.settings_json?.updatedAtMs || 0
+            );
+            if (Number.isFinite(explicitMs) && explicitMs > 0) return explicitMs;
+            const parsed = Date.parse(
+              String(
+                systemCohortProjectsRow?.settings_json?.updatedAt ||
+                  systemCohortProjectsRow?.updated_at ||
+                  systemCohortProjectsRow?.created_at ||
+                  ""
+              )
+            );
+            return Number.isFinite(parsed) ? parsed : 0;
+          })();
           const remoteDeletedCohorts: string[] = Array.isArray(
             systemCohortProjectsRow?.settings_json?.deletedNames
           )
@@ -5551,8 +5583,12 @@ export function RuangSosmedProvider({
 
           const inRecentCohortMutation =
             Date.now() < recentCohortMutationUntilRef.current;
+          const isLocalCohortNewer =
+            inRecentCohortMutation ||
+            (lastCohortMutationTsRef.current > 0 &&
+              lastCohortMutationTsRef.current > remoteCohortUpdatedAtMs);
 
-          if (inRecentCohortMutation && prev.cohortProjects?.length) {
+          if (isLocalCohortNewer && prev.cohortProjects?.length) {
             prev.cohortProjects.forEach(registerCohort);
           } else if (remoteCohortProjects && remoteCohortProjects.length > 0) {
             remoteCohortProjects.forEach(registerCohort);
@@ -5603,13 +5639,35 @@ export function RuangSosmedProvider({
             const nextSerialized = JSON.stringify(nextCohortProjects);
             if (
               !remoteCohortProjects ||
-              inRecentCohortMutation ||
+              isLocalCohortNewer ||
               remoteSerialized !== nextSerialized
             ) {
-              void syncCohortProjectsToSupabase(
-                nextCohortProjects,
-                Array.from(deletedCohortNamesRef.current)
-              );
+              const deletedSnapshot = Array.from(deletedCohortNamesRef.current);
+              const syncSig = JSON.stringify({
+                cohorts: nextCohortProjects,
+                deleted: deletedSnapshot,
+              });
+              const syncTs =
+                isLocalCohortNewer && lastCohortMutationTsRef.current > 0
+                  ? lastCohortMutationTsRef.current
+                  : undefined;
+              if (
+                typeof window !== "undefined" &&
+                syncSig !== lastRemoteCohortSyncSigRef.current
+              ) {
+                lastRemoteCohortSyncSigRef.current = syncSig;
+                window.setTimeout(() => {
+                  void syncCohortProjectsToSupabase(
+                    nextCohortProjects,
+                    deletedSnapshot,
+                    syncTs
+                  ).then(() => {
+                    cachedContentsRowsRef.current = null;
+                    lastContentsWmKeyRef.current = "";
+                    lastWatermarkRef.current = "";
+                  });
+                }, 0);
+              }
             }
           }
 
@@ -10892,10 +10950,54 @@ export function RuangSosmedProvider({
   );
 
   // 9. Cohorts / Projects Management Handlers
+  const findCohortTarget = (
+    list: CohortProjectItem[],
+    idOrName: string
+  ): CohortProjectItem | undefined => {
+    const needleLower = idOrName.trim().toLowerCase();
+    const normalizedNeedleLower =
+      normalizeCohortProjectName(idOrName).toLowerCase();
+    return list.find((c) => {
+      const cNameLower = c.name.trim().toLowerCase();
+      const cNormLower = normalizeCohortProjectName(c.name).toLowerCase();
+      return (
+        c.id === idOrName ||
+        cNameLower === needleLower ||
+        (normalizedNeedleLower !== "" && cNormLower === normalizedNeedleLower)
+      );
+    });
+  };
+
   const persistCohortProjects = useCallback(
     (nextCohorts: CohortProjectItem[]) => {
-      recentCohortMutationUntilRef.current = Date.now() + 12000;
-      cachedContentsRowsRef.current = null;
+      const nowMs = Date.now();
+      lastCohortMutationTsRef.current = nowMs;
+      recentCohortMutationUntilRef.current = nowMs + 15000;
+      const deletedSnapshot = Array.from(deletedCohortNamesRef.current);
+      lastRemoteCohortSyncSigRef.current = JSON.stringify({
+        cohorts: nextCohorts,
+        deleted: deletedSnapshot,
+      });
+
+      if (Array.isArray(cachedContentsRowsRef.current)) {
+        const nowIso = new Date(nowMs).toISOString();
+        cachedContentsRowsRef.current = cachedContentsRowsRef.current.map(
+          (row) =>
+            row?.title === "__SYSTEM_COHORT_PROJECTS__"
+              ? {
+                  ...row,
+                  updated_at: nowIso,
+                  settings_json: {
+                    ...(row.settings_json || {}),
+                    cohortProjects: nextCohorts,
+                    deletedNames: deletedSnapshot,
+                    updatedAt: nowIso,
+                    updatedAtMs: nowMs,
+                  },
+                }
+              : row
+        );
+      }
       lastContentsWmKeyRef.current = "";
       lastWatermarkRef.current = "";
       try {
@@ -10904,12 +11006,21 @@ export function RuangSosmedProvider({
             "ruang_sosmed_cohort_projects_v1",
             JSON.stringify(nextCohorts)
           );
+          window.localStorage.setItem(
+            COHORT_PROJECTS_TS_STORAGE_KEY,
+            String(nowMs)
+          );
         }
       } catch {}
       void syncCohortProjectsToSupabase(
         nextCohorts,
-        Array.from(deletedCohortNamesRef.current)
-      );
+        deletedSnapshot,
+        nowMs
+      ).then(() => {
+        cachedContentsRowsRef.current = null;
+        lastContentsWmKeyRef.current = "";
+        lastWatermarkRef.current = "";
+      });
     },
     []
   );
@@ -10964,13 +11075,8 @@ export function RuangSosmedProvider({
         shareWithAllLearners?: boolean;
       }
     ) => {
-      const needleLower = idOrName.trim().toLowerCase();
       const current = stateRef.current.cohortProjects || [];
-      const target = current.find(
-        (c) =>
-          c.id === idOrName ||
-          c.name.trim().toLowerCase() === needleLower
-      );
+      const target = findCohortTarget(current, idOrName);
       if (!target) return;
 
       const oldName = target.name.trim();
@@ -11072,13 +11178,8 @@ export function RuangSosmedProvider({
 
   const deleteCohortProject = useCallback(
     (idOrName: string) => {
-      const needleLower = idOrName.trim().toLowerCase();
       const current = stateRef.current.cohortProjects || [];
-      const target = current.find(
-        (c) =>
-          c.id === idOrName ||
-          c.name.trim().toLowerCase() === needleLower
-      );
+      const target = findCohortTarget(current, idOrName);
       if (!target) return;
 
       const deletedName = target.name.trim();
