@@ -1625,9 +1625,9 @@ export function ActiveLearningClassroom({
                           const isActive = ch.id === currentChapter.id;
                           const chAccess = getChapterAccess(ch);
                           const chIsProOnly =
-                            typeof ch.isPro === "boolean"
-                              ? ch.isPro
-                              : Boolean(courseIsPro) || ch.type === "Assignment";
+                            Boolean(courseIsPro) ||
+                            Boolean(ch.isPro) ||
+                            ch.type === "Assignment";
                           const proLocked = !chAccess.unlocked;
                           const globalIdx = flatChapters.findIndex(
                             (fc) => fc.id === ch.id

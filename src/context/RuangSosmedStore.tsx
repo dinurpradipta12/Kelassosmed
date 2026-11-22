@@ -2107,21 +2107,21 @@ function overlayLocalProgress(
         videoTitle: c.videoTitle || l.videoTitle || resolvedTitle,
         videoDuration: c.videoDuration || l.videoDuration || resolvedDuration,
         videoMode: c.videoMode || l.videoMode || "embed",
-        isPro: l.isPro !== undefined ? l.isPro : (c.isPro ?? false),
+        isPro: c.isPro !== undefined ? c.isPro : (l.isPro ?? false),
         ...(l.unlockPointsCost !== undefined || c.unlockPointsCost !== undefined
           ? {
               unlockPointsCost:
-                l.unlockPointsCost !== undefined
-                  ? l.unlockPointsCost
-                  : c.unlockPointsCost,
+                c.unlockPointsCost !== undefined
+                  ? c.unlockPointsCost
+                  : l.unlockPointsCost,
             }
           : {}),
         ...(l.unlockPriceIdr !== undefined || c.unlockPriceIdr !== undefined
           ? {
               unlockPriceIdr:
-                l.unlockPriceIdr !== undefined
-                  ? l.unlockPriceIdr
-                  : c.unlockPriceIdr,
+                c.unlockPriceIdr !== undefined
+                  ? c.unlockPriceIdr
+                  : l.unlockPriceIdr,
             }
           : {}),
         completed: l.completed ?? c.completed ?? false,
@@ -2598,6 +2598,7 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
       isPro?: boolean;
       unlockPriceIdr?: number;
       unlockPointsCost?: number;
+      curriculum?: CourseSectionAccordion[];
     }
   ) => void;
   addWikiResourceCard: (card: WikiResourceCard) => void;
@@ -2787,7 +2788,8 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
   getCourseCurriculum: (courseTitle: string) => CourseSectionAccordion[] | null;
   saveCourseCurriculumLive: (
     courseTitle: string,
-    sections: CourseSectionAccordion[]
+    sections: CourseSectionAccordion[],
+    options?: { immediate?: boolean }
   ) => void;
 
   // 11. Certificate Studio Design Customizer (Global & Per-Course Override)
@@ -2928,6 +2930,7 @@ export function RuangSosmedProvider({
   const deletedContentTitlesRef = useRef<Map<string, number>>(new Map());
   const deletedCohortNamesRef = useRef<Set<string>>(new Set());
   const recentCohortMutationUntilRef = useRef<number>(0);
+  const recentCurriculumMutationUntilRef = useRef<Map<string, number>>(new Map());
   const lastCohortMutationTsRef = useRef<number>(0);
   const lastRemoteCohortSyncSigRef = useRef<string>("");
   const recentLocalThreadPostsRef = useRef<Map<string, number>>(new Map());
@@ -3005,6 +3008,17 @@ export function RuangSosmedProvider({
 
         const remoteCurr = (data as any).settings_json?.curriculum;
         if (!Array.isArray(remoteCurr) || remoteCurr.length === 0) return;
+
+        const inRecentCurrMutation =
+          Date.now() <
+          (recentCurriculumMutationUntilRef.current.get(titleKey) || 0);
+        if (
+          inRecentCurrMutation &&
+          Array.isArray(stateRef.current.courseCurriculums?.[titleKey]) &&
+          stateRef.current.courseCurriculums[titleKey].length > 0
+        ) {
+          return;
+        }
 
         let localCurr: CourseSectionAccordion[] | null =
           stateRef.current.courseCurriculums?.[titleKey] || null;
@@ -5265,7 +5279,17 @@ export function RuangSosmedProvider({
                     window.localStorage.getItem(`ruang_sosmed_thumb_${key}`)
                   : null;
 
-              if (Array.isArray(dbCurr) && dbCurr.length > 0) {
+              const inRecentCurrMutation =
+                Date.now() <
+                (recentCurriculumMutationUntilRef.current.get(key) || 0);
+
+              if (
+                inRecentCurrMutation &&
+                Array.isArray(prev.courseCurriculums?.[key]) &&
+                prev.courseCurriculums[key].length > 0
+              ) {
+                nextCurriculums[key] = prev.courseCurriculums[key];
+              } else if (Array.isArray(dbCurr) && dbCurr.length > 0) {
                 const rawMerged = overlayLocalProgress(dbCurr, localCurr);
                 const hasFreshLocalBody = Boolean(
                   r.__isLightweightRow &&
@@ -7870,6 +7894,7 @@ export function RuangSosmedProvider({
         isPro?: boolean;
         unlockPriceIdr?: number;
         unlockPointsCost?: number;
+        curriculum?: CourseSectionAccordion[];
       }
     ) => {
       const normalizedNeedle = idOrTitle.trim().toLowerCase();
@@ -7908,6 +7933,14 @@ export function RuangSosmedProvider({
           : {}),
       };
 
+      if (patch.curriculum) {
+        recentCurriculumMutationUntilRef.current.set(newKey, Date.now() + 15000);
+        if (curriculumPushTimer.current) {
+          clearTimeout(curriculumPushTimer.current);
+          curriculumPushTimer.current = null;
+        }
+      }
+
       if (typeof window !== "undefined") {
         try {
           if (patch.thumbnailUrl !== undefined) {
@@ -7945,6 +7978,12 @@ export function RuangSosmedProvider({
               }
             }
           }
+          if (patch.curriculum) {
+            window.localStorage.setItem(
+              `ruang_sosmed_curriculum_${newKey}`,
+              JSON.stringify(patch.curriculum)
+            );
+          }
         } catch {}
       }
 
@@ -7952,7 +7991,20 @@ export function RuangSosmedProvider({
         const nextExplorer = prev.explorerItems.map((item) =>
           item.id === target.id ? updatedItem : item
         );
-        const nextCatalog = prev.learnerAssignedItems.map((item) =>
+        let nextCurriculums = prev.courseCurriculums;
+        if (patch.curriculum) {
+          nextCurriculums = {
+            ...(prev.courseCurriculums || {}),
+            [newKey]: patch.curriculum,
+          };
+          if (isRenamed) delete nextCurriculums[oldKey];
+        } else if (isRenamed && prev.courseCurriculums?.[oldKey]) {
+          nextCurriculums = { ...prev.courseCurriculums };
+          nextCurriculums[newKey] = nextCurriculums[oldKey];
+          delete nextCurriculums[oldKey];
+        }
+
+        const mappedCatalog = prev.learnerAssignedItems.map((item) =>
           item.id === target.id ||
           item.title.trim().toLowerCase() === oldKey
             ? {
@@ -7977,13 +8029,13 @@ export function RuangSosmedProvider({
               }
             : item
         );
-
-        let nextCurriculums = prev.courseCurriculums;
-        if (isRenamed && prev.courseCurriculums?.[oldKey]) {
-          nextCurriculums = { ...prev.courseCurriculums };
-          nextCurriculums[newKey] = nextCurriculums[oldKey];
-          delete nextCurriculums[oldKey];
-        }
+        const nextCatalog = patch.curriculum
+          ? syncLearnerCatalogWithExplorer(
+              nextExplorer,
+              mappedCatalog,
+              nextCurriculums
+            )
+          : mappedCatalog;
 
         return {
           ...prev,
@@ -7998,10 +8050,15 @@ export function RuangSosmedProvider({
       lastWatermarkRef.current = "";
 
       const currentCurr =
+        patch.curriculum ??
         stateRef.current.courseCurriculums?.[newKey] ??
         stateRef.current.courseCurriculums?.[oldKey] ??
         null;
-      void pushContentToSupabase(updatedItem, currentCurr);
+      void pushContentToSupabase(updatedItem, currentCurr).then(() => {
+        cachedContentsRowsRef.current = null;
+        lastContentsWmKeyRef.current = "";
+        lastWatermarkRef.current = "";
+      });
     },
     []
   );
@@ -11355,9 +11412,37 @@ export function RuangSosmedProvider({
   );
 
   const saveCourseCurriculumLive = useCallback(
-    (courseTitle: string, sections: CourseSectionAccordion[]) => {
+    (
+      courseTitle: string,
+      sections: CourseSectionAccordion[],
+      options?: { immediate?: boolean }
+    ) => {
       const key = courseTitle.toLowerCase().trim();
       if (!key) return;
+      recentCurriculumMutationUntilRef.current.set(key, Date.now() + 15000);
+
+      if (Array.isArray(cachedContentsRowsRef.current)) {
+        const outline = buildCompactChapterOutline(sections);
+        cachedContentsRowsRef.current = cachedContentsRowsRef.current.map(
+          (row) => {
+            if (String(row?.title || "").trim().toLowerCase() !== key) return row;
+            return {
+              ...row,
+              settings_json: {
+                ...(row.settings_json || {}),
+                curriculum: sections,
+                explorer_meta: {
+                  ...(row.settings_json?.explorer_meta || {}),
+                  chapterOutline: outline,
+                },
+              },
+            };
+          }
+        );
+      }
+      lastContentsWmKeyRef.current = "";
+      lastWatermarkRef.current = "";
+
       if (typeof window !== "undefined") {
         try {
           window.localStorage.setItem(
@@ -11366,17 +11451,26 @@ export function RuangSosmedProvider({
           );
         } catch {}
       }
-      setState((prev) => ({
-        ...prev,
-        courseSections:
-          key === "fundamental social media specialist"
-            ? sections
-            : prev.courseSections,
-        courseCurriculums: {
+      setState((prev) => {
+        const nextCurriculums = {
           ...(prev.courseCurriculums || {}),
           [key]: sections,
-        },
-      }));
+        };
+        const nextCatalog = syncLearnerCatalogWithExplorer(
+          prev.explorerItems,
+          prev.learnerAssignedItems,
+          nextCurriculums
+        );
+        return {
+          ...prev,
+          courseSections:
+            key === "fundamental social media specialist"
+              ? sections
+              : prev.courseSections,
+          courseCurriculums: nextCurriculums,
+          learnerAssignedItems: nextCatalog,
+        };
+      });
 
       addLearnerNotification({
         id: `notif-curriculum-live-${Date.now()}`,
@@ -11388,16 +11482,20 @@ export function RuangSosmedProvider({
         meta: { contentTitle: courseTitle },
       });
 
-      // Sinkronkan perubahan kurikulum (termasuk videoUrl & hide/show) ke Supabase HANYA jika course sudah terdaftar di explorerItems
+      // Sinkronkan perubahan kurikulum (termasuk isPro, videoUrl & hide/show) ke Supabase
       const target = stateRef.current.explorerItems.find(
         (e) => e.title.trim().toLowerCase() === key
       );
       if (target) {
         if (curriculumPushTimer.current) {
           clearTimeout(curriculumPushTimer.current);
+          curriculumPushTimer.current = null;
         }
-        curriculumPushTimer.current = setTimeout(() => {
+        const runPush = () => {
           void pushContentToSupabase(target, sections).then((dbId) => {
+            cachedContentsRowsRef.current = null;
+            lastContentsWmKeyRef.current = "";
+            lastWatermarkRef.current = "";
             if (dbId && dbId !== target.id) {
               setState((prev) => ({
                 ...prev,
@@ -11407,7 +11505,12 @@ export function RuangSosmedProvider({
               }));
             }
           });
-        }, 800);
+        };
+        if (options?.immediate) {
+          runPush();
+        } else {
+          curriculumPushTimer.current = setTimeout(runPush, 400);
+        }
       }
     },
     [addLearnerNotification]

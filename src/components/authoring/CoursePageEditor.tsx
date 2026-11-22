@@ -1096,9 +1096,12 @@ export function CoursePageEditor({
                     language: courseLang,
                     isPro: courseIsPro,
                     description: currentChapter?.bodyText?.slice(0, 200) || "",
+                    curriculum: mappedSections,
                   }
                 );
-                saveCourseCurriculumLive(cleanTitle, mappedSections);
+                saveCourseCurriculumLive(cleanTitle, mappedSections, {
+                  immediate: !currentExplorerItem,
+                });
                 savedTitleRef.current = cleanTitle;
                 if (cleanTitle !== docTitle) setDocTitle(cleanTitle);
 
@@ -1172,7 +1175,9 @@ export function CoursePageEditor({
                     }
                   } catch {}
                 }
-                saveCourseCurriculumLive(cleanTitle, mappedSections);
+                saveCourseCurriculumLive(cleanTitle, mappedSections, {
+                  immediate: !(hasBanner || courseIsPro),
+                });
 
                 setLastSavedLabel("Published in Ruang Sosmed 2.0");
                 onPublish(
@@ -1191,6 +1196,7 @@ export function CoursePageEditor({
                       : {}),
                     language: courseLang,
                     isPro: courseIsPro,
+                    curriculum: mappedSections,
                   });
                 }
               }}
@@ -1345,20 +1351,66 @@ export function CoursePageEditor({
                     </div>
                   </div>
 
-                  {/* Sub-header: N CHAPTERS + [+] button (matches ref Image 1 & 5) */}
-                  <div className="flex items-center justify-between px-0.5 pb-2 mb-2 border-b border-[#EAECEF]">
+                  {/* Sub-header: N CHAPTERS + Section PRO/Gratis toggle + [+] button */}
+                  <div className="flex items-center justify-between gap-1.5 px-0.5 pb-2 mb-2 border-b border-[#EAECEF]">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">
                       {section.chapters.length} CHAPTER
                       {section.chapters.length !== 1 ? "S" : ""}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleAddChapter(section.id)}
-                      title="Add chapter to this section"
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F8F9FB] hover:bg-[#4F39F6] text-[#5E5E5E] hover:text-white border border-[#EAECEF] transition-colors cursor-pointer"
-                    >
-                      <Plus size={11} strokeWidth={2.5} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {section.chapters.length > 0 && (() => {
+                        const allSectionPro = section.chapters.every((c) =>
+                          Boolean(c.isPro)
+                        );
+                        return (
+                          <button
+                            type="button"
+                            disabled={previewMode}
+                            onClick={() => {
+                              const nextPro = !allSectionPro;
+                              setSections((prev) =>
+                                prev.map((s) =>
+                                  s.id === section.id
+                                    ? {
+                                        ...s,
+                                        chapters: s.chapters.map((c) => ({
+                                          ...c,
+                                          isPro: nextPro,
+                                        })),
+                                      }
+                                    : s
+                                )
+                              );
+                              onShowToast(
+                                nextPro
+                                  ? `🔒 Semua bab di "${section.title}" diatur ke PRO.`
+                                  : `🔓 Semua bab di "${section.title}" diatur ke Gratis.`
+                              );
+                            }}
+                            title={
+                              allSectionPro
+                                ? "Ubah semua bab di section ini menjadi Gratis"
+                                : "Set semua bab di section ini menjadi Khusus PRO"
+                            }
+                            className={`rounded border px-1.5 py-0.5 text-[9px] font-bold cursor-pointer transition-colors disabled:opacity-50 ${
+                              allSectionPro
+                                ? "bg-[#FEF3C7] border-[#F59E0B]/50 text-[#92400E] hover:bg-[#FDE68A]"
+                                : "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                            }`}
+                          >
+                            {allSectionPro ? "Section: PRO" : "Section: Gratis"}
+                          </button>
+                        );
+                      })()}
+                      <button
+                        type="button"
+                        onClick={() => handleAddChapter(section.id)}
+                        title="Add chapter to this section"
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#F8F9FB] hover:bg-[#4F39F6] text-[#5E5E5E] hover:text-white border border-[#EAECEF] transition-colors cursor-pointer"
+                      >
+                        <Plus size={11} strokeWidth={2.5} />
+                      </button>
+                    </div>
                   </div>
 
                   <ul className="space-y-1.5">

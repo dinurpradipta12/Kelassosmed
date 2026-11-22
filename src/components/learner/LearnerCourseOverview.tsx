@@ -494,9 +494,9 @@ export function LearnerCourseOverview({
                             : BookOpen;
                         const chAccess = getChapterAccess(ch);
                         const chapterIsProFlag =
-                          typeof ch.isPro === "boolean"
-                            ? ch.isPro
-                            : Boolean(courseIsPro) || ch.type === "Assignment";
+                          Boolean(courseIsPro) ||
+                          Boolean(ch.isPro) ||
+                          ch.type === "Assignment";
                         const proLocked = !chAccess.unlocked;
                         const isLocked = ch.locked || proLocked;
 

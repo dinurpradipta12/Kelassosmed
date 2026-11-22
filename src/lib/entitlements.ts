@@ -990,8 +990,7 @@ export function evaluateChapterAccess(params: {
     };
   }
 
-  const chapterIsProOnly =
-    typeof chapter.isPro === "boolean" ? chapter.isPro : Boolean(courseIsPro);
+  const chapterIsProOnly = Boolean(courseIsPro) || Boolean(chapter.isPro);
 
   if (!chapterIsProOnly) {
     return {
