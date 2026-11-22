@@ -1203,11 +1203,11 @@ export function LearnerPortalView({
   const [timeGreeting, setTimeGreeting] = useState("Selamat datang");
   useEffect(() => {
     const hour = new Date().getHours();
-    if (hour < 11) {
+    if (hour >= 5 && hour < 11) {
       setTimeGreeting("Selamat pagi");
-    } else if (hour < 15) {
+    } else if (hour >= 11 && hour < 15) {
       setTimeGreeting("Selamat siang");
-    } else if (hour < 18) {
+    } else if (hour >= 15 && hour < 18) {
       setTimeGreeting("Selamat sore");
     } else {
       setTimeGreeting("Selamat malam");

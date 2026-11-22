@@ -241,6 +241,7 @@ async function fetchReverseGeocode(
   lat: number,
   lon: number
 ): Promise<{ city: string; region: string; country: string } | null> {
+  // 1. Primary: BigDataCloud (city + locality + administrative fallback)
   try {
     const geoUrl = new URL("https://api.bigdatacloud.net/data/reverse-geocode-client");
     geoUrl.searchParams.set("latitude", String(lat));
@@ -251,21 +252,84 @@ async function fetchReverseGeocode(
       signal: AbortSignal.timeout(3500),
       headers: { Accept: "application/json" },
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      city?: string;
-      locality?: string;
-      principalSubdivision?: string;
-      countryName?: string;
-    };
-    const city = String(data.city || data.locality || data.principalSubdivision || "").trim();
-    const region = String(data.principalSubdivision || "").trim();
-    const country = String(data.countryName || "").trim();
-    if (!city && !region && !country) return null;
-    return { city, region, country };
-  } catch {
-    return null;
-  }
+    if (res.ok) {
+      const data = (await res.json()) as {
+        city?: string;
+        locality?: string;
+        principalSubdivision?: string;
+        countryName?: string;
+        localityInfo?: {
+          administrative?: Array<{ name?: string; order?: number }>;
+        };
+      };
+      const adminList = Array.isArray(data.localityInfo?.administrative)
+        ? data.localityInfo.administrative
+        : [];
+      const finestAdminName =
+        [...adminList]
+          .reverse()
+          .find((item) => item?.name && item.name.trim())
+          ?.name?.trim() || "";
+      const city = String(
+        data.city || data.locality || finestAdminName || data.principalSubdivision || ""
+      ).trim();
+      const region = String(data.principalSubdivision || "").trim();
+      const country = String(data.countryName || "").trim();
+      if (city || region) {
+        return { city: city || region, region, country };
+      }
+    }
+  } catch {}
+
+  // 2. Fallback: OpenStreetMap Nominatim (mendukung nama kota/kabupaten di seluruh Indonesia)
+  try {
+    const nomUrl = new URL("https://nominatim.openstreetmap.org/reverse");
+    nomUrl.searchParams.set("format", "jsonv2");
+    nomUrl.searchParams.set("lat", String(lat));
+    nomUrl.searchParams.set("lon", String(lon));
+    nomUrl.searchParams.set("zoom", "10");
+    nomUrl.searchParams.set("accept-language", "id");
+
+    const res = await fetch(nomUrl.toString(), {
+      signal: AbortSignal.timeout(3500),
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "RuangSosmedLMS/2.0",
+      },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        address?: {
+          city?: string;
+          town?: string;
+          municipality?: string;
+          county?: string;
+          state_district?: string;
+          state?: string;
+          country?: string;
+        };
+      };
+      const addr = data.address;
+      if (addr) {
+        const city = String(
+          addr.city ||
+            addr.town ||
+            addr.municipality ||
+            addr.county ||
+            addr.state_district ||
+            addr.state ||
+            ""
+        ).trim();
+        const region = String(addr.state || "").trim();
+        const country = String(addr.country || "").trim();
+        if (city || region) {
+          return { city: city || region, region, country };
+        }
+      }
+    }
+  } catch {}
+
+  return null;
 }
 
 async function fetchIpGeo(ip: string): Promise<ResolvedGeoCandidate | null> {
@@ -438,6 +502,33 @@ export async function GET(request: Request) {
       timezone: queryTz || "Asia/Jakarta",
       source: "timezone",
     };
+  }
+
+  // Pastikan nama kota selalu terisi nyata (reverse-geocode -> IP -> timezone) agar tidak fallback ke teks generik
+  if (!resolved.city) {
+    const rev = await fetchReverseGeocode(resolved.lat, resolved.lon);
+    if (rev?.city) {
+      resolved.city = rev.city;
+      resolved.region = resolved.region || rev.region;
+      resolved.country = resolved.country || rev.country;
+    }
+  }
+  if (!resolved.city && resolved.source === "gps") {
+    const ipFallback = await fetchIpGeo(extractClientIp(reqHeaders));
+    if (ipFallback?.city) {
+      resolved.city = ipFallback.city;
+      resolved.region = resolved.region || ipFallback.region;
+      resolved.country = resolved.country || ipFallback.country;
+    }
+  }
+  if (!resolved.city) {
+    const tzCity =
+      (queryTz && TIMEZONE_FALLBACK_COORDS[queryTz]?.city) ||
+      (queryTz ? queryTz.split("/").pop()?.replace(/_/g, " ") || "" : "");
+    resolved.city = tzCity || "Jakarta";
+    if (!resolved.region && queryTz && TIMEZONE_FALLBACK_COORDS[queryTz]) {
+      resolved.region = TIMEZONE_FALLBACK_COORDS[queryTz].region;
+    }
   }
 
   const locationPayload: WeatherLocationPayload = {

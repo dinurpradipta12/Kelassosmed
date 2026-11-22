@@ -151,11 +151,11 @@ export function LearnerHomeDashboard({
   const [liveGreeting, setLiveGreeting] = useState<string | null>(null);
 
   const handleHourChange = useCallback((hour24: number) => {
-    if (hour24 < 11) {
+    if (hour24 >= 5 && hour24 < 11) {
       setLiveGreeting("Selamat pagi");
-    } else if (hour24 < 15) {
+    } else if (hour24 >= 11 && hour24 < 15) {
       setLiveGreeting("Selamat siang");
-    } else if (hour24 < 18) {
+    } else if (hour24 >= 15 && hour24 < 18) {
       setLiveGreeting("Selamat sore");
     } else {
       setLiveGreeting("Selamat malam");
@@ -610,7 +610,6 @@ export function LearnerHomeDashboard({
                 <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#121215]">
                   {liveGreeting || timeGreeting}, {learnerFirstName}! 👋
                 </h1>
-                <LiveLocalWeatherBar onHourChange={handleHourChange} />
               </div>
 
               {/* XP Progress Bar + Evolution Modal Trigger */}
@@ -649,82 +648,87 @@ export function LearnerHomeDashboard({
                   }
                 />
               </div>
+
+              {/* Action Buttons / Redeem Form */}
+              {stats.totalCourses > 0 ? (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {primaryCourseEntry && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onContinueCourseDirectly(primaryCourseEntry.course)
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white shadow-[0_4px_12px_rgba(79,57,246,0.28)] transition-all cursor-pointer"
+                    >
+                      <Play size={13} fill="currentColor" />
+                      <span className="truncate max-w-[200px]">
+                        {primaryCourseEntry.lockedByPro
+                          ? `Buka ${primaryCourseEntry.course.title}`
+                          : primaryCourseEntry.progressPct > 0
+                          ? `Lanjut: ${primaryCourseEntry.course.title}`
+                          : `Mulai: ${primaryCourseEntry.course.title}`}
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={onOpenRedeemModal}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-white/95 hover:bg-white border border-[#EAECEF] px-3 py-2 text-xs font-bold text-[#121215] shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <KeyRound size={13} className="text-[#4F39F6]" />
+                    <span>Redeem Kode</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onNavigateTab("catalog")}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 hover:bg-white border border-[#EAECEF] px-3 py-2 text-xs font-semibold text-[#475569] hover:text-[#121215] transition-colors cursor-pointer"
+                  >
+                    <Compass size={13} className="text-[#0EA5E9]" />
+                    <span>Buka Katalog</span>
+                  </button>
+                </div>
+              ) : (
+                <form
+                  onSubmit={onRedeemCodeSubmit}
+                  className="w-full max-w-md rounded-2xl bg-white/95 border border-[#EAECEF] p-3 space-y-2 shadow-xs"
+                >
+                  <label
+                    htmlFor="home-redeem-code-input"
+                    className="flex items-center gap-1.5 text-xs font-bold text-[#121215]"
+                  >
+                    <KeyRound size={13} className="text-[#4F39F6]" />
+                    <span>Masuk dengan Kode Materi / Folder</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="home-redeem-code-input"
+                      type="text"
+                      value={folderCodeInput}
+                      onChange={(e) =>
+                        onFolderCodeInputChange(e.target.value.toUpperCase())
+                      }
+                      placeholder="Mis. MBSM-B01 atau MBI-2026"
+                      className="flex-1 min-w-0 rounded-lg bg-[#F8F9FB] px-3 py-2 text-xs font-bold uppercase tracking-wider text-[#121215] placeholder:normal-case placeholder:font-normal placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:bg-white focus:border-[#4F39F6] focus:outline-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!folderCodeInput.trim()}
+                      className="shrink-0 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] disabled:opacity-50 px-3.5 py-2 text-xs font-bold text-white cursor-pointer transition-colors"
+                    >
+                      Masuk
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
 
-          {/* Right Action Buttons / Redeem Form */}
-          {stats.totalCourses > 0 ? (
-            <div className="flex flex-wrap items-center lg:justify-end gap-2 shrink-0">
-              {primaryCourseEntry && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onContinueCourseDirectly(primaryCourseEntry.course)
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] px-4 py-2 text-xs font-bold text-white shadow-[0_4px_12px_rgba(79,57,246,0.28)] transition-all cursor-pointer"
-                >
-                  <Play size={13} fill="currentColor" />
-                  <span className="truncate max-w-[200px]">
-                    {primaryCourseEntry.lockedByPro
-                      ? `Buka ${primaryCourseEntry.course.title}`
-                      : primaryCourseEntry.progressPct > 0
-                      ? `Lanjut: ${primaryCourseEntry.course.title}`
-                      : `Mulai: ${primaryCourseEntry.course.title}`}
-                  </span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={onOpenRedeemModal}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-white/95 hover:bg-white border border-[#EAECEF] px-3 py-2 text-xs font-bold text-[#121215] shadow-2xs transition-colors cursor-pointer"
-              >
-                <KeyRound size={13} className="text-[#4F39F6]" />
-                <span>Redeem Kode</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onNavigateTab("catalog")}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 hover:bg-white border border-[#EAECEF] px-3 py-2 text-xs font-semibold text-[#475569] hover:text-[#121215] transition-colors cursor-pointer"
-              >
-                <Compass size={13} className="text-[#0EA5E9]" />
-                <span>Buka Katalog</span>
-              </button>
-            </div>
-          ) : (
-            <form
-              onSubmit={onRedeemCodeSubmit}
-              className="w-full lg:w-[340px] shrink-0 rounded-2xl bg-white/95 border border-[#EAECEF] p-3 space-y-2 shadow-xs"
-            >
-              <label
-                htmlFor="home-redeem-code-input"
-                className="flex items-center gap-1.5 text-xs font-bold text-[#121215]"
-              >
-                <KeyRound size={13} className="text-[#4F39F6]" />
-                <span>Masuk dengan Kode Materi / Folder</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="home-redeem-code-input"
-                  type="text"
-                  value={folderCodeInput}
-                  onChange={(e) =>
-                    onFolderCodeInputChange(e.target.value.toUpperCase())
-                  }
-                  placeholder="Mis. MBSM-B01 atau MBI-2026"
-                  className="flex-1 min-w-0 rounded-lg bg-[#F8F9FB] px-3 py-2 text-xs font-bold uppercase tracking-wider text-[#121215] placeholder:normal-case placeholder:font-normal placeholder:text-[#9CA3AF] border border-[#EAECEF] focus:bg-white focus:border-[#4F39F6] focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={!folderCodeInput.trim()}
-                  className="shrink-0 rounded-lg bg-[#4F39F6] hover:bg-[#3B28CC] disabled:opacity-50 px-3.5 py-2 text-xs font-bold text-white cursor-pointer transition-colors"
-                >
-                  Masuk
-                </button>
-              </div>
-            </form>
-          )}
+          {/* Right iOS-style Borderless Clock + Realtime Weather & Location */}
+          <div className="shrink-0 flex flex-col items-start lg:items-end justify-center pt-2 lg:pt-0 lg:pl-6 border-t lg:border-t-0 lg:border-l border-[#4F39F6]/10">
+            <LiveLocalWeatherBar onHourChange={handleHourChange} />
+          </div>
         </div>
       </section>
 

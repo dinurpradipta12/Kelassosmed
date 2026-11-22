@@ -1528,3 +1528,22 @@ html[data-theme-mode="dark"] article .hover\:bg-\[\#F8F9FB\]:hover {
     will-change: transform, opacity;
   }
 }
+
+/* Native Popover Settings Panel for iOS-style Learner Clock (edge-aware when Anchor Positioning is supported) */
+.rs-clock-popover {
+  border-radius: 1rem;
+  border: 1px solid #eaecef;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 14px 36px rgba(16, 15, 17, 0.14);
+}
+
+@supports (position-area: block-end) {
+  [popover].rs-clock-popover {
+    inset: auto;
+    margin: 0;
+    margin-top: 8px;
+    position-area: block-end span-inline-start;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
+}
