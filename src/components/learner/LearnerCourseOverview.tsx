@@ -23,6 +23,8 @@ import {
   Send,
 } from "lucide-react";
 import {
+  extractVisibleChapters,
+  summarizeCurriculumStats,
   type CourseSectionAccordion,
   type CourseChapterItem,
 } from "@/lib/phase5-data";
@@ -152,7 +154,25 @@ export function LearnerCourseOverview({
     matchedAssignedCourse.skillTags.length > 0
       ? matchedAssignedCourse.skillTags
       : [matchedExplorerCourse?.category || "Social Media Strategy", "Course"];
-  const livePointsReward = matchedAssignedCourse?.pointsReward ?? 100;
+  const flatVisibleChapters = React.useMemo(
+    () => extractVisibleChapters(sections),
+    [sections]
+  );
+  const curriculumStats = React.useMemo(
+    () =>
+      summarizeCurriculumStats(flatVisibleChapters, {
+        fallbackPoints: matchedAssignedCourse?.pointsReward ?? 15,
+        fallbackDuration: matchedAssignedCourse?.duration,
+        contentType: matchedExplorerCourse?.type || "Course",
+      }),
+    [
+      flatVisibleChapters,
+      matchedAssignedCourse?.pointsReward,
+      matchedAssignedCourse?.duration,
+      matchedExplorerCourse?.type,
+    ]
+  );
+  const livePointsReward = curriculumStats.totalPoints;
   const liveThumbnailUrl =
     matchedExplorerCourse?.thumbnailUrl ||
     matchedAssignedCourse?.thumbnailUrl ||
@@ -191,9 +211,7 @@ export function LearnerCourseOverview({
       ? Math.round((completedChapters / totalChapters) * 100)
       : 0;
 
-  const liveDurationLabel =
-    matchedAssignedCourse?.duration ||
-    `${Math.max(15, totalChapters * 15)} Menit`;
+  const liveDurationLabel = curriculumStats.durationLabel;
 
   const reviewCount = rsLessonReviews?.length ?? 0;
   const avgRating =
@@ -206,11 +224,6 @@ export function LearnerCourseOverview({
   const isFullyUnlocked =
     certificateUnlocked ||
     (totalChapters > 0 && completedChapters >= totalChapters);
-
-  const flatVisibleChapters = React.useMemo(
-    () => visibleSections.flatMap((s) => s.chapters),
-    [visibleSections]
-  );
 
   const courseIsPro = React.useMemo(() => {
     if (typeof matchedExplorerCourse?.isPro === "boolean") {

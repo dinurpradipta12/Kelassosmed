@@ -53,6 +53,8 @@ import {
   INITIAL_LEARNER_ASSIGNED_ITEMS,
   COURSE_OVERVIEW_SECTIONS,
   INITIAL_LEARNER_NOTIFICATIONS,
+  extractVisibleChapters,
+  summarizeCurriculumStats,
   type LearnerAssignedItem,
   type CourseSectionAccordion,
   type CourseChapterItem,
@@ -2252,11 +2254,7 @@ function syncLearnerCatalogWithExplorer(
     );
     const key = exp.title.trim().toLowerCase();
     const curr = courseCurriculums?.[key];
-    const visibleChapters = Array.isArray(curr)
-      ? curr
-          .filter((s) => !s.hidden)
-          .flatMap((s) => (s.chapters || []).filter((c) => !c.hidden))
-      : [];
+    const visibleChapters = extractVisibleChapters(curr);
     const computedPct =
       visibleChapters.length > 0
         ? Math.round(
@@ -2268,6 +2266,11 @@ function syncLearnerCatalogWithExplorer(
 
     const mappedType: ContentType =
       exp.type === "Folder" ? "Course" : exp.type;
+    const stats = summarizeCurriculumStats(visibleChapters, {
+      fallbackPoints: existing?.pointsReward ?? 15,
+      fallbackDuration: existing?.duration,
+      contentType: exp.type,
+    });
 
     return {
       id: existing?.id || `lc-sync-${exp.id}`,
@@ -2278,14 +2281,11 @@ function syncLearnerCatalogWithExplorer(
         (exp.urgency === "Urgent" ? "Urgent" : "Due in 3 days"),
       isUrgentRed: existing?.isUrgentRed ?? exp.urgency === "Urgent",
       progressPercent: computedPct,
-      pointsReward: existing?.pointsReward ?? 100,
+      pointsReward: stats.totalPoints,
       duration:
-        existing?.duration ||
-        (visibleChapters.length > 0
-          ? `${Math.max(15, visibleChapters.length * 15)} Mins`
-          : exp.type === "Quiz"
-          ? "15 Mins"
-          : "45 Mins"),
+        visibleChapters.length > 0
+          ? stats.durationLabel
+          : existing?.duration || stats.durationLabel,
       skillTags:
         existing?.skillTags && existing.skillTags.length > 0
           ? existing.skillTags
@@ -6794,6 +6794,13 @@ export function RuangSosmedProvider({
         } catch {}
       }
 
+      const publishCurriculumStats = summarizeCurriculumStats(
+        extractVisibleChapters(
+          sections || stateRef.current.courseCurriculums?.[title.trim().toLowerCase()]
+        ),
+        { fallbackPoints: 15, contentType: type }
+      );
+
       const newCatalogItem: LearnerAssignedItem | null = isFolder
         ? null
         : {
@@ -6803,8 +6810,8 @@ export function RuangSosmedProvider({
             urgencyBadge: urgency === "Urgent" ? "Urgent" : "Due in 3 days",
             isUrgentRed: urgency === "Urgent",
             progressPercent: 0,
-            pointsReward: 100,
-            duration: type === "Quiz" ? "15 Mins" : "2 Hours",
+            pointsReward: publishCurriculumStats.totalPoints,
+            duration: publishCurriculumStats.durationLabel,
             skillTags: [type, "Ruang Sosmed 2.0", "New Release"],
             thumbnailUrl: resolvedThumbnailUrl,
             description: finalDesc,
@@ -7880,6 +7887,12 @@ export function RuangSosmedProvider({
         );
 
         let nextLearnerItems = [...prev.learnerAssignedItems];
+        const assignCurrStats = summarizeCurriculumStats(
+          extractVisibleChapters(
+            prev.courseCurriculums?.[contentItem.title.trim().toLowerCase()]
+          ),
+          { fallbackPoints: 15, contentType: validType }
+        );
         const newAssignedCard: LearnerAssignedItem = {
           id: `lc-assigned-${nowId}`,
           title: contentItem.title,
@@ -7888,8 +7901,8 @@ export function RuangSosmedProvider({
             contentItem.urgency === "Urgent" ? "Urgent" : "Due in 3 days",
           isUrgentRed: contentItem.urgency === "Urgent",
           progressPercent: 0, // Initial status: Not Started (0%)
-          pointsReward: 100,
-          duration: "2 Hours",
+          pointsReward: assignCurrStats.totalPoints,
+          duration: assignCurrStats.durationLabel,
           skillTags: [contentItem.category, "Assigned by Mentor", `Due ${dueDate}`],
           description: contentItem.description,
           isFavorite: false,

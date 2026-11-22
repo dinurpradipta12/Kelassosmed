@@ -48,6 +48,8 @@ import { UserProfileScreen } from "@/components/profile/UserProfileScreen";
 import {
   type LearnerAssignedItem,
   type CourseChapterItem,
+  extractVisibleChapters,
+  summarizeCurriculumStats,
 } from "@/lib/phase5-data";
 import { ContentBadge } from "@/components/ui/ContentBadge";
 import { ThemeSwitchDockButton } from "@/components/theme/ThemeCustomizerModal";
@@ -616,11 +618,7 @@ export function LearnerPortalView({
       const curr =
         getCourseCurriculum(exp.title) ||
         courseCurriculums?.[exp.title.trim().toLowerCase()];
-      const visCh = Array.isArray(curr)
-        ? curr
-            .filter((s) => !s.hidden)
-            .flatMap((s) => (s.chapters || []).filter((c) => !c.hidden))
-        : [];
+      const visCh = extractVisibleChapters(curr);
       const pct =
         visCh.length > 0
           ? Math.round(
@@ -629,6 +627,11 @@ export function LearnerPortalView({
           : matched?.progressPercent ?? 0;
 
       const mappedType = exp.type === "Folder" ? "Course" : exp.type;
+      const stats = summarizeCurriculumStats(visCh, {
+        fallbackPoints: matched?.pointsReward ?? 15,
+        fallbackDuration: matched?.duration,
+        contentType: exp.type,
+      });
 
       return {
         id: matched?.id || exp.id,
@@ -643,14 +646,11 @@ export function LearnerPortalView({
           (exp.urgency === "Urgent" ? "Urgent" : "Due in 3 days"),
         isUrgentRed: matched?.isUrgentRed ?? exp.urgency === "Urgent",
         progressPercent: pct,
-        pointsReward: matched?.pointsReward ?? 100,
+        pointsReward: stats.totalPoints,
         duration:
-          matched?.duration ||
-          (visCh.length > 0
-            ? `${Math.max(15, visCh.length * 15)} Mins`
-            : exp.type === "Quiz"
-            ? "15 Mins"
-            : "45 Mins"),
+          visCh.length > 0
+            ? stats.durationLabel
+            : matched?.duration || stats.durationLabel,
         skillTags:
           matched?.skillTags && matched.skillTags.length > 0
             ? matched.skillTags

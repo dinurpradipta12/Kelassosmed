@@ -1281,7 +1281,7 @@ export function ContentDetailView({
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-[#5E5E5E] font-medium pt-1 border-t border-[#EAECEF]/80">
                   <span>
-                    +{flatChapters.reduce((sum, ch) => sum + (ch.points || 5), 0) || 100} pts total reward
+                    +{flatChapters.reduce((sum, ch) => sum + (ch.points || 5), 0) || 15} pts total reward
                   </span>
                 </div>
               </div>
@@ -2388,7 +2388,7 @@ export function ContentDetailView({
                     Total Poin Reward
                   </p>
                   <p className="text-lg font-extrabold text-[#B45309] tabular-nums">
-                    +{flatChapters.reduce((sum, ch) => sum + (ch.points || 5), 0) || 100} ★
+                    +{flatChapters.reduce((sum, ch) => sum + (ch.points || 5), 0) || 15} ★
                   </p>
                 </div>
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FEF3C7] text-[#D97706]">

@@ -106,3 +106,57 @@ export interface LearnerNotification {
 }
 
 export const INITIAL_LEARNER_NOTIFICATIONS: LearnerNotification[] = [];
+
+export function extractVisibleChapters(
+  sections?: CourseSectionAccordion[] | null
+): CourseChapterItem[] {
+  if (!Array.isArray(sections)) return [];
+  return sections
+    .filter((s) => !s.hidden)
+    .flatMap((s) => (s.chapters || []).filter((c) => !c.hidden));
+}
+
+export function parseChapterMinutes(durationRaw?: string): number {
+  const s = (durationRaw || "").trim().toLowerCase();
+  if (!s) return 15;
+  const hourMatch = /(\d+)\s*(?:h|hr|hrs|hour|hours|jam)\b/.exec(s);
+  const minMatch = /(\d+)\s*(?:m|min|mins|minute|minutes|menit)\b/.exec(s);
+  const plainNumMatch = /^(\d+)$/.exec(s);
+  let total = 0;
+  if (hourMatch) total += Number(hourMatch[1]) * 60;
+  if (minMatch) total += Number(minMatch[1]);
+  if (!hourMatch && !minMatch && plainNumMatch) total = Number(plainNumMatch[1]);
+  return total > 0 ? total : 15;
+}
+
+export function summarizeCurriculumStats(
+  chapters: CourseChapterItem[],
+  options?: {
+    fallbackPoints?: number;
+    fallbackDuration?: string;
+    contentType?: string;
+  }
+): { totalPoints: number; durationLabel: string; totalMinutes: number } {
+  if (!Array.isArray(chapters) || chapters.length === 0) {
+    return {
+      totalPoints: options?.fallbackPoints ?? 15,
+      durationLabel:
+        options?.fallbackDuration ||
+        (options?.contentType === "Quiz" ? "15 Mins" : "45 Mins"),
+      totalMinutes: options?.contentType === "Quiz" ? 15 : 45,
+    };
+  }
+  const totalPoints = chapters.reduce(
+    (sum, ch) => sum + (Number(ch.points) > 0 ? Number(ch.points) : 5),
+    0
+  );
+  const totalMinutes = chapters.reduce(
+    (sum, ch) => sum + parseChapterMinutes(ch.duration),
+    0
+  );
+  return {
+    totalPoints,
+    durationLabel: `${totalMinutes} Mins`,
+    totalMinutes,
+  };
+}
