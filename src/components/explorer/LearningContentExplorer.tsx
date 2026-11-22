@@ -1169,10 +1169,20 @@ export function LearningContentExplorer({
             );
 
             return (
-              <button
+              <div
                 key={proj.id || proj.name}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectProject?.(proj.name)}
+                onKeyDown={(e) => {
+                  if (
+                    e.target === e.currentTarget &&
+                    (e.key === "Enter" || e.key === " ")
+                  ) {
+                    e.preventDefault();
+                    onSelectProject?.(proj.name);
+                  }
+                }}
                 className="group relative flex flex-col justify-between rounded-2xl bg-white border border-[#EAECEF] hover:border-[#4F39F6]/60 p-5 text-left shadow-[0_2px_8px_rgba(16,15,17,0.04)] hover:shadow-[0_10px_28px_rgba(79,57,246,0.10)] transition-all cursor-pointer"
               >
                 <div className="space-y-3">
@@ -1264,7 +1274,7 @@ export function LearningContentExplorer({
                     <ChevronRight size={14} />
                   </span>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
