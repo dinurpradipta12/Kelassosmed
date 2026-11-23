@@ -163,44 +163,52 @@ BEGIN
     username,
     name,
     email,
+    role,
     job_title,
+    perks,
     joined_at,
     checkin_streak
   ) VALUES (
     v_username,
     'Arunika Developer',
     v_email,
+    'admin',
     'Lead Developer & Admin',
+    '{"is_pro": true}'::jsonb,
     current_date,
     1
   )
   ON CONFLICT (username) DO UPDATE SET
     name = 'Arunika Developer',
     email = v_email,
-    job_title = 'Lead Developer & Admin';
+    role = 'admin',
+    job_title = 'Lead Developer & Admin',
+    perks = COALESCE(public.user_profiles.perks, '{}'::jsonb) || '{"is_pro": true}'::jsonb;
 
-  -- 7. Aktifkan Membership PRO di public.user_subscriptions
+  -- 7. Aktifkan Membership di public.user_subscriptions
   INSERT INTO public.user_subscriptions (
     username,
-    plan_tier,
     status,
     started_at,
     due_at,
     payment_method,
-    renewal_status
+    renewal_status,
+    updated_at
   ) VALUES (
     v_username,
-    'PRO',
     'aktif',
     current_date,
-    current_date + interval '365 days',
+    current_date + 365,
     'developer grant',
-    'aktif seumur hidup'
+    'aktif seumur hidup',
+    timezone('utc', now())
   )
   ON CONFLICT (username) DO UPDATE SET
-    plan_tier = 'PRO',
     status = 'aktif',
-    due_at = current_date + interval '365 days';
+    due_at = current_date + 365,
+    payment_method = 'developer grant',
+    renewal_status = 'aktif seumur hidup',
+    updated_at = timezone('utc', now());
 
   RAISE NOTICE 'SUCCESS: Akun Developer arunika (%) berhasil disinkronkan ke Supabase Auth & Tables!', v_email;
 END $$;
