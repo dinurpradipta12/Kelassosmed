@@ -9,7 +9,7 @@
 --   Role     : admin (Hak Akses Penuh: Developer + Admin LMS)
 --
 -- CARA PENGGUNAAN:
--- 1. Buka Supabase Dashboard > Project Anda (nigxfryaobokkvfefond)
+-- 1. Buka Supabase Dashboard > Project Anda (wdmfxlrdyqxnycbebwpv)
 -- 2. Klik menu "SQL Editor" di bilah kiri
 -- 3. Paste seluruh skrip di bawah ini dan klik tombol "Run" (hijau)
 -- =============================================================================

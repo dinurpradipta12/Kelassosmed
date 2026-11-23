@@ -6,9 +6,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ProfileRow, UserRole } from "@/lib/supabase/database.types";
 
-const DEFAULT_SUPABASE_URL = "https://nigxfryaobokkvfefond.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://wdmfxlrdyqxnycbebwpv.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pZ3hmcnlhb2Jva2t2ZmVmb25kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNzI0MTMsImV4cCI6MjEwODY0ODQxM30.LWRL-PIPRgYUcY5l-emqI9TtG0HGQ2-T79PX-JMx-XU";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndkbWZ4bHJkeXF4bnljYmVid3B2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU0MDQ2MTUsImV4cCI6MjExMDk4MDYxNX0.W4EI9H2NtL3oxYDCWFXUnWqAFxqgsmUfJo5ptVXWCPQ";
 
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||

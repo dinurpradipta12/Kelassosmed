@@ -14,7 +14,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_SUPABASE_URL = "https://nigxfryaobokkvfefond.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://wdmfxlrdyqxnycbebwpv.supabase.co";
 
 const ALLOWED_SUPABASE_PREFIXES = [
   "auth/v1",

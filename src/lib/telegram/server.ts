@@ -8,7 +8,7 @@ import {
 import { deletePaymentProofFromStorage } from "@/lib/supabase/proof-cleanup";
 import { getServerEnv } from "@/lib/server-env";
 
-const DEFAULT_SUPABASE_URL = "https://nigxfryaobokkvfefond.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://wdmfxlrdyqxnycbebwpv.supabase.co";
 
 export interface TelegramBotConfig {
   enabled: boolean;
