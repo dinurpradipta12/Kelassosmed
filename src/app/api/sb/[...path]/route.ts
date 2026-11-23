@@ -6,6 +6,7 @@
 // =============================================================================
 
 import { NextResponse } from "next/server";
+import { getServerEnv } from "@/lib/server-env";
 import {
   API_SECURITY_HEADERS,
   checkFetchMetadata,
@@ -54,11 +55,10 @@ const SAFE_RESPONSE_HEADERS = [
 ] as const;
 
 function resolveUpstreamSupabaseBase(): string {
-  const raw = (
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.VITE_SUPABASE_URL ||
-    ""
-  ).trim();
+  const raw =
+    getServerEnv("NEXT_PUBLIC_SUPABASE_URL") ||
+    getServerEnv("VITE_SUPABASE_URL") ||
+    getServerEnv("SUPABASE_URL");
   const base =
     raw && !raw.includes("your-project-ref") ? raw : DEFAULT_SUPABASE_URL;
   return base.replace(/\/+$/, "");
@@ -128,13 +128,18 @@ async function handleProxy(
     }
   }
 
+  const isPublicStorageAsset =
+    method === "GET" &&
+    joinedPath.startsWith("storage/v1/object/public/") &&
+    !request.headers.get("authorization");
+
   let upstreamRes: Response;
   try {
     upstreamRes = await fetch(upstreamUrl, {
       method,
       headers: upstreamHeaders,
       body,
-      cache: "no-store",
+      ...(isPublicStorageAsset ? {} : { cache: "no-store" as const }),
       redirect: "manual",
     });
   } catch (err: unknown) {
@@ -152,6 +157,9 @@ async function handleProxy(
     if (val !== null) {
       outHeaders.set(headerName, val);
     }
+  }
+  if (isPublicStorageAsset && upstreamRes.status === 200) {
+    outHeaders.set("Cache-Control", "public, max-age=31536000, immutable");
   }
   outHeaders.set("X-Content-Type-Options", "nosniff");
 

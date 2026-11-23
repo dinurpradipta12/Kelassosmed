@@ -457,7 +457,8 @@ function RuangSosmedStudioInner() {
     }
   }, [roleMode, isCurrentUserAdmin, currentUser]);
 
-  // Live pending PRO payments count for Admin Rumi Assistant reminder expression
+  // Live pending PRO payments count for Admin Rumi Assistant reminder expression (60s cooldown)
+  const lastPendingProCountCheckAtRef = useRef<number>(0);
   useEffect(() => {
     if (
       !isSupabaseConfigured ||
@@ -467,6 +468,14 @@ function RuangSosmedStudioInner() {
       setPendingProPaymentsCount(0);
       return;
     }
+    const now = Date.now();
+    if (
+      lastPendingProCountCheckAtRef.current > 0 &&
+      now - lastPendingProCountCheckAtRef.current < 60_000
+    ) {
+      return;
+    }
+    lastPendingProCountCheckAtRef.current = now;
     let cancelled = false;
     supabase
       .from("pro_upgrade_requests")
@@ -480,7 +489,7 @@ function RuangSosmedStudioInner() {
     return () => {
       cancelled = true;
     };
-  }, [roleMode, isCurrentUserAdmin, activeNav, adminNotifications.length]);
+  }, [roleMode, isCurrentUserAdmin, adminNotifications.length]);
 
   const handleRoleModeChange = (newMode: AppRoleMode) => {
     if (newMode === "admin" && !isCurrentUserAdmin) {
@@ -513,25 +522,65 @@ function RuangSosmedStudioInner() {
   });
   const [previewPublicLanding, setPreviewPublicLanding] = useState(false);
 
+  const landingSyncedRef = useRef(false);
   const handleSaveLandingConfig = (newConfig: LandingPageConfig) => {
     setLandingConfig(newConfig);
+    landingSyncedRef.current = false;
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(
           "ruang_sosmed_landing_config_v7",
           JSON.stringify(newConfig)
         );
+        localStorage.removeItem("ruang_sosmed_landing_updated_at_v7");
       } catch {}
     }
   };
 
-  // Sync latest landing page configuration from Supabase (when configured)
+  // Sync latest landing page configuration from Supabase (low-egress updated_at gate + only when landing/builder is needed)
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured || !authReady) return;
+    if (landingSyncedRef.current) return;
+    const isViewingOrEditingLanding =
+      !currentUser || previewPublicLanding || activeNav === "landing-builder";
+    if (!isViewingOrEditingLanding) return;
+
+    landingSyncedRef.current = true;
     let cancelled = false;
 
     const loadLandingFromSupabase = async () => {
       try {
+        const hasLocalV7Cache = (() => {
+          try {
+            return Boolean(
+              window.localStorage.getItem("ruang_sosmed_landing_config_v7")
+            );
+          } catch {
+            return false;
+          }
+        })();
+
+        // Cek watermark updated_at ringan (~80 byte) sebelum mengunduh JSONB blocks
+        const { data: metaRow, error: metaErr } = await supabase
+          .from("landing_pages")
+          .select("updated_at")
+          .eq("slug", "home")
+          .maybeSingle();
+
+        if (cancelled || metaErr || !metaRow) return;
+
+        const remoteUpdatedAt = String((metaRow as any).updated_at || "");
+        if (hasLocalV7Cache && remoteUpdatedAt) {
+          try {
+            const cachedUpdatedAt = window.localStorage.getItem(
+              "ruang_sosmed_landing_updated_at_v7"
+            );
+            if (cachedUpdatedAt && cachedUpdatedAt === remoteUpdatedAt) {
+              return;
+            }
+          } catch {}
+        }
+
         const { data, error } = await supabase
           .from("landing_pages")
           .select("*")
@@ -617,6 +666,13 @@ function RuangSosmedStudioInner() {
                 "ruang_sosmed_landing_config_v7",
                 JSON.stringify(merged)
               );
+              const finalUpdatedAt = String(data.updated_at || remoteUpdatedAt || "");
+              if (finalUpdatedAt) {
+                window.localStorage.setItem(
+                  "ruang_sosmed_landing_updated_at_v7",
+                  finalUpdatedAt
+                );
+              }
             } catch {}
             return merged;
           });
@@ -630,7 +686,7 @@ function RuangSosmedStudioInner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authReady, currentUser, previewPublicLanding, activeNav]);
 
   // Non-intrusive toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -1027,104 +1083,6 @@ function RuangSosmedStudioInner() {
     };
   }, [forceSignOutDeletedAccount]);
 
-  // Pengawas sesi aktif Learner: auto-logout seketika apabila akun dihapus oleh Admin
-  useEffect(() => {
-    if (!isSupabaseConfigured || !currentUser || currentUser.role !== "learner") {
-      return;
-    }
-    const emailLower = currentUser.email.toLowerCase();
-    if (emailLower.includes("dinur") || emailLower === "admin@ruangsosmed.id") {
-      return;
-    }
-
-    let cancelled = false;
-    let activeChannel: ReturnType<typeof supabase.channel> | null = null;
-
-    const verifyLearnerStillActive = async () => {
-      if (cancelled || deletedLogoutInFlightRef.current) return;
-      try {
-        const { data: userData, error: userErr } = await supabase.auth.getUser();
-        const errObj = userErr as { status?: number; message?: string } | null;
-        const msg = String(errObj?.message || "").toLowerCase();
-        if (
-          errObj &&
-          (errObj.status === 401 ||
-            errObj.status === 403 ||
-            msg.includes("does not exist") ||
-            msg.includes("user_not_found") ||
-            msg.includes("sub claim") ||
-            msg.includes("invalid jwt"))
-        ) {
-          await forceSignOutDeletedAccount();
-          return;
-        }
-        const uid = userData?.user?.id;
-        if (!uid) return;
-
-        const createdAt = userData?.user?.created_at;
-        const ageMs = createdAt
-          ? Date.now() - Date.parse(String(createdAt))
-          : 999999;
-        const { data: profRow, error: profErr } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("id", uid)
-          .maybeSingle();
-
-        if (!profErr && !profRow && ageMs > 15000) {
-          await forceSignOutDeletedAccount();
-        }
-      } catch {}
-    };
-
-    const handleAccountDeletedEvent = () => {
-      void forceSignOutDeletedAccount();
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void verifyLearnerStillActive();
-      }
-    };
-
-    window.addEventListener("ruang_sosmed_account_deleted", handleAccountDeletedEvent);
-    document.addEventListener("visibilitychange", handleVisibility);
-    const interval = window.setInterval(() => {
-      if (!document.hidden) {
-        void verifyLearnerStillActive();
-      }
-    }, 20_000);
-
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      const uid = session?.user?.id;
-      if (cancelled || !uid) return;
-      activeChannel = supabase
-        .channel(`learner-account-watch-${uid}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "DELETE",
-            schema: "public",
-            table: "profiles",
-            filter: `id=eq.${uid}`,
-          },
-          () => {
-            void forceSignOutDeletedAccount();
-          }
-        )
-        .subscribe();
-    });
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("ruang_sosmed_account_deleted", handleAccountDeletedEvent);
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.clearInterval(interval);
-      if (activeChannel) {
-        supabase.removeChannel(activeChannel);
-      }
-    };
-  }, [currentUser, forceSignOutDeletedAccount]);
-
   const handleLogout = async () => {
     try {
       window.localStorage.removeItem("ruang_sosmed_session_user_v1");
@@ -1203,13 +1161,23 @@ function RuangSosmedStudioInner() {
     };
   }, []);
 
-  // Event-driven cross-browser role & PRO subscription sync: Supabase Realtime + visibility/focus check (5s cooldown)
+  // Unified Realtime profile listener (role, PRO tier, & deleted account guard) + low-egress 180s fallback
+  const lastAppliedProfileSigRef = useRef<string>("");
   useEffect(() => {
-    if (!currentUser?.email) return;
+    if (!currentUser?.email || !isSupabaseConfigured) {
+      lastAppliedProfileSigRef.current = "";
+      return;
+    }
+
+    const emailLower = currentUser.email.toLowerCase();
+    const isProtectedAdminAccount =
+      currentUser.role !== "learner" ||
+      emailLower.includes("dinur") ||
+      emailLower === "admin@ruangsosmed.id";
 
     let cancelled = false;
     let lastCheckedAt = Date.now();
-    let roleChannel: ReturnType<typeof supabase.channel> | null = null;
+    let profileChannel: ReturnType<typeof supabase.channel> | null = null;
 
     const applyDbProfileSnapshot = (raw?: Record<string, unknown> | null) => {
       if (!raw || cancelled) return;
@@ -1270,6 +1238,10 @@ function RuangSosmedStudioInner() {
         const nextIsPro =
           isUserAdmin || isProSubscriptionActive(subTier, expiresAt);
 
+        const nextSig = `${emailLower}|${activeUser.role}|${subTier || ""}|${startedAt || ""}|${expiresAt || ""}|${packageId || ""}|${packageName || ""}|${billingCycle || ""}|${nextIsPro ? 1 : 0}`;
+        if (nextSig === lastAppliedProfileSigRef.current) return;
+        lastAppliedProfileSigRef.current = nextSig;
+
         setActiveSubMeta({
           startedAt,
           expiresAt,
@@ -1297,21 +1269,48 @@ function RuangSosmedStudioInner() {
       }
     };
 
-    const checkOwnProfileOnce = async () => {
+    const verifyProfileState = async (checkAuthUser = false) => {
+      if (cancelled || deletedLogoutInFlightRef.current) return;
       if (typeof document !== "undefined" && document.hidden) return;
-      if (Date.now() - lastCheckedAt < 5_000) return;
-      lastCheckedAt = Date.now();
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const uid = sessionData?.session?.user?.id;
+        let uid: string | undefined;
+        let ageMs = 999999;
+
+        if (checkAuthUser && !isProtectedAdminAccount) {
+          const { data: userData, error: userErr } = await supabase.auth.getUser();
+          const errObj = userErr as { status?: number; message?: string } | null;
+          const msg = String(errObj?.message || "").toLowerCase();
+          if (
+            errObj &&
+            (errObj.status === 401 ||
+              errObj.status === 403 ||
+              msg.includes("does not exist") ||
+              msg.includes("user_not_found") ||
+              msg.includes("sub claim") ||
+              msg.includes("invalid jwt"))
+          ) {
+            await forceSignOutDeletedAccount();
+            return;
+          }
+          uid = userData?.user?.id;
+          const createdAt = userData?.user?.created_at;
+          ageMs = createdAt ? Date.now() - Date.parse(String(createdAt)) : 999999;
+        } else {
+          const { data: sessionData } = await supabase.auth.getSession();
+          uid = sessionData?.session?.user?.id;
+          const createdAt = sessionData?.session?.user?.created_at;
+          ageMs = createdAt ? Date.now() - Date.parse(String(createdAt)) : 999999;
+        }
+
         if (!uid || cancelled) return;
 
         let profData: Record<string, unknown> | null = null;
+        let profErr: any = null;
         if (pageProfilesHasSubDateCols) {
           const fullRes = await supabase
             .from("profiles")
             .select(
-              "role, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, pro_package_id, pro_billing_cycle"
+              "id, role, subscription_tier, pro_started_at, pro_expires_at, pro_package_name, pro_package_id, pro_billing_cycle"
             )
             .eq("id", uid)
             .maybeSingle();
@@ -1321,45 +1320,87 @@ function RuangSosmedStudioInner() {
             const midRes = await supabase
               .from("profiles")
               .select(
-                "role, subscription_tier, pro_started_at, pro_expires_at, pro_package_name"
+                "id, role, subscription_tier, pro_started_at, pro_expires_at, pro_package_name"
               )
               .eq("id", uid)
               .maybeSingle();
             if (!midRes.error) {
               profData =
                 (midRes.data as Record<string, unknown> | null) ?? null;
+            } else {
+              profErr = midRes.error;
             }
+          } else {
+            profErr = fullRes.error;
           }
         }
-        if (!profData) {
+        if (!profData && !profErr) {
           const fallbackRes = await supabase
             .from("profiles")
-            .select("role, subscription_tier")
+            .select("id, role, subscription_tier")
             .eq("id", uid)
             .maybeSingle();
           profData =
             (fallbackRes.data as Record<string, unknown> | null) ?? null;
+          profErr = fallbackRes.error;
+        }
+
+        if (!isProtectedAdminAccount && !profErr && !profData && ageMs > 15000) {
+          await forceSignOutDeletedAccount();
+          return;
         }
         applyDbProfileSnapshot(profData);
       } catch {}
     };
+
+    const handleAccountDeletedEvent = () => {
+      if (!isProtectedAdminAccount) {
+        void forceSignOutDeletedAccount();
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastCheckedAt < 60_000) return;
+      lastCheckedAt = Date.now();
+      void verifyProfileState(!isProtectedAdminAccount);
+    };
+
+    window.addEventListener("ruang_sosmed_account_deleted", handleAccountDeletedEvent);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Fallback check 180s khusus Learner agar deteksi akun terhapus tetap aktif dengan egress minimal
+    const interval = !isProtectedAdminAccount
+      ? window.setInterval(() => {
+          if (!document.hidden && Date.now() - lastCheckedAt >= 120_000) {
+            lastCheckedAt = Date.now();
+            void verifyProfileState(true);
+          }
+        }, 180_000)
+      : null;
 
     supabase.auth
       .getSession()
       .then(({ data: { session } }) => {
         const uid = session?.user?.id;
         if (!uid || cancelled) return;
-        roleChannel = supabase
-          .channel(`profile-role-sync-${uid}`)
+        profileChannel = supabase
+          .channel(`profile-live-sync-${uid}`)
           .on(
             "postgres_changes",
             {
-              event: "UPDATE",
+              event: "*",
               schema: "public",
               table: "profiles",
               filter: `id=eq.${uid}`,
             },
             (payload) => {
+              if (payload.eventType === "DELETE") {
+                if (!isProtectedAdminAccount) {
+                  void forceSignOutDeletedAccount();
+                }
+                return;
+              }
               applyDbProfileSnapshot(
                 (payload.new as Record<string, unknown> | undefined) ?? null
               );
@@ -1369,19 +1410,20 @@ function RuangSosmedStudioInner() {
       })
       .catch(() => {});
 
-    window.addEventListener("focus", checkOwnProfileOnce);
-    document.addEventListener("visibilitychange", checkOwnProfileOnce);
-
     return () => {
       cancelled = true;
-      window.removeEventListener("focus", checkOwnProfileOnce);
-      document.removeEventListener("visibilitychange", checkOwnProfileOnce);
-      if (roleChannel) {
-        void supabase.removeChannel(roleChannel);
+      window.removeEventListener("ruang_sosmed_account_deleted", handleAccountDeletedEvent);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (interval !== null) {
+        window.clearInterval(interval);
+      }
+      if (profileChannel) {
+        void supabase.removeChannel(profileChannel);
       }
     };
   }, [
     currentUser,
+    forceSignOutDeletedAccount,
     clearWelcomeProSeenForUser,
     triggerWelcomeProIfUnseen,
     setLearnerProStatus,

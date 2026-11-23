@@ -1788,16 +1788,38 @@ async function syncUserAvatarsToSupabase(
         ? (existing.settings_json.userAvatars as Record<string, string>)
         : {};
 
-    const merged: Record<string, string> = { ...remoteMap };
+    const merged: Record<string, string> = {};
+    let prunedLegacyDataUri = false;
+    Object.entries(remoteMap).forEach(([k, v]) => {
+      const valStr = typeof v === "string" ? v.trim() : "";
+      if (!valStr || valStr.startsWith("data:") || valStr.length > 1024) {
+        prunedLegacyDataUri = true;
+        return;
+      }
+      merged[k] = valStr;
+    });
+
+    let changed = prunedLegacyDataUri;
     Object.entries(userAvatars).forEach(([k, v]) => {
       const cleanK = k.trim().toLowerCase();
       if (!cleanK) return;
-      if (v && v.trim()) {
-        merged[cleanK] = v.trim();
-      } else {
+      const valStr = v ? v.trim() : "";
+      if (valStr.startsWith("data:") || valStr.length > 1024) {
+        // Tolak data URL base64 agar __SYSTEM_USER_AVATARS__ tidak membengkakkan database egress
+        return;
+      }
+      if (valStr) {
+        if (merged[cleanK] !== valStr) {
+          merged[cleanK] = valStr;
+          changed = true;
+        }
+      } else if (cleanK in merged) {
         delete merged[cleanK];
+        changed = true;
       }
     });
+
+    if (!changed && existing?.id) return;
 
     const payload = { userAvatars: merged };
 
@@ -3050,6 +3072,18 @@ export function RuangSosmedProvider({
   const inFlightCurriculumKeysRef = useRef<Set<string>>(new Set());
   const contentUpdatedAtRef = useRef<Record<string, string>>({});
   const isStaffSessionRef = useRef<boolean>(false);
+  const isAuthenticatedRef = useRef<boolean>(false);
+  const lastAnonMaintenanceCheckRef = useRef<number>(0);
+  const cachedSystemRowsRef = useRef<any[] | null>(null);
+  const lastSysWmKeyRef = useRef<string>("");
+  const cachedCatalogRowsRef = useRef<any[] | null>(null);
+  const lastCatalogWmKeyRef = useRef<string>("");
+  const cachedInboxRowsRef = useRef<any[] | null>(null);
+  const lastInboxWmRef = useRef<string>("");
+  const cachedIssuesRowsRef = useRef<any[] | null>(null);
+  const lastIssuesWmRef = useRef<string>("");
+  const cachedProSettingsRef = useRef<any | null>(null);
+  const lastProSettingsWmRef = useRef<string>("");
   const realtimeControlRef = useRef<{
     connect: () => void;
     disconnect: () => void;
@@ -4171,40 +4205,102 @@ export function RuangSosmedProvider({
       syncInFlightRef.current = true;
       let latestWmSerialized = "";
       let wmContentsKey = "";
+      let wmCatalogKey = "";
+      let wmSysKey = "";
+      let wmInboxKey = "";
+      let wmIssuesKey = "";
+      let wmProCfgKey = "";
       try {
-        if (!options?.force) {
-          const { data: wmData, error: wmErr } = await supabase.rpc(
-            "get_workspace_sync_watermark"
-          );
-          if (!wmErr && wmData !== null && wmData !== undefined) {
-            latestWmSerialized = JSON.stringify(wmData);
-            wmContentsKey = `${(wmData as any).contents_ts ?? ""}:${
-              (wmData as any).contents_count ?? ""
-            }`;
-            if (
-              latestWmSerialized !== "" &&
-              latestWmSerialized === lastWatermarkRef.current
-            ) {
-              return;
-            }
-          } else if (Date.now() - lastSyncAtRef.current < 60_000) {
-            return;
-          }
-        } else {
-          const { data: wmData, error: wmErr } = await supabase.rpc(
-            "get_workspace_sync_watermark"
-          );
-          if (!wmErr && wmData !== null && wmData !== undefined) {
-            latestWmSerialized = JSON.stringify(wmData);
-            wmContentsKey = `${(wmData as any).contents_ts ?? ""}:${
-              (wmData as any).contents_count ?? ""
-            }`;
-          }
-        }
-
         const { data: sessionData } = await supabase.auth.getSession();
         const authUser = sessionData?.session?.user || null;
         const authUserId = authUser?.id || null;
+        isAuthenticatedRef.current = Boolean(authUserId);
+
+        // Pengunjung anonim (belum login di landing page) tidak boleh menarik katalog/system rows penuh
+        if (!authUserId) {
+          isStaffSessionRef.current = false;
+          setIsStaffDbSession(false);
+          realtimeControlRef.current?.disconnect();
+
+          if (
+            !options?.force &&
+            lastAnonMaintenanceCheckRef.current > 0 &&
+            Date.now() - lastAnonMaintenanceCheckRef.current < 300_000
+          ) {
+            lastSyncAtRef.current = Date.now();
+            return;
+          }
+
+          lastAnonMaintenanceCheckRef.current = Date.now();
+          const { data: maintRows, error: maintErr } = await supabase
+            .from("contents")
+            .select("id, settings_json, updated_at")
+            .eq("title", "__SYSTEM_MAINTENANCE_CONFIG__")
+            .limit(1);
+
+          if (!maintErr && Array.isArray(maintRows) && maintRows[0]?.settings_json?.maintenanceConfig) {
+            const remoteMaint: MaintenanceConfig = {
+              ...DEFAULT_MAINTENANCE_CONFIG,
+              ...maintRows[0].settings_json.maintenanceConfig,
+            };
+            setState((prev) => {
+              if (
+                JSON.stringify(prev.maintenanceConfig) ===
+                JSON.stringify(remoteMaint)
+              ) {
+                return prev;
+              }
+              try {
+                window.localStorage.setItem(
+                  "ruang_sosmed_maintenance_config_v1",
+                  JSON.stringify(remoteMaint)
+                );
+              } catch {}
+              return {
+                ...prev,
+                maintenanceConfig: remoteMaint,
+              };
+            });
+          }
+          lastSyncAtRef.current = Date.now();
+          return;
+        }
+
+        const { data: wmData, error: wmErr } = await supabase.rpc(
+          "get_workspace_sync_watermark"
+        );
+        if (!wmErr && wmData !== null && wmData !== undefined) {
+          const wmObj = wmData as Record<string, any>;
+          latestWmSerialized = JSON.stringify(wmObj);
+          wmContentsKey = `${wmObj.contents_ts ?? ""}:${wmObj.contents_count ?? ""}`;
+          wmCatalogKey =
+            wmObj.catalog_ts !== undefined
+              ? `${wmObj.catalog_ts ?? ""}:${wmObj.catalog_count ?? ""}`
+              : wmContentsKey;
+          wmSysKey =
+            wmObj.sys_ts !== undefined ? String(wmObj.sys_ts ?? "") : wmContentsKey;
+          wmInboxKey = String(wmObj.inbox_ts ?? "");
+          wmIssuesKey = String(wmObj.issues_ts ?? "");
+          wmProCfgKey = String(wmObj.pro_cfg_ts ?? "");
+
+          if (
+            !options?.force &&
+            latestWmSerialized !== "" &&
+            latestWmSerialized === lastWatermarkRef.current
+          ) {
+            return;
+          }
+        } else if (!options?.force && Date.now() - lastSyncAtRef.current < 60_000) {
+          return;
+        }
+
+        // Jika cache isi konten dihapus manual oleh mutasi lokal, ikut reset cache sub-tabel contents
+        if (!Array.isArray(cachedContentsRowsRef.current) || !lastContentsWmKeyRef.current) {
+          cachedSystemRowsRef.current = null;
+          cachedCatalogRowsRef.current = null;
+          lastSysWmKeyRef.current = "";
+          lastCatalogWmKeyRef.current = "";
+        }
 
         let ownProfile: any = null;
         let ownProfileErr: any = null;
@@ -4274,43 +4370,67 @@ export function RuangSosmedProvider({
           realtimeControlRef.current?.disconnect();
         }
 
+        const sysNeedFetch =
+          !Array.isArray(cachedSystemRowsRef.current) ||
+          !wmSysKey ||
+          wmSysKey !== lastSysWmKeyRef.current;
+        const catalogNeedFetch =
+          !Array.isArray(cachedCatalogRowsRef.current) ||
+          !wmCatalogKey ||
+          wmCatalogKey === ":" ||
+          wmCatalogKey !== lastCatalogWmKeyRef.current;
+
         let contentsRes: { data: any[] | null; error: any };
         if (
-          wmContentsKey &&
-          wmContentsKey !== ":" &&
-          wmContentsKey === lastContentsWmKeyRef.current &&
+          !sysNeedFetch &&
+          !catalogNeedFetch &&
           Array.isArray(cachedContentsRowsRef.current)
         ) {
           contentsRes = { data: cachedContentsRowsRef.current, error: null };
         } else {
           const [sysRes, catRes] = await Promise.all([
-            supabase
-              .from("contents")
-              .select("id, title, status, settings_json, created_at, updated_at")
-              .like("title", "__SYSTEM_%")
-              .order("created_at", { ascending: true }),
-            supabase
-              .from("contents")
-              .select(
-                "id, project_id, type, title, description, thumbnail_url, category_tags, urgency, estimated_minutes, points_reward, is_pro_only, status, author_id, folder_name, folder_id, access_code, cohort, sort_order, created_at, updated_at, explorer_meta:settings_json->explorer_meta, reviews:settings_json->reviews" as any
-              )
-              .in("status", ["published", "archived"])
-              .not("title", "like", "__SYSTEM_%")
-              .order("created_at", { ascending: true }),
+            sysNeedFetch
+              ? supabase
+                  .from("contents")
+                  .select("id, title, status, settings_json, created_at, updated_at")
+                  .like("title", "__SYSTEM_%")
+                  .order("created_at", { ascending: true })
+              : Promise.resolve({ data: cachedSystemRowsRef.current, error: null }),
+            catalogNeedFetch
+              ? supabase
+                  .from("contents")
+                  .select(
+                    "id, project_id, type, title, description, thumbnail_url, category_tags, urgency, estimated_minutes, points_reward, is_pro_only, status, author_id, folder_name, folder_id, access_code, cohort, sort_order, created_at, updated_at, explorer_meta:settings_json->explorer_meta, reviews:settings_json->reviews" as any
+                  )
+                  .in("status", ["published", "archived"])
+                  .not("title", "like", "__SYSTEM_%")
+                  .order("created_at", { ascending: true })
+              : Promise.resolve({ data: cachedCatalogRowsRef.current, error: null }),
           ]);
 
           if (!sysRes.error && !catRes.error && Array.isArray(catRes.data)) {
-            const normalizedCatalog = (catRes.data as any[]).map((row) => ({
-              ...row,
-              __isLightweightRow: true,
-              settings_json: row.settings_json || {
-                explorer_meta: row.explorer_meta || {},
-                reviews: Array.isArray(row.reviews) ? row.reviews : [],
-                curriculum: Array.isArray(row.explorer_meta?.chapterOutline)
-                  ? row.explorer_meta.chapterOutline
-                  : [],
-              },
-            }));
+            if (sysNeedFetch && Array.isArray(sysRes.data)) {
+              cachedSystemRowsRef.current = sysRes.data;
+              if (wmSysKey) lastSysWmKeyRef.current = wmSysKey;
+            }
+            let normalizedCatalog = cachedCatalogRowsRef.current || [];
+            if (catalogNeedFetch) {
+              normalizedCatalog = (catRes.data as any[]).map((row) => ({
+                ...row,
+                __isLightweightRow: true,
+                settings_json: row.settings_json || {
+                  explorer_meta: row.explorer_meta || {},
+                  reviews: Array.isArray(row.reviews) ? row.reviews : [],
+                  curriculum: Array.isArray(row.explorer_meta?.chapterOutline)
+                    ? row.explorer_meta.chapterOutline
+                    : [],
+                },
+              }));
+              cachedCatalogRowsRef.current = normalizedCatalog;
+              if (wmCatalogKey && wmCatalogKey !== ":") {
+                lastCatalogWmKeyRef.current = wmCatalogKey;
+              }
+            }
             const combinedRows = [
               ...(Array.isArray(sysRes.data) ? sysRes.data : []),
               ...normalizedCatalog,
@@ -4361,6 +4481,20 @@ export function RuangSosmedProvider({
         let ownTrialRequestDetected = false;
 
         if (authUserId) {
+          const inboxNeedFetch =
+            !Array.isArray(cachedInboxRowsRef.current) ||
+            !wmInboxKey ||
+            wmInboxKey !== lastInboxWmRef.current;
+          const issuesNeedFetch =
+            isStaffSession &&
+            (!Array.isArray(cachedIssuesRowsRef.current) ||
+              !wmIssuesKey ||
+              wmIssuesKey !== lastIssuesWmRef.current);
+          const proSettingsNeedFetch =
+            !cachedProSettingsRef.current ||
+            !wmProCfgKey ||
+            wmProCfgKey !== lastProSettingsWmRef.current;
+
           const [
             inboxRes,
             issuesRes,
@@ -4370,25 +4504,36 @@ export function RuangSosmedProvider({
             unlockedItemsRes,
             ownProReqsRes,
           ] = await Promise.all([
-            supabase
-              .from("mentor_inbox_threads")
-              .select(
-                "id, chapter_badge, title, excerpt, replies_count, views_count, last_reply_label, participants, replies, created_at, updated_at"
-              )
-              .order("updated_at", { ascending: false }),
-            supabase
-              .from("mentor_reported_issues")
-              .select(
-                "id, chapter, title, reporter, reported_at, status, category, created_at"
-              )
-              .order("created_at", { ascending: false }),
-            supabase
-              .from("learner_pro_settings")
-              .select(
-                "id, price_label, period_label, qr_code_url, merchant_name, bank_name, account_number, account_holder, whatsapp_number, packages, config, updated_at"
-              )
-              .eq("id", "default")
-              .maybeSingle(),
+            inboxNeedFetch
+              ? supabase
+                  .from("mentor_inbox_threads")
+                  .select(
+                    "id, chapter_badge, title, excerpt, replies_count, views_count, last_reply_label, participants, replies, created_at, updated_at"
+                  )
+                  .order("updated_at", { ascending: false })
+                  .limit(80)
+              : Promise.resolve({ data: cachedInboxRowsRef.current, error: null }),
+            issuesNeedFetch
+              ? supabase
+                  .from("mentor_reported_issues")
+                  .select(
+                    "id, chapter, title, reporter, reported_at, status, category, created_at"
+                  )
+                  .order("created_at", { ascending: false })
+                  .limit(100)
+              : Promise.resolve({
+                  data: isStaffSession ? cachedIssuesRowsRef.current || [] : [],
+                  error: null,
+                }),
+            proSettingsNeedFetch
+              ? supabase
+                  .from("learner_pro_settings")
+                  .select(
+                    "id, price_label, period_label, qr_code_url, merchant_name, bank_name, account_number, account_holder, whatsapp_number, packages, config, updated_at"
+                  )
+                  .eq("id", "default")
+                  .maybeSingle()
+              : Promise.resolve({ data: cachedProSettingsRef.current, error: null }),
             isStaffSession
               ? (async () => {
                   if (profilesHasSubDateCols && profilesHasTierV2Cols) {
@@ -4471,8 +4616,20 @@ export function RuangSosmedProvider({
           ]);
 
           inboxThreadsRes = inboxRes;
+          if (inboxNeedFetch && !inboxRes.error && Array.isArray(inboxRes.data)) {
+            cachedInboxRowsRef.current = inboxRes.data;
+            if (wmInboxKey) lastInboxWmRef.current = wmInboxKey;
+          }
           reportedIssuesRes = issuesRes;
+          if (issuesNeedFetch && !issuesRes.error && Array.isArray(issuesRes.data)) {
+            cachedIssuesRowsRef.current = issuesRes.data;
+            if (wmIssuesKey) lastIssuesWmRef.current = wmIssuesKey;
+          }
           learnerProSettingsRes = proSettingsRes;
+          if (proSettingsNeedFetch && !proSettingsRes.error && proSettingsRes.data) {
+            cachedProSettingsRef.current = proSettingsRes.data;
+            if (wmProCfgKey) lastProSettingsWmRef.current = wmProCfgKey;
+          }
           profilesRes = staffProfilesRes;
           userProfilesRes = staffUserProfilesRes;
           if (!unlockedItemsRes?.error && Array.isArray(unlockedItemsRes?.data)) {
@@ -6873,14 +7030,15 @@ export function RuangSosmedProvider({
         clearTimeout(realtimeDebounceRef.current);
       }
       realtimeDebounceRef.current = setTimeout(() => {
-        void syncRegisteredLearners({ force: true });
-      }, 1200);
+        void syncRegisteredLearners({ force: false });
+      }, 3000);
     };
 
     void syncRegisteredLearners({ force: true });
 
     let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
     let idleDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let eventSyncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const connectStaffRealtime = () => {
       if (!isStaffSessionRef.current) return;
@@ -6943,11 +7101,12 @@ export function RuangSosmedProvider({
       disconnect: disconnectStaffRealtime,
     };
 
-    // Low-egress sync: WebSocket Realtime khusus Admin/Mentor + watermark check 90s saat tab aktif
+    // Ultra-low-egress sync: WebSocket Realtime khusus Admin/Mentor + watermark check 180s saat tab aktif & login
     const intervalId = window.setInterval(() => {
+      if (!isAuthenticatedRef.current) return;
       if (typeof document !== "undefined" && document.hidden) return;
       void syncRegisteredLearners({ force: false });
-    }, 90_000);
+    }, 180_000);
 
     const handleVisibilityOrFocus = () => {
       if (typeof document !== "undefined" && document.hidden) {
@@ -6956,41 +7115,58 @@ export function RuangSosmedProvider({
           if (typeof document !== "undefined" && document.hidden) {
             disconnectStaffRealtime();
           }
-        }, 90_000);
+        }, 60_000);
         return;
       }
       if (idleDisconnectTimer) {
         clearTimeout(idleDisconnectTimer);
         idleDisconnectTimer = null;
       }
+      if (!isAuthenticatedRef.current) return;
       if (isStaffSessionRef.current) {
         connectStaffRealtime();
       }
-      if (Date.now() - lastSyncAtRef.current < 5_000) return;
-      void syncRegisteredLearners({ force: true });
+      if (Date.now() - lastSyncAtRef.current < 45_000) return;
+      void syncRegisteredLearners({ force: false });
     };
-    window.addEventListener("focus", handleVisibilityOrFocus);
     document.addEventListener("visibilitychange", handleVisibilityOrFocus);
 
-    const handlePointsAwarded = () => {
-      void syncRegisteredLearners({ force: true });
+    const handlePointsOrProfileEvent = () => {
+      if (!isAuthenticatedRef.current) return;
+      if (eventSyncDebounceTimer) clearTimeout(eventSyncDebounceTimer);
+      eventSyncDebounceTimer = setTimeout(() => {
+        lastWatermarkRef.current = "";
+        void syncRegisteredLearners({ force: false });
+      }, 2500);
     };
-    window.addEventListener("ruang_sosmed_points_awarded", handlePointsAwarded);
-    window.addEventListener("ruang_sosmed_profile_updated", handlePointsAwarded);
+    window.addEventListener("ruang_sosmed_points_awarded", handlePointsOrProfileEvent);
+    window.addEventListener("ruang_sosmed_profile_updated", handlePointsOrProfileEvent);
 
     const {
       data: { subscription: authSub },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN") {
+        isAuthenticatedRef.current = true;
         lastWatermarkRef.current = "";
         void syncRegisteredLearners({ force: true });
       } else if (event === "SIGNED_OUT") {
+        isAuthenticatedRef.current = false;
         isStaffSessionRef.current = false;
+        setIsStaffDbSession(false);
         disconnectStaffRealtime();
         lastWatermarkRef.current = "";
         lastContentsWmKeyRef.current = "";
         cachedContentsRowsRef.current = null;
-        void syncRegisteredLearners({ force: true });
+        cachedSystemRowsRef.current = null;
+        lastSysWmKeyRef.current = "";
+        cachedCatalogRowsRef.current = null;
+        lastCatalogWmKeyRef.current = "";
+        cachedInboxRowsRef.current = null;
+        lastInboxWmRef.current = "";
+        cachedIssuesRowsRef.current = null;
+        lastIssuesWmRef.current = "";
+        cachedProSettingsRef.current = null;
+        lastProSettingsWmRef.current = "";
       }
     });
 
@@ -7001,11 +7177,13 @@ export function RuangSosmedProvider({
       if (idleDisconnectTimer) {
         clearTimeout(idleDisconnectTimer);
       }
+      if (eventSyncDebounceTimer) {
+        clearTimeout(eventSyncDebounceTimer);
+      }
       window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleVisibilityOrFocus);
       document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
-      window.removeEventListener("ruang_sosmed_points_awarded", handlePointsAwarded);
-      window.removeEventListener("ruang_sosmed_profile_updated", handlePointsAwarded);
+      window.removeEventListener("ruang_sosmed_points_awarded", handlePointsOrProfileEvent);
+      window.removeEventListener("ruang_sosmed_profile_updated", handlePointsOrProfileEvent);
       authSub.unsubscribe();
       disconnectStaffRealtime();
       realtimeControlRef.current = null;

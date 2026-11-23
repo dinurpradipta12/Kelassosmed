@@ -633,7 +633,7 @@ export function AdminLearnersDirectory({
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         void loadSupabaseDirectory();
-      }, 1000);
+      }, 3000);
     };
 
     const subscribeDirChannel = () => {
@@ -678,7 +678,7 @@ export function AdminLearnersDirectory({
           if (typeof document !== "undefined" && document.hidden) {
             disconnectDirChannel();
           }
-        }, 90_000);
+        }, 45_000);
         return;
       }
       if (idleDisconnectTimer) {
@@ -686,7 +686,7 @@ export function AdminLearnersDirectory({
         idleDisconnectTimer = null;
       }
       subscribeDirChannel();
-      if (Date.now() - lastDirFetchAtRef.current < 30_000) return;
+      if (Date.now() - lastDirFetchAtRef.current < 60_000) return;
       void loadSupabaseDirectory();
     };
 
