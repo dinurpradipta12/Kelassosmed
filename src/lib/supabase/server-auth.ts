@@ -1,6 +1,11 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { getServerEnv } from "@/lib/server-env";
 import { supabasePublic } from "@/lib/supabase/client";
+import {
+  resolveActiveSupabaseAnonKey,
+  resolveActiveSupabaseUrl,
+} from "@/lib/supabase/config";
 import type { UserRole } from "@/lib/supabase/database.types";
 
 export const API_SECURITY_HEADERS: Record<string, string> = {
@@ -14,12 +19,20 @@ function resolveSupabaseCredentials(): { url: string; anonKey: string } {
     supabaseUrl?: string;
     supabaseKey?: string;
   };
-  const url =
-    (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim() ||
-    (clientAny.supabaseUrl || "").trim();
-  const anonKey =
-    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim() ||
-    (clientAny.supabaseKey || "").trim();
+  const url = resolveActiveSupabaseUrl(
+    getServerEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    getServerEnv("VITE_SUPABASE_URL"),
+    getServerEnv("SUPABASE_URL"),
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    clientAny.supabaseUrl
+  );
+  const anonKey = resolveActiveSupabaseAnonKey(
+    url,
+    getServerEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    getServerEnv("VITE_SUPABASE_ANON_KEY"),
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    clientAny.supabaseKey
+  );
 
   return { url, anonKey };
 }

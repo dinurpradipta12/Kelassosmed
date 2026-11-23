@@ -7,8 +7,7 @@ import {
 } from "@/lib/subscription-utils";
 import { deletePaymentProofFromStorage } from "@/lib/supabase/proof-cleanup";
 import { getServerEnv } from "@/lib/server-env";
-
-const DEFAULT_SUPABASE_URL = "https://wdmfxlrdyqxnycbebwpv.supabase.co";
+import { resolveActiveSupabaseUrl } from "@/lib/supabase/config";
 
 export interface TelegramBotConfig {
   enabled: boolean;
@@ -57,12 +56,11 @@ export interface TelegramInlineKeyboardMarkup {
 }
 
 export function resolveSupabaseUrl(): string {
-  return (
-    getServerEnv("NEXT_PUBLIC_SUPABASE_URL") ||
-    (process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim() ||
-    getServerEnv("VITE_SUPABASE_URL") ||
-    (process.env.VITE_SUPABASE_URL || "").trim() ||
-    DEFAULT_SUPABASE_URL
+  return resolveActiveSupabaseUrl(
+    getServerEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    getServerEnv("VITE_SUPABASE_URL"),
+    process.env.VITE_SUPABASE_URL
   );
 }
 

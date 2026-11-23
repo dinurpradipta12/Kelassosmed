@@ -5,19 +5,21 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ProfileRow, UserRole } from "@/lib/supabase/database.types";
+import {
+  extractSupabaseUrlRef,
+  resolveActiveSupabaseAnonKey,
+  resolveActiveSupabaseUrl,
+} from "@/lib/supabase/config";
 
-const DEFAULT_SUPABASE_URL = "https://wdmfxlrdyqxnycbebwpv.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndkbWZ4bHJkeXF4bnljYmVid3B2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU0MDQ2MTUsImV4cCI6MjExMDk4MDYxNX0.W4EI9H2NtL3oxYDCWFXUnWqAFxqgsmUfJo5ptVXWCPQ";
-
-const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  process.env.VITE_SUPABASE_URL ||
-  DEFAULT_SUPABASE_URL;
-const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  DEFAULT_SUPABASE_ANON_KEY;
+const SUPABASE_URL = resolveActiveSupabaseUrl(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.VITE_SUPABASE_URL
+);
+const SUPABASE_ANON_KEY = resolveActiveSupabaseAnonKey(
+  SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  process.env.VITE_SUPABASE_ANON_KEY
+);
 
 export const DEFAULT_SITE_URL = "https://ruangsosmedid.com";
 
@@ -75,7 +77,8 @@ const PROXIED_SUPABASE_PREFIXES = [
   "/functions/v1/",
 ] as const;
 
-const SB_PROXY_SESSION_KEY = "rs_use_sb_proxy_v1";
+const ACTIVE_PROJECT_REF = extractSupabaseUrlRef(SUPABASE_URL) || "default";
+const SB_PROXY_SESSION_KEY = `rs_use_sb_proxy_v2_${ACTIVE_PROJECT_REF}`;
 
 let preferSameOriginProxy = false;
 if (typeof window !== "undefined") {

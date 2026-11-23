@@ -8,13 +8,17 @@
 import { NextResponse } from "next/server";
 import { getServerEnv } from "@/lib/server-env";
 import {
+  extractSupabaseJwtPayload,
+  extractSupabaseUrlRef,
+  resolveActiveSupabaseAnonKey,
+  resolveActiveSupabaseUrl,
+} from "@/lib/supabase/config";
+import {
   API_SECURITY_HEADERS,
   checkFetchMetadata,
 } from "@/lib/supabase/server-auth";
 
 export const dynamic = "force-dynamic";
-
-const DEFAULT_SUPABASE_URL = "https://wdmfxlrdyqxnycbebwpv.supabase.co";
 
 const ALLOWED_SUPABASE_PREFIXES = [
   "auth/v1",
@@ -55,13 +59,19 @@ const SAFE_RESPONSE_HEADERS = [
 ] as const;
 
 function resolveUpstreamSupabaseBase(): string {
-  const raw =
-    getServerEnv("NEXT_PUBLIC_SUPABASE_URL") ||
-    getServerEnv("VITE_SUPABASE_URL") ||
-    getServerEnv("SUPABASE_URL");
-  const base =
-    raw && !raw.includes("your-project-ref") ? raw : DEFAULT_SUPABASE_URL;
-  return base.replace(/\/+$/, "");
+  return resolveActiveSupabaseUrl(
+    getServerEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    getServerEnv("VITE_SUPABASE_URL"),
+    getServerEnv("SUPABASE_URL")
+  );
+}
+
+function resolveUpstreamAnonKey(targetBase: string): string {
+  return resolveActiveSupabaseAnonKey(
+    targetBase,
+    getServerEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    getServerEnv("VITE_SUPABASE_ANON_KEY")
+  );
 }
 
 function isSafePathSegments(segments: string[]): boolean {
@@ -116,6 +126,56 @@ async function handleProxy(
     const val = request.headers.get(headerName);
     if (val !== null && val !== "") {
       upstreamHeaders.set(headerName, val);
+    }
+  }
+
+  const targetRef = extractSupabaseUrlRef(targetBase);
+  const upstreamAnonKey = resolveUpstreamAnonKey(targetBase);
+  if (upstreamAnonKey) {
+    const incomingApikey = (request.headers.get("apikey") || "").trim();
+    const incomingApikeyPayload = incomingApikey
+      ? extractSupabaseJwtPayload(incomingApikey)
+      : null;
+    const isMismatchedApikey =
+      !incomingApikey ||
+      Boolean(
+        targetRef &&
+          incomingApikeyPayload?.ref &&
+          incomingApikeyPayload.ref !== targetRef
+      );
+
+    const incomingAuth = (request.headers.get("authorization") || "").trim();
+    const shouldEnsureApikey =
+      Boolean(incomingApikey) ||
+      joinedPath.startsWith("auth/v1") ||
+      joinedPath.startsWith("rest/v1") ||
+      joinedPath.startsWith("functions/v1") ||
+      (joinedPath.startsWith("storage/v1") && !incomingAuth);
+
+    if (isMismatchedApikey && shouldEnsureApikey) {
+      upstreamHeaders.set("apikey", upstreamAnonKey);
+    }
+
+    const authMatch = /^Bearer\s+(.+)$/i.exec(incomingAuth);
+    if (authMatch?.[1]) {
+      const bearerToken = authMatch[1].trim();
+      const authPayload = extractSupabaseJwtPayload(bearerToken);
+      const isAuthenticatedUserToken = authPayload?.role === "authenticated";
+      const isAnonMatchingMismatchedKey =
+        isMismatchedApikey &&
+        Boolean(incomingApikey) &&
+        bearerToken === incomingApikey &&
+        !isAuthenticatedUserToken;
+      const isMismatchedAnonJwt =
+        authPayload?.role === "anon" &&
+        Boolean(targetRef && authPayload.ref && authPayload.ref !== targetRef);
+
+      if (
+        !isAuthenticatedUserToken &&
+        (isAnonMatchingMismatchedKey || isMismatchedAnonJwt)
+      ) {
+        upstreamHeaders.set("authorization", `Bearer ${upstreamAnonKey}`);
+      }
     }
   }
 
