@@ -1491,12 +1491,7 @@ DECLARE
     'landing_pages',
     'contents',
     'lms_courses',
-    'public_content_revisions',
-    'courses',
-    'lessons',
-    'lesson_assets',
-    'shared_assets',
-    'learning_hub_content'
+    'public_content_revisions'
   ];
 BEGIN
   FOREACH tbl IN ARRAY anon_read_tables LOOP
@@ -1509,5 +1504,98 @@ BEGIN
     GRANT INSERT ON TABLE public.events TO anon;
   END IF;
 END $$;
+
+-- -----------------------------------------------------------------------------
+-- 5. HARDENING AKSES PUBLIK (ANON), STORAGE BUCKETS, & TRIGGER BUKTI TRANSFER
+-- -----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "contents_select_public_catalog" ON public.contents;
+DROP POLICY IF EXISTS "contents_select_anon_maintenance_only" ON public.contents;
+DROP POLICY IF EXISTS "contents_select_authenticated_catalog" ON public.contents;
+
+CREATE POLICY "contents_select_anon_maintenance_only"
+  ON public.contents FOR SELECT TO anon
+  USING (title = '__SYSTEM_MAINTENANCE_CONFIG__');
+
+CREATE POLICY "contents_select_authenticated_catalog"
+  ON public.contents FOR SELECT TO authenticated
+  USING (
+    (status = 'published'::public.content_status AND title NOT LIKE '__SYSTEM_%')
+    OR title = '__SYSTEM_MAINTENANCE_CONFIG__'
+  );
+
+REVOKE ALL ON FUNCTION public.get_workspace_sync_watermark() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_workspace_sync_watermark() TO authenticated;
+
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_admin_or_mentor() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_mentor_or_admin() TO anon, authenticated;
+
+DROP POLICY IF EXISTS "storage_public_read_assets" ON storage.objects;
+DROP POLICY IF EXISTS "storage_authenticated_read_media" ON storage.objects;
+DROP POLICY IF EXISTS "storage_attachments_owner_or_staff" ON storage.objects;
+
+CREATE POLICY "storage_authenticated_read_media"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (
+    bucket_id IN (
+      'ruang-sosmed-media',
+      'ruang-sosmed-avatars',
+      'lesson-assets',
+      'profile-avatars'
+    )
+  );
+
+CREATE POLICY "storage_attachments_owner_or_staff"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (
+    bucket_id = 'ruang-sosmed-attachments'
+    AND (
+      public.is_admin_or_mentor()
+      OR (storage.foldername(name))[1] = auth.uid()::text
+    )
+  );
+
+CREATE OR REPLACE FUNCTION public.clear_proof_on_request_resolution()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.status IN ('approved', 'rejected') THEN
+    IF OLD.proof_url IS NOT NULL OR NEW.proof_url IS NOT NULL THEN
+      NEW.proof_deleted_at := COALESCE(NEW.proof_deleted_at, now());
+    END IF;
+    NEW.proof_url := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF to_regclass('public.pro_upgrade_requests') IS NOT NULL THEN
+    DROP TRIGGER IF EXISTS trg_clear_proof_on_request_resolution ON public.pro_upgrade_requests;
+    CREATE TRIGGER trg_clear_proof_on_request_resolution
+      BEFORE UPDATE ON public.pro_upgrade_requests
+      FOR EACH ROW
+      EXECUTE FUNCTION public.clear_proof_on_request_resolution();
+  END IF;
+END $$;
+
+WITH ranked_system_rows AS (
+  SELECT
+    id,
+    row_number() OVER (
+      PARTITION BY title
+      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+    ) AS rn
+  FROM public.contents
+  WHERE left(title, 9) = '__SYSTEM_'
+)
+DELETE FROM public.contents c
+USING ranked_system_rows r
+WHERE c.id = r.id
+  AND r.rn > 1;
 
 NOTIFY pgrst, 'reload schema';

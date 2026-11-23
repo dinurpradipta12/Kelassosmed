@@ -23,12 +23,7 @@ DECLARE
     'landing_pages',
     'contents',
     'lms_courses',
-    'public_content_revisions',
-    'courses',
-    'lessons',
-    'lesson_assets',
-    'shared_assets',
-    'learning_hub_content'
+    'public_content_revisions'
   ];
 BEGIN
   FOREACH tbl IN ARRAY anon_read_tables LOOP
@@ -41,5 +36,9 @@ BEGIN
     GRANT INSERT ON TABLE public.events TO anon;
   END IF;
 END $$;
+
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_admin_or_mentor() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_mentor_or_admin() TO anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';
