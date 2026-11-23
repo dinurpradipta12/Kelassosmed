@@ -190,8 +190,7 @@ export function AdminWebAppsManager({ onShowToast }: AdminWebAppsManagerProps) {
     }
   };
 
-  const handleSaveApp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveApp = async () => {
     setFormError(null);
 
     const cleanName = formName.trim();
@@ -549,7 +548,7 @@ export function AdminWebAppsManager({ onShowToast }: AdminWebAppsManagerProps) {
         subtitle="Icon dikompresi WebP ke Storage CDN; link app berbayar dilindungi server."
         maxWidthClass="max-w-xl"
       >
-        <form onSubmit={(e) => void handleSaveApp(e)} className="space-y-4">
+        <div className="space-y-4">
           {/* Icon Preview + Upload + Preset */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -837,7 +836,8 @@ export function AdminWebAppsManager({ onShowToast }: AdminWebAppsManagerProps) {
               Batal
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={() => void handleSaveApp()}
               disabled={saving || uploadingIcon}
               className="rounded-xl bg-[#4F39F6] hover:bg-[#3B28CC] disabled:opacity-50 px-5 py-2 text-xs font-bold text-white cursor-pointer"
             >
@@ -848,7 +848,7 @@ export function AdminWebAppsManager({ onShowToast }: AdminWebAppsManagerProps) {
                 : "Terbitkan Web App"}
             </button>
           </div>
-        </form>
+        </div>
       </ModalDialog>
 
       {/* Delete Confirmation Modal */}
