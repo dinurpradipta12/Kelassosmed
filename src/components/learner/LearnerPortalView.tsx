@@ -36,7 +36,9 @@ import {
   Compass,
   Home,
   User,
+  AppWindow,
 } from "lucide-react";
+import { LearnerToolsYouNeedPage } from "@/components/learner/LearnerToolsYouNeedPage";
 import {
   LearnerTopNavbar,
   type LearnerNavTabId,
@@ -586,6 +588,7 @@ export function LearnerPortalView({
 
   const showWikiPage = learnerPagesConfig?.showWikiPage ?? true;
   const showFavoritesPage = learnerPagesConfig?.showFavoritesPage ?? true;
+  const showToolsPage = learnerPagesConfig?.showToolsPage ?? true;
 
   // Pastikan daftar materi di Learner Portal menampilkan materi yang di-assign oleh Admin
   // (baik di-assign langsung, via Folder Series, maupun Project bertipe "Bagikan ke Semua Member")
@@ -1593,7 +1596,7 @@ export function LearnerPortalView({
     }
   }, [screenState]);
 
-  // Guard: jika halaman Wiki/Favorites dinonaktifkan oleh Admin, arahkan keluar dari halaman tersebut
+  // Guard: jika halaman Wiki/Favorites/Tools dinonaktifkan oleh Admin, arahkan keluar dari halaman tersebut
   useEffect(() => {
     if (!showWikiPage && activeNavTab === "wiki") {
       setActiveNavTab("home");
@@ -1604,7 +1607,10 @@ export function LearnerPortalView({
     if (!showFavoritesPage && activeNavTab === "favorites") {
       setActiveNavTab("home");
     }
-  }, [showWikiPage, showFavoritesPage, activeNavTab, screenState.screen]);
+    if (!showToolsPage && activeNavTab === "tools") {
+      setActiveNavTab("home");
+    }
+  }, [showWikiPage, showFavoritesPage, showToolsPage, activeNavTab, screenState.screen]);
 
   // Guard: jika halaman yang tersimpan adalah kelas yang belum/tidak di-assign ke user ini, kembalikan ke dashboard
   useEffect(() => {
@@ -2914,6 +2920,12 @@ export function LearnerPortalView({
               );
             })()
             )
+          ) : activeNavTab === "tools" && showToolsPage ? (
+            <LearnerToolsYouNeedPage
+              onOpenUpgradeModal={onOpenUpgradeModal}
+              onShowToast={onShowToast}
+              searchQuery={searchQuery}
+            />
           ) : activeNavTab === "favorites" && showFavoritesPage && !canNotesFavorites ? (
             /* FAVORITES TAB LOCKED WHEN FREE TIER */
             <section
@@ -4879,6 +4891,8 @@ export function LearnerPortalView({
             ? "learner:catalog"
             : activeNavTab === "wiki"
             ? "learner:wiki"
+            : activeNavTab === "tools"
+            ? "learner:tools"
             : activeNavTab === "favorites"
             ? "learner:favorites"
             : "learner:home";
@@ -5003,87 +5017,110 @@ export function LearnerPortalView({
         );
       })()}
 
-      {/* Mobile App 5-Tab Bottom Navigation Bar (Katalog, Belajar, Simpanan, Dashboard, Profil) */}
-      <nav
-        aria-label="Navigasi Mobile Siswa"
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[#EAECEF] bg-[#FFFFFF]/95 backdrop-blur-md px-1 pt-1.5 pb-[calc(0.45rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(16,15,17,0.06)]"
-      >
-        <div className="grid grid-cols-5 gap-0.5 max-w-md mx-auto">
-          {(
-            [
-              {
-                id: "catalog" as LearnerNavTabId,
-                label: "Katalog",
-                icon: Compass,
-              },
-              {
-                id: "my-learning" as LearnerNavTabId,
-                label: "Belajar",
-                icon: BookOpen,
-              },
-              {
-                id: "favorites" as LearnerNavTabId,
-                label: "Simpanan",
-                icon: Heart,
-              },
-              {
-                id: "home" as LearnerNavTabId,
-                label: "Dashboard",
-                icon: Home,
-              },
-              {
-                id: "profile" as LearnerNavTabId,
-                label: "Profil",
-                icon: User,
-              },
-            ]
-          ).map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              screenState.screen === "dashboard"
-                ? activeNavTab === item.id
-                : item.id === "my-learning";
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleSelectNavTab(item.id)}
-                aria-current={isActive ? "page" : undefined}
-                className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-colors cursor-pointer ${
-                  isActive
-                    ? "text-[#4F39F6]"
-                    : "text-[#64748B] hover:text-[#121215]"
-                }`}
-              >
-                <span
-                  className={`flex h-7 w-10 items-center justify-center rounded-full transition-colors ${
-                    isActive ? "bg-[#EEF2FF]" : "bg-transparent"
-                  }`}
-                >
-                  {item.id === "profile" && activeLearnerAvatar ? (
-                    <img
-                      src={activeLearnerAvatar}
-                      alt={activeLearnerDisplayName}
-                      className={`h-5 w-5 rounded-full object-cover border ${
-                        isActive ? "border-[#4F39F6]" : "border-[#EAECEF]"
+      {/* Mobile App Bottom Navigation Bar */}
+      {(() => {
+        const mobileNavItems = [
+          {
+            id: "catalog" as LearnerNavTabId,
+            label: "Katalog",
+            icon: Compass,
+          },
+          {
+            id: "my-learning" as LearnerNavTabId,
+            label: "Belajar",
+            icon: BookOpen,
+          },
+          ...(showToolsPage
+            ? [
+                {
+                  id: "tools" as LearnerNavTabId,
+                  label: "Tools",
+                  icon: AppWindow,
+                },
+              ]
+            : []),
+          ...(showFavoritesPage
+            ? [
+                {
+                  id: "favorites" as LearnerNavTabId,
+                  label: "Simpanan",
+                  icon: Heart,
+                },
+              ]
+            : []),
+          {
+            id: "home" as LearnerNavTabId,
+            label: "Dashboard",
+            icon: Home,
+          },
+          {
+            id: "profile" as LearnerNavTabId,
+            label: "Profil",
+            icon: User,
+          },
+        ];
+        const colsClass =
+          mobileNavItems.length === 4
+            ? "grid-cols-4"
+            : mobileNavItems.length === 6
+            ? "grid-cols-6"
+            : "grid-cols-5";
+
+        return (
+          <nav
+            aria-label="Navigasi Mobile Siswa"
+            className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-[#EAECEF] bg-[#FFFFFF]/95 backdrop-blur-md px-1 pt-1.5 pb-[calc(0.45rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(16,15,17,0.06)]"
+          >
+            <div className={`grid ${colsClass} gap-0.5 max-w-md mx-auto`}>
+              {mobileNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive =
+                  screenState.screen === "dashboard"
+                    ? activeNavTab === item.id
+                    : item.id === "my-learning";
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectNavTab(item.id)}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 transition-colors cursor-pointer ${
+                      isActive
+                        ? "text-[#4F39F6]"
+                        : "text-[#64748B] hover:text-[#121215]"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-7 w-10 items-center justify-center rounded-full transition-colors ${
+                        isActive ? "bg-[#EEF2FF]" : "bg-transparent"
                       }`}
-                    />
-                  ) : (
-                    <Icon size={17} strokeWidth={isActive ? 2.4 : 2} />
-                  )}
-                </span>
-                <span
-                  className={`text-[10px] leading-none truncate max-w-full px-0.5 ${
-                    isActive ? "font-extrabold" : "font-semibold"
-                  }`}
-                >
-                  {item.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+                    >
+                      {item.id === "profile" && activeLearnerAvatar ? (
+                        <img
+                          src={activeLearnerAvatar}
+                          alt={activeLearnerDisplayName}
+                          className={`h-5 w-5 rounded-full object-cover border ${
+                            isActive ? "border-[#4F39F6]" : "border-[#EAECEF]"
+                          }`}
+                        />
+                      ) : (
+                        <Icon size={17} strokeWidth={isActive ? 2.4 : 2} />
+                      )}
+                    </span>
+                    <span
+                      className={`text-[10px] leading-none truncate max-w-full px-0.5 ${
+                        isActive ? "font-extrabold" : "font-semibold"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        );
+      })()}
     </div>
   );
 }

@@ -39,6 +39,7 @@ import {
   type ContentVersionItem,
   type WorkspaceCollaborator,
 } from "@/lib/phase2-data";
+import { buildWebAppUnlockKey } from "@/types/webapp";
 import {
   INITIAL_WIKI_RESOURCES,
   type WikiResourceCard,
@@ -188,11 +189,13 @@ export const DEFAULT_MAINTENANCE_CONFIG: MaintenanceConfig = {
 export interface LearnerPagesVisibilityConfig {
   showWikiPage: boolean;
   showFavoritesPage: boolean;
+  showToolsPage: boolean;
 }
 
 export const DEFAULT_LEARNER_PAGES_CONFIG: LearnerPagesVisibilityConfig = {
   showWikiPage: true,
   showFavoritesPage: true,
+  showToolsPage: true,
 };
 
 export const DEFAULT_LEARNER_PRO_CONFIG: LearnerProPlanConfig = {
@@ -2846,6 +2849,12 @@ interface RuangSosmedStoreContextValue extends PersistedGlobalState {
     chapterTitle?: string;
     pointsCost: number;
   }) => Promise<{ ok: boolean; message: string; newPoints?: number }>;
+  applyWebAppPointsUnlock: (params: {
+    appId: string;
+    appName: string;
+    pointsCost: number;
+    newPoints: number;
+  }) => void;
   toggleStudentProByAdmin: (studentName: string, studentEmail?: string) => void;
   setStudentProTierLocal: (
     studentName: string,
@@ -10959,6 +10968,71 @@ export function RuangSosmedProvider({
     []
   );
 
+  const applyWebAppPointsUnlock = useCallback(
+    (params: {
+      appId: string;
+      appName: string;
+      pointsCost: number;
+      newPoints: number;
+    }) => {
+      const itemKey = buildWebAppUnlockKey(params.appId);
+      const cost = Math.max(0, Math.round(Number(params.pointsCost) || 0));
+      const nextPoints = Math.max(0, Math.round(Number(params.newPoints) || 0));
+      const activeSess = getActiveSessionUser();
+      const targetEmail = (activeSess.email || "").trim().toLowerCase();
+
+      const newRecord: LearnerUnlockedItemRecord = {
+        id: `unl-webapp-${Date.now()}`,
+        itemKey,
+        courseTitle: `Tools You Need: ${params.appName}`,
+        chapterId: null,
+        unlockMethod: "points",
+        pointsSpent: cost,
+        pricePaidIdr: 0,
+        createdAt: new Date().toISOString(),
+      };
+
+      const pointKeys = normalizeAvatarKeys({
+        email: targetEmail,
+        name: activeSess.name,
+        username: activeSess.username,
+      });
+      const expiresAt = Date.now() + 15_000;
+      const ptsPatch: Record<string, number> = {};
+      pointKeys.forEach((k) => {
+        recentPointLocksRef.current.set(k, { value: nextPoints, expiresAt });
+        ptsPatch[k] = nextPoints;
+      });
+
+      const mergedUnlocked = mergeUnlockedItems(
+        [newRecord],
+        stateRef.current.learnerUnlockedItems || []
+      );
+      if (targetEmail) {
+        persistLocalUnlockedItems(targetEmail, mergedUnlocked);
+      }
+
+      setState((prev) => ({
+        ...prev,
+        learnerPoints: nextPoints,
+        userPointsMap: { ...(prev.userPointsMap || {}), ...ptsPatch },
+        learnerUnlockedItems: mergedUnlocked,
+        learnerNotifications: [
+          {
+            id: `notif-unlock-webapp-${Date.now()}`,
+            title: `🔓 Tool Terbuka: ${params.appName}`,
+            body: `Anda menukarkan ${cost} ★ pts untuk membuka "${params.appName}". Sisa saldo: ${nextPoints.toLocaleString()} pts.`,
+            time: "Baru saja",
+            unread: true,
+            eventType: "material_added",
+          },
+          ...prev.learnerNotifications,
+        ],
+      }));
+    },
+    []
+  );
+
   const setAdminPreviewTier = useCallback(
     (tier: "auto" | "free" | "basic" | "pro") => {
       setState((prev) => ({
@@ -12836,6 +12910,7 @@ export function RuangSosmedProvider({
     learnerAccess,
     setAdminPreviewTier,
     unlockModuleWithPoints,
+    applyWebAppPointsUnlock,
     publishContentToStudioAndCatalog,
     createFolder,
     updateFolder,

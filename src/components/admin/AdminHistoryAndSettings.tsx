@@ -36,9 +36,11 @@ import {
   Ticket,
   Lock,
   Bot,
+  AppWindow,
 } from "lucide-react";
 import { AdminTelegramSettingsPanel } from "@/components/admin/AdminTelegramSettingsPanel";
 import { AdminProVoucherCodesPanel } from "@/components/admin/AdminProVoucherCodesPanel";
+import { AdminWebAppsManager } from "@/components/admin/AdminWebAppsManager";
 import {
   useRuangSosmedStore,
   DEFAULT_LEARNER_PRO_CONFIG,
@@ -209,6 +211,7 @@ type SettingsSectionId =
   | "pro-modal-banner"
   | "pro-qris"
   | "learner-pages"
+  | "tools-web-apps"
   | "telegram-bot"
   | "under-construction"
   | "brand-certificate"
@@ -693,18 +696,29 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
           id: "learner-pages",
           label: "Halaman & Menu Siswa",
           subtitle:
-            "Aktifkan atau nonaktifkan halaman Wiki dan Favorites pada Portal Belajar Siswa.",
+            "Aktifkan atau nonaktifkan halaman Wiki, Favorites, dan Tools You Need pada Portal Belajar Siswa.",
           detail:
             (pagesDraft.showWikiPage ? 1 : 0) +
-              (pagesDraft.showFavoritesPage ? 1 : 0) ===
+              (pagesDraft.showFavoritesPage ? 1 : 0) +
+              ((pagesDraft.showToolsPage ?? true) ? 1 : 0) ===
             0
               ? "Nonaktif"
               : `${
                   (pagesDraft.showWikiPage ? 1 : 0) +
-                  (pagesDraft.showFavoritesPage ? 1 : 0)
-                }/2 Aktif`,
+                  (pagesDraft.showFavoritesPage ? 1 : 0) +
+                  ((pagesDraft.showToolsPage ?? true) ? 1 : 0)
+                }/3 Aktif`,
           iconBg: "bg-violet-600 text-white",
           icon: LayoutGrid,
+        },
+        {
+          id: "tools-web-apps",
+          label: "Tools You Need (Web Apps)",
+          subtitle:
+            "Tambah link web app dengan icon, nama, deskripsi, serta atur akses Gratis, PRO, atau Berbayar (QRIS / Poin).",
+          detail: "Web Apps",
+          iconBg: "bg-indigo-600 text-white",
+          icon: AppWindow,
         },
         {
           id: "telegram-bot",
@@ -2243,6 +2257,78 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                       />
                     </div>
                   </label>
+
+                  {/* Checkbox 3: Halaman Tools You Need (Web Apps) */}
+                  <label className="p-4 sm:p-5 flex items-start justify-between gap-4 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <span
+                        className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+                          pagesDraft.showToolsPage ?? true
+                            ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+                            : "bg-slate-100 border-slate-200 text-slate-400"
+                        }`}
+                      >
+                        <AppWindow size={17} />
+                      </span>
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs sm:text-sm font-bold text-slate-900">
+                            Aktifkan Halaman &ldquo;Tools You Need&rdquo; di Portal Siswa
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              pagesDraft.showToolsPage ?? true
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-slate-100 text-slate-500 border border-slate-200"
+                            }`}
+                          >
+                            {pagesDraft.showToolsPage ?? true
+                              ? "Aktif"
+                              : "Disembunyikan"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Menampilkan tab direktori web app pendukung (Gratis,
+                          Khusus PRO, atau Berbayar via QRIS / Poin Bintang).{" "}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setActiveSection("tools-web-apps");
+                            }}
+                            className="font-semibold text-[#4F39F6] hover:underline cursor-pointer"
+                          >
+                            Kelola Daftar Tools &rarr;
+                          </button>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-1 shrink-0 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={pagesDraft.showToolsPage ?? true}
+                        onChange={(e) => {
+                          const nextVal = e.target.checked;
+                          const nextCfg = {
+                            ...pagesDraft,
+                            showToolsPage: nextVal,
+                          };
+                          setPagesDraft(nextCfg);
+                          updateLearnerPagesConfig({
+                            showToolsPage: nextVal,
+                          });
+                          onShowToast(
+                            nextVal
+                              ? 'Halaman "Tools You Need" di Learner Portal diaktifkan.'
+                              : 'Halaman "Tools You Need" disembunyikan dari Learner Portal.'
+                          );
+                        }}
+                        aria-label="Aktifkan Halaman Tools You Need di Portal Siswa"
+                        className="h-5 w-5 rounded border-slate-300 text-[#4F39F6] accent-[#4F39F6] cursor-pointer"
+                      />
+                    </div>
+                  </label>
                 </div>
               </div>
 
@@ -2283,6 +2369,16 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-400 line-through">
                       Favorites (Tersembunyi)
+                    </span>
+                  )}
+                  {pagesDraft.showToolsPage ?? true ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700">
+                      <AppWindow size={13} />
+                      <span>Tools You Need</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-lg border border-dashed border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-400 line-through">
+                      Tools You Need (Tersembunyi)
                     </span>
                   )}
                 </div>
@@ -2643,6 +2739,11 @@ export function AdminSettingsScreen({ onShowToast }: AdminSettingsScreenProps) {
           {/* SECTION 7: BOT TELEGRAM & NOTIFIKASI */}
           {activeSection === "telegram-bot" && (
             <AdminTelegramSettingsPanel onShowToast={onShowToast} />
+          )}
+
+          {/* SECTION 8: TOOLS YOU NEED (WEB APPS) */}
+          {activeSection === "tools-web-apps" && (
+            <AdminWebAppsManager onShowToast={onShowToast} />
           )}
         </section>
       </form>

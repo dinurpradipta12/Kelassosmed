@@ -29,6 +29,7 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  AppWindow,
 } from "lucide-react";
 import {
   useRuangSosmedStore,
@@ -208,6 +209,7 @@ export type LearnerNavTabId =
   | "catalog"
   | "wiki"
   | "favorites"
+  | "tools"
   | "profile";
 
 interface LearnerTopNavbarProps {
@@ -719,6 +721,7 @@ export function LearnerTopNavbar({
 
   const showWikiPage = learnerPagesConfig?.showWikiPage ?? true;
   const showFavoritesPage = learnerPagesConfig?.showFavoritesPage ?? true;
+  const showToolsPage = learnerPagesConfig?.showToolsPage ?? true;
 
   const navTabs: {
     id: LearnerNavTabId;
@@ -734,6 +737,9 @@ export function LearnerTopNavbar({
         : []),
       ...(showFavoritesPage
         ? [{ id: "favorites" as const, label: "Favorites", icon: Heart }]
+        : []),
+      ...(showToolsPage
+        ? [{ id: "tools" as const, label: "Tools You Need", icon: AppWindow }]
         : []),
     ]
   );

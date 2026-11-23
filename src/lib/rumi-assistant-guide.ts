@@ -25,6 +25,7 @@ export type RumiPageContextId =
   | "learner:wiki"
   | "learner:wiki-reader"
   | "learner:favorites"
+  | "learner:tools"
   | "learner:profile"
   | "admin:home"
   | "admin:analytics"
@@ -476,6 +477,42 @@ const GUIDE_MAP: Record<RumiPageContextId, RumiPageGuide> = {
         question: "Apakah akses Favorites butuh paket khusus?",
         answer:
           "Ketersediaan tab Favorites & Catatan mengikuti pengaturan paket aktif dan Admin Studio.",
+        reactionMood: "focused",
+      },
+    ],
+  },
+
+  "learner:tools": {
+    contextId: "learner:tools",
+    pageTitle: "Tools You Need (Web Apps)",
+    badge: "Ekosistem Tool",
+    summary:
+      "Kumpulan web app pendukung belajar & kerja pilihan dari Ruang Sosmed. Ada yang gratis langsung pakai, khusus member PRO, maupun berbayar satuan via Poin Bintang atau QRIS.",
+    features: [
+      {
+        title: "Langsung Buka di Tab Baru",
+        description:
+          "Tool yang sudah terbuka bisa langsung kamu jalankan di tab browser baru tanpa membebani portal belajar.",
+      },
+      {
+        title: "Buka Pakai Poin ★ atau QRIS",
+        description:
+          "Tool berbayar terpisah bisa ditebus langsung pakai Poin Bintang hasil belajar atau melalui QRIS / Transfer.",
+      },
+    ],
+    defaultBubble:
+      "Butuh alat bantu kerja biar makin sat-set? Cek koleksi Tools You Need di sini!",
+    faqs: [
+      {
+        question: "Bagaimana cara membuka tool yang masih terkunci?",
+        answer:
+          "Untuk tool berlabel PRO, aktifkan paket PRO terlebih dahulu. Untuk tool berbayar satuan, klik Buka Akses lalu pilih tukar Poin Bintang atau bayar QRIS/Transfer.",
+        reactionMood: "happy",
+      },
+      {
+        question: "Apakah tool berbayar satuan otomatis gratis di PRO?",
+        answer:
+          "Tidak selalu — tool berbayar satuan dibuka terpisah per item menggunakan Poin Bintang atau pembayaran QRIS/Transfer.",
         reactionMood: "focused",
       },
     ],
