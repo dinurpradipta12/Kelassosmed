@@ -364,6 +364,13 @@ export function UpgradePlanModal({
   const [isRedeemingVoucher, setIsRedeemingVoucher] = useState(false);
   const [voucherError, setVoucherError] = useState<string | null>(null);
   const [voucherSuccess, setVoucherSuccess] = useState<string | null>(null);
+  const [redeemedCodes, setRedeemedCodes] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  useEffect(() => {
+    setRedeemedCodes(new Set());
+  }, [defaultBuyerEmail]);
 
   const selectedPkg: LearnerProPackageItem =
     packages.find((p) => p.id === selectedPackageId) || defaultPaidPkg;
@@ -495,6 +502,13 @@ export function UpgradePlanModal({
       setVoucherSuccess(null);
       return;
     }
+    if (redeemedCodes.has(clean)) {
+      setVoucherError(
+        "Kode akses premium ini hanya bisa digunakan 1× per akun. Anda sudah pernah menukarkannya sebelumnya."
+      );
+      setVoucherSuccess(null);
+      return;
+    }
     setIsRedeemingVoucher(true);
     setVoucherError(null);
     setVoucherSuccess(null);
@@ -517,12 +531,19 @@ export function UpgradePlanModal({
       });
       const json = await res.json();
       if (!json?.ok || !json.redemption) {
-        setVoucherError(
-          json?.error || "Kode akses premium tidak valid atau sudah habis."
-        );
+        const errMsg =
+          json?.error || "Kode akses premium tidak valid atau sudah habis.";
+        if (
+          res.status === 409 ||
+          /sudah pernah|1×/i.test(String(errMsg))
+        ) {
+          setRedeemedCodes((prev) => new Set(prev).add(clean));
+        }
+        setVoucherError(errMsg);
         return;
       }
       const r = json.redemption as ProVoucherRedeemResult;
+      setRedeemedCodes((prev) => new Set(prev).add(clean));
       const unitLabel = r.durationUnit === "months" ? "bulan" : "hari";
       const expiryText = formatIndoDate(r.expiresAt || r.dueDate);
       setVoucherSuccess(
@@ -1299,7 +1320,7 @@ export function UpgradePlanModal({
                   Punya Kode Akses Premium?
                 </p>
                 <p className="text-[11px] text-[#5E5E5E]">
-                  Masukkan kode dari Admin untuk langsung membuka akses PRO sesuai jangka waktu kode.
+                  Masukkan kode dari Admin untuk langsung membuka akses PRO sesuai jangka waktu kode (batas 1× pemakaian per akun untuk setiap kode).
                 </p>
               </div>
             </div>

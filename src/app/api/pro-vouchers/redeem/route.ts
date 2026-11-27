@@ -26,6 +26,30 @@ function isMissingVoucherInfraError(error: unknown): boolean {
   );
 }
 
+function isDuplicateRedemptionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { code?: string; message?: string };
+  const code = String(err.code || "");
+  const msg = String(err.message || "").toLowerCase();
+  return (
+    code === "23505" ||
+    msg.includes("duplicate key") ||
+    msg.includes("unique constraint") ||
+    msg.includes("pro_voucher_redemptions")
+  );
+}
+
+function isMissingSchemaColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { code?: string; message?: string };
+  const code = String(err.code || "");
+  const msg = String(err.message || "").toLowerCase();
+  return (
+    code === "42703" ||
+    (msg.includes("column") && msg.includes("does not exist"))
+  );
+}
+
 export async function POST(request: Request) {
   const fetchMetaErr = checkFetchMetadata(request);
   if (fetchMetaErr) return fetchMetaErr;
@@ -61,6 +85,26 @@ export async function POST(request: Request) {
               "Sistem kode akses premium belum aktif di database. Hubungi Admin untuk menjalankan migration SQL.",
           },
           { status: 503, headers: API_SECURITY_HEADERS }
+        );
+      }
+      if (isMissingSchemaColumnError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Skema kolom database belum diperbarui. Hubungi Admin untuk menjalankan migration SQL 029_fix_voucher_redeem_and_once_per_user.sql.",
+          },
+          { status: 503, headers: API_SECURITY_HEADERS }
+        );
+      }
+      if (isDuplicateRedemptionError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Kode akses premium ini hanya bisa digunakan 1× per akun. Anda sudah pernah menukarkannya sebelumnya.",
+          },
+          { status: 409, headers: API_SECURITY_HEADERS }
         );
       }
       return NextResponse.json(

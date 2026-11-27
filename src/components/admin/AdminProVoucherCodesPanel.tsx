@@ -527,7 +527,7 @@ export function AdminProVoucherCodesPanel({
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
             <div className="sm:col-span-3 space-y-1">
               <label className="block text-[11px] font-semibold text-slate-700">
-                Kuota Pemakaian
+                Kuota Pemakaian Total
               </label>
               <input
                 type="number"
@@ -537,6 +537,9 @@ export function AdminProVoucherCodesPanel({
                 placeholder="Unlimited"
                 className="w-full rounded-xl bg-slate-50/80 focus:bg-white px-3 py-2 text-xs text-slate-900 border border-slate-200/80 focus:border-[#4F39F6] focus:outline-none"
               />
+              <p className="text-[10px] text-slate-500">
+                Otomatis dibatasi maks. <strong>1× per akun siswa</strong>.
+              </p>
             </div>
 
             <div className="sm:col-span-4 space-y-1">
@@ -706,6 +709,9 @@ export function AdminProVoucherCodesPanel({
                         ) : (
                           "Unlimited"
                         )}
+                      </span>
+                      <span className="inline-flex items-center rounded-md bg-violet-50 border border-violet-200 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                        1× / user
                       </span>
                       {validIso && (
                         <span className="inline-flex items-center gap-1">

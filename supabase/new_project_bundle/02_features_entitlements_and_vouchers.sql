@@ -3938,6 +3938,21 @@ CREATE TABLE IF NOT EXISTS public.pro_voucher_redemptions (
 CREATE INDEX IF NOT EXISTS idx_pro_voucher_redemptions_redeemed_at
   ON public.pro_voucher_redemptions (redeemed_at DESC);
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pro_voucher_redemptions_voucher_email
+  ON public.pro_voucher_redemptions (voucher_id, lower(trim(user_email)));
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pro_voucher_redemptions_code_user
+  ON public.pro_voucher_redemptions ((upper(replace(trim(code), ' ', '-'))), user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pro_voucher_redemptions_code_email
+  ON public.pro_voucher_redemptions ((upper(replace(trim(code), ' ', '-'))), lower(trim(user_email)));
+
+ALTER TABLE IF EXISTS public.profiles
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+ALTER TABLE IF EXISTS public.user_subscriptions
+  ADD COLUMN IF NOT EXISTS plan_tier text NOT NULL DEFAULT 'Free';
+
 -- 3) Keamanan Row Level Security (RLS)
 ALTER TABLE public.pro_voucher_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pro_voucher_redemptions ENABLE ROW LEVEL SECURITY;
@@ -4045,19 +4060,7 @@ BEGIN
     );
   END IF;
 
-  IF EXISTS (
-    SELECT 1
-    FROM public.pro_voucher_redemptions r
-    WHERE r.voucher_id = v_voucher.id
-      AND r.user_id = v_uid
-  ) THEN
-    RETURN jsonb_build_object(
-      'ok', false,
-      'error', 'Anda sudah pernah menukarkan kode akses premium ini sebelumnya.'
-    );
-  END IF;
-
-  -- Ambil profil learner saat ini
+  -- Kunci profil learner agar request bersamaan dari akun yang sama terserialisasi
   SELECT
     coalesce(nullif(trim(email), ''), nullif(trim(auth.jwt()->>'email'), ''), ''),
     coalesce(nullif(trim(full_name), ''), split_part(coalesce(email, auth.jwt()->>'email', 'Learner'), '@', 1)),
@@ -4066,13 +4069,33 @@ BEGIN
     pro_expires_at
   INTO v_email, v_full_name, v_prof_tier, v_prof_started, v_prof_expires
   FROM public.profiles
-  WHERE id = v_uid;
+  WHERE id = v_uid
+  FOR UPDATE;
 
   IF coalesce(v_email, '') = '' THEN
     v_email := coalesce(nullif(trim(auth.jwt()->>'email'), ''), '');
   END IF;
   IF coalesce(v_full_name, '') = '' THEN
     v_full_name := coalesce(split_part(v_email, '@', 1), 'Learner');
+  END IF;
+
+  -- Cek ketat 1× per akun (berdasarkan voucher_id/kode maupun user_id/email)
+  IF EXISTS (
+    SELECT 1
+    FROM public.pro_voucher_redemptions r
+    WHERE (
+      r.voucher_id = v_voucher.id
+      OR upper(replace(trim(r.code), ' ', '-')) = v_clean_code
+    )
+    AND (
+      r.user_id = v_uid
+      OR (coalesce(v_email, '') <> '' AND lower(trim(r.user_email)) = lower(trim(v_email)))
+    )
+  ) THEN
+    RETURN jsonb_build_object(
+      'ok', false,
+      'error', 'Kode akses premium ini hanya bisa digunakan 1× per akun. Anda sudah pernah menukarkannya sebelumnya.'
+    );
   END IF;
 
   IF v_prof_expires IS NOT NULL THEN
@@ -4113,6 +4136,42 @@ BEGIN
 
   v_pkg_id := coalesce(nullif(trim(v_voucher.package_id), ''), 'pkg-pro');
   v_pkg_name := coalesce(nullif(trim(v_voucher.package_name), ''), 'Creator Academy Plan');
+
+  -- Catat penukaran TERLEBIH DAHULU agar unique constraint langsung menolak klik ganda
+  BEGIN
+    INSERT INTO public.pro_voucher_redemptions (
+      voucher_id,
+      code,
+      user_id,
+      user_email,
+      user_name,
+      duration_value,
+      duration_unit,
+      granted_days,
+      package_id,
+      package_name,
+      previous_expires_at,
+      new_expires_at
+    ) VALUES (
+      v_voucher.id,
+      v_voucher.code,
+      v_uid,
+      coalesce(nullif(lower(trim(v_email)), ''), v_uid::text),
+      v_full_name,
+      v_voucher.duration_value,
+      v_voucher.duration_unit,
+      v_granted_days,
+      v_pkg_id,
+      v_pkg_name,
+      v_prof_expires,
+      v_expires_ts
+    );
+  EXCEPTION WHEN unique_violation THEN
+    RETURN jsonb_build_object(
+      'ok', false,
+      'error', 'Kode akses premium ini hanya bisa digunakan 1× per akun. Anda sudah pernah menukarkannya sebelumnya.'
+    );
+  END;
 
   -- Izinkan pembaruan kolom sensitif dari trigger protect_profiles_sensitive_fields()
   PERFORM set_config('app.bypass_profile_protection', 'on', true);
@@ -4195,35 +4254,6 @@ BEGIN
       renewal_status = EXCLUDED.renewal_status,
       updated_at = timezone('utc', now());
   END IF;
-
-  -- Catat penukaran & naikkan counter pemakaian
-  INSERT INTO public.pro_voucher_redemptions (
-    voucher_id,
-    code,
-    user_id,
-    user_email,
-    user_name,
-    duration_value,
-    duration_unit,
-    granted_days,
-    package_id,
-    package_name,
-    previous_expires_at,
-    new_expires_at
-  ) VALUES (
-    v_voucher.id,
-    v_voucher.code,
-    v_uid,
-    coalesce(nullif(v_email, ''), v_uid::text),
-    v_full_name,
-    v_voucher.duration_value,
-    v_voucher.duration_unit,
-    v_granted_days,
-    v_pkg_id,
-    v_pkg_name,
-    v_prof_expires,
-    v_expires_ts
-  );
 
   UPDATE public.pro_voucher_codes
   SET
